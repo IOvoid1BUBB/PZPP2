@@ -17,10 +17,7 @@ Ten dokument jest dla całego zespołu: opisuje **minimalny zestaw narzędzi**, 
 1. **Git** — klonowanie repozytorium.
 2. **Docker Desktop** (Windows / macOS) albo **Docker Engine**.
    - Po instalacji upewnij się, że Docker **działa** (ikona w stanie „running”; w terminalu: `docker version` bez błędów).
-3. **Pierwszy raz: przygotowanie mapy OSRM** (patrz niżej) wymaga dodatkowo:
-   - **Wolnego miejsca na dysku** (rząd wielkości: kilka–kilkanaście GB na pliki Polski + graf OSRM).
-   - **`winget install wget`** w terminalu (na macOS często: `brew install wget`; na Linuxie zwykle już jest).
-   - **Dostępu do internetu** tylko na czas pobrania pliku `.osm.pbf` i pierwszego `docker compose pull` / budowy obrazu API.
+3. **Pierwszy raz: przygotowanie mapy OSRM** wget jest za duże. Igor szuka lepszego rozwiązania.
 
 Reszta pracy z API i bazą odbywa się **lokalnie** między kontenerami — zgodnie z założeniem projektu (brak zależności od zewnętrznych API w runtime).
 
