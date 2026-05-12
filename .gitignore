@@ -1,6 +1,4 @@
 .env
-osrm-data/*
-!osrm-data/.gitkeep
 __pycache__/
 *.py[cod]
 .pytest_cache/
