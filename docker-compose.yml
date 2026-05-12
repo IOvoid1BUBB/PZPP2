@@ -1,0 +1,60 @@
+# Dev stack: PostGIS, Redis, OSRM (MLD), FastAPI API.
+# OSRM needs a prepared graph under ./osrm-data (see scripts/osrm_setup.sh) before `osrm` stays healthy.
+services:
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    environment:
+      POSTGRES_USER: loadmax
+      POSTGRES_PASSWORD: loadmax
+      POSTGRES_DB: loadmax
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loadmax -d loadmax"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./osrm-data:/data
+    # OSRM expects the dataset path prefix (same basename as map.osm.pbf / map.osrm), not the .osrm suffix alone.
+    command: osrm-routed --algorithm mld /data/map
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://loadmax:loadmax@db:5432/loadmax}
+      OSRM_HOST: ${OSRM_HOST:-http://osrm:5000}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      FUEL_PRICE_EUR_PER_LITER: ${FUEL_PRICE_EUR_PER_LITER:-1.75}
+      DRIVER_DAILY_ALLOWANCE_EUR: ${DRIVER_DAILY_ALLOWANCE_EUR:-49.0}
+      STOP_COST_MINUTES: ${STOP_COST_MINUTES:-30}
+      MAX_STOPS_PER_ROUTE: ${MAX_STOPS_PER_ROUTE:-12}
+      WEIGHT_FUEL_FACTOR: ${WEIGHT_FUEL_FACTOR:-0.30}
+      MAINTENANCE_EUR_PER_KM: ${MAINTENANCE_EUR_PER_KM:-0.08}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      osrm:
+        condition: service_started
+
+volumes:
+  pgdata:
