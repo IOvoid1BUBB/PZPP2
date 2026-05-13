@@ -8,3 +8,4 @@ geoalchemy2==0.15.2
 pydantic==2.13.4
 pydantic-settings==2.14.1
 redis==5.2.1
+shapely>=2.0.0
