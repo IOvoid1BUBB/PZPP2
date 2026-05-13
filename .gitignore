@@ -1,6 +1,34 @@
+# Środowisko (Environment)
 .env
-__pycache__/
-*.py[cod]
-.pytest_cache/
 .venv/
 venv/
+env/
+
+# Python / Kompilacja
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Testy i pokrycie (Testing & Coverage)
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.log
+
+# Narzędzia do statycznej analizy (Linting/Type checking)
+.mypy_cache/
+.ruff_cache/
+.pyre/
+
+# IDE i edytory
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
