@@ -2,21 +2,39 @@
 
 ## Cel
 
-Aplikacja wspiera planowanie tras i kalkulację kosztów (m.in. paliwo, przystanki, ograniczenia biznesowe). Backend udostępnia API (FastAPI); frontend będzie rozwijany w katalogu `frontend/`.
+Aplikacja wspiera **planowanie tras**, **optymalizację transportu** i **kalkulację kosztów** w kontekście **logistyki i TMS dla Europy**. Backend (**FastAPI**, Python) realizuje całą **logikę biznesową** oraz obliczenia; frontend odpowiada za **prezentację** i interakcje. Architektura jest **lekka i wysokowydajna**: routing jest wydzielony do osobnego procesu, a warstwa API skupia się na agregacji, cache i regułach domenowych.
 
-## Routing — OpenRouteService (ORS)
+## Routing — lokalny OSRM
 
-- Lekki model z **zewnętrznym API OpenRouteService** ([api.openrouteservice.org](https://api.openrouteservice.org)). Lokalnie uruchamiamy tylko bazę, Redis i API; klucz API trafia do zmiennych środowiskowych.
-- **Backend:** `ORS_API_KEY` — m.in. healthcheck (`GET /health` pole `ors`) i przyszłe wywołania serwisu po stronie serwera.
-- **Frontend (plan):** `NEXT_PUBLIC_ORS_API_KEY` — tylko jeśli zapytania do ORS mają iść z przeglądarki; w produkcji rozważ proxy przez backend, żeby nie eksponować klucza publicznie bez potrzeby.
+- **OSRM** działa jako **osobny serwis w Dockerze** (sieć wewnętrzna Compose), bez zależności od zewnętrznego **OpenRouteService** jako głównego dostawcy routingu.
+- **Odpowiedzialność OSRM:** geometria trasy, **macierz** odległości/czasów, **ETA**, najkrótsza / najszybsza ścieżka w grafie drogowym OSM.
+- **Poza zakresem OSRM:** logika biznesowa, **koszty transportu**, **spalanie**, **myto**, **czas pracy kierowcy**, **tachograf UE** — to wyłącznie **backend**.
+
+Dane: **Europe-wide routing** opiera się na **extractach OSM** (np. Europa z Geofabrika lub mniejszy region na development); preprocessing (`extract` → `partition` → `customize`) przygotowuje pliki serwowane przez `osrm-routed`.
+
+## Backend FastAPI — odpowiedzialności
+
+- Integracja z **OSRM** (table / route / match — zgodnie z implementacją).
+- **Kalkulacja:** spalania (w tym czynniki zależne od masy), **myto** (gdy wprowadzono warstwę danych), **czasu pracy kierowcy**, **kosztów transportu** (paliwo, postoje, diety, utrzymanie itd.).
+- **Ograniczenia** zgodne z przepisami (**tachograf UE**) nakładane na wynik planowania, nie na silnik routingu.
+- **Cache Redis:** odpowiedzi **macierzy** i **tras** z OSRM oraz ewentualnie zagregowane wyniki zapytań API — mniejsze obciążenie OSRM i krótszy czas odpowiedzi.
+
+## Frontend
+
+- **React** lub **Next.js** z **Leaflet** / **React Leaflet**: mapa, markery, polyline, statystyki z API.
+- Frontend **nie** wykonuje optymalizacji, **nie** liczy kosztów operacyjnych ani ciężkich symulacji — tylko wywołuje API i wizualizuje wynik.
 
 ## Monorepo
 
-- `backend/` — Python, FastAPI, Dockerfile pod serwis `api`.
-- `frontend/` — na razie pusty katalog (szkielet pod Next.js).
+- `backend/` — Python, FastAPI, moduły domenowe (w rozwoju: `services/routing`, `services/optimization`, `services/costs`, `services/drivers`).
+- `frontend/` — aplikacja kliencka.
 
-## Infrastruktura lokalna (Docker Compose)
+## Infrastruktura (Docker Compose — docelowy zestaw)
 
-Serwisy: **db** (PostGIS), **redis**, **api**. ORS jest używany przez HTTPS spoza Compose (brak lokalnego kontenera routingu).
+Serwisy: **frontend**, **backend**, **osrm**, **postgres** (PostGIS), **redis**. Routing jest **lokalny**; brak wymogu konta u zewnętrznego dostawcy ORS dla podstawowego dev stacku.
 
-Pytania infrastrukturalne można kierować do roli **DevOps** w opisie zespołu (np. materiały kursowe / board).
+## Przyszła integracja OR-Tools
+
+Planowane jest użycie **OR-Tools** do solverów **VRP** / **TSP** / przypisań wielopojazdowych, z **kosztami krawędzi** wyliczanymi w backendzie (na podstawie macierzy z OSRM i reguł biznesowych). OSRM pozostaje **czystym** dostawcą metryk sieciowych.
+
+Pytania infrastrukturalne można kierować do roli **DevOps** w materiałach zespołu; zmiany w tym pliku — przez merge request z krótkim uzasadnieniem.
