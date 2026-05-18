@@ -12,11 +12,34 @@ from collections.abc import AsyncIterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 os.environ.setdefault(
     "DATABASE_URL",
     "postgresql+asyncpg://loadmax:loadmax@localhost:5432/loadmax",
 )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    skip_integration = pytest.mark.skip(reason="PostgreSQL not available for integration tests")
+    for item in items:
+        if "integration" not in item.keywords:
+            continue
+        try:
+            from app.core.database import get_engine
+
+            engine = get_engine()
+
+            async def _ping() -> None:
+                async with engine.connect() as conn:
+                    await conn.execute(text("SELECT 1"))
+
+            import asyncio
+
+            asyncio.run(_ping())
+        except (SQLAlchemyError, OSError, ConnectionError):
+            item.add_marker(skip_integration)
 
 
 @pytest.fixture
