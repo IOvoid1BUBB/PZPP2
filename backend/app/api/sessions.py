@@ -8,7 +8,10 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.schemas.offer import SimulateOffersResponse
 from app.schemas.session import SessionCreate, SessionRead, SessionUpdate
+from app.services.market_offers import bulk_insert_offers
+from app.services.market_simulator import generate_batch
 from app.services.sessions import SessionService
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -76,3 +79,28 @@ async def delete_session(
     service = SessionService(db)
     await service.delete(session_id)
     await db.commit()
+
+
+@router.post(
+    "/{session_id}/simulate",
+    response_model=SimulateOffersResponse,
+    summary="Generate synthetic market offers for testing VRP/UI",
+)
+async def simulate_market_offers(
+    session_id: UUID,
+    count: int = Query(200, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+) -> SimulateOffersResponse:
+    session_service = SessionService(db)
+    await session_service.get(session_id)
+
+    generated = generate_batch(count)
+    offers = [item.offer for item in generated]
+    inserted, skipped = await bulk_insert_offers(db, offers)
+    await db.commit()
+
+    return SimulateOffersResponse(
+        requested=count,
+        inserted=inserted,
+        skipped=skipped,
+    )
