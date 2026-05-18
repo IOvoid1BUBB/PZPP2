@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.models.base import Base
 from app.models.cost import CostEvent
+from app.models.driver_profile import DriverProfile
 from app.models.offer import MarketOffer
 from app.models.session import ConsolidationSession
 from app.models.solver import SolverResult
@@ -18,6 +19,7 @@ __all__ = [
     "Base",
     "ConsolidationSession",
     "CostEvent",
+    "DriverProfile",
     "MarketOffer",
     "RouteStop",
     "SolverResult",
