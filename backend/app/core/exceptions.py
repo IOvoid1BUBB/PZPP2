@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import status
 
 
@@ -16,12 +18,14 @@ class AppException(Exception):
         *,
         status_code: int | None = None,
         error_code: str | None = None,
+        context: dict[str, Any] | None = None,
     ) -> None:
         self.detail = detail or self.default_detail
         if status_code is not None:
             self.status_code = status_code
         if error_code is not None:
             self.error_code = error_code
+        self.context: dict[str, Any] = context or {}
         super().__init__(self.detail)
 
 
