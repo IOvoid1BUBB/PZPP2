@@ -18,6 +18,32 @@ class GeoPoint(BaseModel):
     lat: float = Field(..., ge=-90.0, le=90.0)
 
 
+class MarketOfferCreate(BaseModel):
+    """Payload for inserting a synthetic market offer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pickup_point: str = Field(..., description="EWKT point, e.g. SRID=4326;POINT(lon lat)")
+    delivery_point: str
+    ldm: Decimal
+    weight_kg: int = Field(..., gt=0)
+    price_eur: Decimal = Field(..., gt=0)
+    time_window_open: datetime
+    time_window_close: datetime
+    handling_time_minutes: int
+    stackable: bool
+
+
+class SimulateOffersResponse(BaseModel):
+    """Result of a market simulation run."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    requested: int
+    inserted: int
+    skipped: int
+
+
 class OfferRead(BaseModel):
     """Outbound representation of a market offer."""
 
