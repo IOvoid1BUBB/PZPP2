@@ -14,7 +14,8 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import AppException, NotFoundError, ValidationAppError
 from app.lib.geo import geo_point_from_geometry, lat_lon_from_geometry
 from app.lib.osrm import OSRMClient, get_osrm_client
-from app.models import ConsolidationSession, MarketOffer, RouteStop, Vehicle
+from app.models import ConsolidationSession, DriverProfile, MarketOffer, RouteStop, Vehicle
+from app.schemas.driver_profile import DriverProfileRead
 from app.schemas.session import (
     OfferInSession,
     SessionCreate,
@@ -24,7 +25,10 @@ from app.schemas.session import (
     StopResponse,
     VehicleResponse,
 )
-from app.services.stop_cost import StopCostCalculator
+from app.services.stop_cost_calculator import (
+    StopCostRates,
+    calculate_stop_cost,
+)
 
 _ALLOWED_TRANSITIONS: dict[str, str] = {
     "draft": "optimizing",
@@ -42,12 +46,10 @@ class SessionService:
         *,
         osrm: OSRMClient | None = None,
         settings: Settings | None = None,
-        stop_cost_calculator: StopCostCalculator | None = None,
     ) -> None:
         self._db = db
         self._osrm = osrm or get_osrm_client()
         self._settings = settings or get_settings()
-        self._stop_costs = stop_cost_calculator or StopCostCalculator(self._settings)
 
     async def list_all(self, *, limit: int = 100, offset: int = 0) -> list[ConsolidationSession]:
         stmt = (
@@ -68,8 +70,11 @@ class SessionService:
     async def create(self, payload: SessionCreate) -> ConsolidationSession:
         vehicle = await self._get_vehicle(payload.vehicle_id)
         _ = vehicle
+        driver_profile = await self._get_driver_profile(payload.driver_profile_id)
+        _ = driver_profile
         instance = ConsolidationSession(
             vehicle_id=payload.vehicle_id,
+            driver_profile_id=payload.driver_profile_id,
             status="draft",
             origin_lon=payload.origin_lon,
             origin_lat=payload.origin_lat,
@@ -193,6 +198,7 @@ class SessionService:
             .where(ConsolidationSession.id == session_id)
             .options(
                 selectinload(ConsolidationSession.vehicle),
+                selectinload(ConsolidationSession.driver_profile),
                 selectinload(ConsolidationSession.route_stops).selectinload(RouteStop.offer),
             )
         )
@@ -205,6 +211,20 @@ class SessionService:
         if vehicle is None:
             raise NotFoundError(f"Vehicle {vehicle_id} not found.")
         return vehicle
+
+    async def _get_driver_profile(self, driver_profile_id: UUID) -> DriverProfile:
+        result = await self._db.execute(
+            select(DriverProfile).where(DriverProfile.id == driver_profile_id),
+        )
+        profile = result.scalar_one_or_none()
+        if profile is None:
+            raise NotFoundError(f"Driver profile {driver_profile_id} not found.")
+        return profile
+
+    async def _require_driver_profile(self, session: ConsolidationSession) -> DriverProfile:
+        if session.driver_profile is not None:
+            return session.driver_profile
+        return await self._get_driver_profile(session.driver_profile_id)
 
     async def _require_vehicle(self, session: ConsolidationSession) -> Vehicle:
         if session.vehicle_id is None:
@@ -296,6 +316,10 @@ class SessionService:
 
         route = await self._osrm.get_route_multi(waypoints)
 
+        driver_profile = await self._require_driver_profile(session)
+        rates = StopCostRates.from_driver_profile(driver_profile)
+        fuel_price = self._settings.FUEL_PRICE_EUR_PER_LITER
+
         cumulative_minutes = 0
         for index, stop in enumerate(stops):
             if index < len(route.legs):
@@ -304,7 +328,17 @@ class SessionService:
             handling = None
             if stop.offer is not None:
                 handling = stop.offer.handling_time_minutes
-            stop.stop_cost_eur = self._stop_costs.calculate(handling)
+            handling = handling if handling is not None else self._settings.STOP_COST_MINUTES
+            vehicle = session.vehicle
+            if vehicle is None:
+                raise ValidationAppError("Session vehicle is not set.")
+            breakdown = calculate_stop_cost(
+                handling,
+                vehicle.type,
+                rates=rates,
+                fuel_price_eur_per_liter=fuel_price,
+            )
+            stop.stop_cost_eur = breakdown.total_eur
 
         session.total_revenue_eur = await self._total_revenue(session.id)
         fuel_cost = self._estimate_fuel_cost(route.total_distance_km, session)
@@ -335,6 +369,7 @@ class SessionService:
         session = loaded
 
         vehicle = await self._require_vehicle(session)
+        driver_profile = await self._require_driver_profile(session)
         stops = sorted(session.route_stops, key=lambda s: s.sequence_order)
         offer_ids = await self._session_offer_ids(session.id)
 
@@ -362,6 +397,7 @@ class SessionService:
             id=session.id,
             status=session.status,  # type: ignore[arg-type]
             vehicle=VehicleResponse.model_validate(vehicle),
+            driver_profile=DriverProfileRead.model_validate(driver_profile),
             offers=offers,
             stops=stop_responses,
             metrics=metrics,

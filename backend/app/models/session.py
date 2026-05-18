@@ -14,6 +14,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.cost import CostEvent
+    from app.models.driver_profile import DriverProfile
     from app.models.solver import SolverResult
     from app.models.stop import RouteStop
     from app.models.vehicle import Vehicle
@@ -39,6 +40,11 @@ class ConsolidationSession(Base):
         ForeignKey("vehicles.id"),
         nullable=True,
     )
+    driver_profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("driver_profiles.id"),
+        nullable=False,
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -52,6 +58,7 @@ class ConsolidationSession(Base):
     target_region_bbox: Mapped[list[float] | None] = mapped_column(JSONB)
 
     vehicle: Mapped[Vehicle | None] = relationship(back_populates="consolidation_sessions")
+    driver_profile: Mapped[DriverProfile] = relationship(back_populates="consolidation_sessions")
     route_stops: Mapped[list[RouteStop]] = relationship(back_populates="session")
     solver_results: Mapped[list[SolverResult]] = relationship(back_populates="session")
     cost_events: Mapped[list[CostEvent]] = relationship(back_populates="session")

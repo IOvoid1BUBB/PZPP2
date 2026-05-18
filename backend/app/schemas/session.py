@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.driver_profile import DriverProfileRead
 from app.schemas.offer import OfferRead
 from app.schemas.stop import StopRead
 from app.schemas.vehicle import VehicleRead
@@ -29,6 +30,7 @@ class SessionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     vehicle_id: UUID
+    driver_profile_id: UUID
     origin_lon: float = Field(ge=-180.0, le=180.0)
     origin_lat: float = Field(ge=-90.0, le=90.0)
     target_region_bbox: list[float] = Field(
@@ -79,6 +81,7 @@ class SessionFullResponse(BaseModel):
     id: UUID
     status: SessionStatus
     vehicle: VehicleResponse
+    driver_profile: DriverProfileRead
     offers: list[OfferInSession]
     stops: list[StopResponse]
     metrics: SessionMetrics
@@ -92,6 +95,7 @@ class SessionRead(BaseModel):
 
     id: UUID
     vehicle_id: UUID | None = None
+    driver_profile_id: UUID
     status: SessionStatus
     created_at: datetime
     total_revenue_eur: Decimal | None = None
