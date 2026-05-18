@@ -1,4 +1,4 @@
-"""ConsolidationSession CRUD endpoints (`/api/v1/sessions`)."""
+"""ConsolidationSession API endpoints (`/api/v1/sessions`)."""
 
 from __future__ import annotations
 
@@ -8,10 +8,21 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.schemas.session import SessionCreate, SessionRead, SessionUpdate
+from app.lib.osrm import OSRMClient, get_osrm_client
+from app.schemas.session import (
+    SessionCreate,
+    SessionCreatedResponse,
+    SessionFullResponse,
+    SessionRead,
+    SessionStatusUpdate,
+)
 from app.services.sessions import SessionService
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+
+def _service(db: AsyncSession, osrm: OSRMClient) -> SessionService:
+    return SessionService(db, osrm=osrm)
 
 
 @router.get("", response_model=list[SessionRead], summary="List consolidation sessions")
@@ -27,40 +38,83 @@ async def list_sessions(
 
 @router.post(
     "",
-    response_model=SessionRead,
+    response_model=SessionCreatedResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new consolidation session",
 )
 async def create_session(
     payload: SessionCreate,
     db: AsyncSession = Depends(get_db),
-) -> SessionRead:
+) -> SessionCreatedResponse:
     service = SessionService(db)
     instance = await service.create(payload)
     await db.commit()
-    return SessionRead.model_validate(instance)
+    return SessionCreatedResponse(id=instance.id, status="draft")
 
 
-@router.get("/{session_id}", response_model=SessionRead, summary="Fetch one session")
+@router.get(
+    "/{session_id}",
+    response_model=SessionFullResponse,
+    summary="Fetch one session with offers, stops, and metrics",
+)
 async def get_session(
     session_id: UUID,
     db: AsyncSession = Depends(get_db),
-) -> SessionRead:
-    service = SessionService(db)
-    instance = await service.get(session_id)
-    return SessionRead.model_validate(instance)
+    osrm: OSRMClient = Depends(get_osrm_client),
+) -> SessionFullResponse:
+    service = _service(db, osrm)
+    return await service.get_full(session_id)
 
 
-@router.patch("/{session_id}", response_model=SessionRead, summary="Patch a session")
-async def update_session(
+@router.post(
+    "/{session_id}/offers/{offer_id}",
+    response_model=SessionFullResponse,
+    summary="Assign an offer to a session",
+)
+async def add_offer_to_session(
     session_id: UUID,
-    payload: SessionUpdate,
+    offer_id: UUID,
     db: AsyncSession = Depends(get_db),
-) -> SessionRead:
-    service = SessionService(db)
-    instance = await service.update(session_id, payload)
+    osrm: OSRMClient = Depends(get_osrm_client),
+) -> SessionFullResponse:
+    service = _service(db, osrm)
+    response = await service.add_offer(session_id, offer_id)
     await db.commit()
-    return SessionRead.model_validate(instance)
+    return response
+
+
+@router.delete(
+    "/{session_id}/offers/{offer_id}",
+    response_model=SessionFullResponse,
+    summary="Remove an offer from a session",
+)
+async def remove_offer_from_session(
+    session_id: UUID,
+    offer_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    osrm: OSRMClient = Depends(get_osrm_client),
+) -> SessionFullResponse:
+    service = _service(db, osrm)
+    response = await service.remove_offer(session_id, offer_id)
+    await db.commit()
+    return response
+
+
+@router.patch(
+    "/{session_id}/status",
+    response_model=SessionFullResponse,
+    summary="Transition session status",
+)
+async def update_session_status(
+    session_id: UUID,
+    payload: SessionStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    osrm: OSRMClient = Depends(get_osrm_client),
+) -> SessionFullResponse:
+    service = _service(db, osrm)
+    response = await service.update_status(session_id, payload.status)
+    await db.commit()
+    return response
 
 
 @router.delete(
