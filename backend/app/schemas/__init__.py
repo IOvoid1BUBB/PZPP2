@@ -7,7 +7,14 @@ from __future__ import annotations
 
 from app.schemas.common import ErrorResponse, HealthResponse
 from app.schemas.offer import OfferRead
-from app.schemas.session import SessionCreate, SessionRead, SessionUpdate
+from app.schemas.session import (
+    SessionCreate,
+    SessionCreatedResponse,
+    SessionFullResponse,
+    SessionMetrics,
+    SessionRead,
+    SessionStatusUpdate,
+)
 from app.schemas.solver import SolverRequest, SolverResponse
 from app.schemas.stop import StopRead
 from app.schemas.vehicle import VehicleRead
@@ -17,8 +24,11 @@ __all__ = [
     "HealthResponse",
     "OfferRead",
     "SessionCreate",
+    "SessionCreatedResponse",
+    "SessionFullResponse",
+    "SessionMetrics",
     "SessionRead",
-    "SessionUpdate",
+    "SessionStatusUpdate",
     "SolverRequest",
     "SolverResponse",
     "StopRead",
