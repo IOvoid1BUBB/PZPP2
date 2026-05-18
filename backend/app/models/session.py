@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Numeric, String, func, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -47,6 +47,9 @@ class ConsolidationSession(Base):
     total_revenue_eur: Mapped[float | None] = mapped_column(Numeric(10, 2))
     net_profit_eur: Mapped[float | None] = mapped_column(Numeric(10, 2))
     solver_run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    origin_lon: Mapped[float | None] = mapped_column(Numeric(9, 6))
+    origin_lat: Mapped[float | None] = mapped_column(Numeric(9, 6))
+    target_region_bbox: Mapped[list[float] | None] = mapped_column(JSONB)
 
     vehicle: Mapped[Vehicle | None] = relationship(back_populates="consolidation_sessions")
     route_stops: Mapped[list[RouteStop]] = relationship(back_populates="session")
