@@ -76,14 +76,13 @@ def _register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppException)
     async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
         request_id = getattr(request.state, "request_id", "")
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={
-                "error": exc.error_code,
-                "detail": exc.detail,
-                "request_id": request_id,
-            },
-        )
+        content: dict[str, object] = {
+            "error": exc.error_code,
+            "detail": exc.detail,
+            "request_id": request_id,
+        }
+        content.update(exc.context)
+        return JSONResponse(status_code=exc.status_code, content=content)
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
