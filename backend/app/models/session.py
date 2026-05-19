@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Numeric, String, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -56,6 +56,7 @@ class ConsolidationSession(Base):
     origin_lon: Mapped[float | None] = mapped_column(Numeric(9, 6))
     origin_lat: Mapped[float | None] = mapped_column(Numeric(9, 6))
     target_region_bbox: Mapped[list[float] | None] = mapped_column(JSONB)
+    load_layout: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     vehicle: Mapped[Vehicle | None] = relationship(back_populates="consolidation_sessions")
     driver_profile: Mapped[DriverProfile] = relationship(back_populates="consolidation_sessions")
