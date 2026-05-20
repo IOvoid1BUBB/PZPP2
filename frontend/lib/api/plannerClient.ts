@@ -1,6 +1,6 @@
 import type { LoadLayoutResponse, PalletData, SlotConflict, VehicleConfig } from "@/lib/types/load";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 export interface PlannerLayoutState {
   sessionId: string | null;
