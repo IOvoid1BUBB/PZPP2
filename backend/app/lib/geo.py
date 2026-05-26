@@ -1,8 +1,14 @@
-"""Geospatial helpers (pure Python, no PostGIS dependency)."""
+"""Geospatial helpers: haversine distances and PostGIS geometry conversions."""
 
 from __future__ import annotations
 
 import math
+from typing import Any
+
+from geoalchemy2.shape import from_shape, to_shape
+from shapely.geometry import Point
+
+from app.schemas.offer import GeoPoint
 
 _EARTH_RADIUS_KM = 6371.0
 
@@ -20,16 +26,6 @@ def haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
     )
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return _EARTH_RADIUS_KM * c
-"""Geometry helpers for PostGIS / GeoAlchemy2 ↔ API coordinates."""
-
-from __future__ import annotations
-
-from typing import Any
-
-from geoalchemy2.shape import from_shape, to_shape
-from shapely.geometry import Point
-
-from app.schemas.offer import GeoPoint
 
 
 def point_from_lon_lat(lon: float, lat: float) -> Any:
