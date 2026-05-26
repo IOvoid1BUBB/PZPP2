@@ -24,7 +24,7 @@ SENIOR_RATES = StopCostRates(
 def test_default_30min_total_in_acceptance_range() -> None:
     breakdown = calculate_stop_cost(
         30,
-        "solo",
+        "man_solo",
         rates=STANDARD_RATES,
         fuel_price_eur_per_liter=FUEL_PRICE_EUR_PER_LITER,
     )
@@ -36,13 +36,13 @@ def test_default_30min_total_in_acceptance_range() -> None:
 def test_driver_profile_hourly_rate_affects_total() -> None:
     base = calculate_stop_cost(
         30,
-        "bus_10",
+        "master_l4",
         rates=STANDARD_RATES,
         fuel_price_eur_per_liter=FUEL_PRICE_EUR_PER_LITER,
     )
     higher = calculate_stop_cost(
         30,
-        "bus_10",
+        "master_l4",
         rates=SENIOR_RATES,
         fuel_price_eur_per_liter=FUEL_PRICE_EUR_PER_LITER,
     )
@@ -54,7 +54,7 @@ def test_driver_profile_hourly_rate_affects_total() -> None:
 def test_15min_total_always_positive() -> None:
     breakdown = calculate_stop_cost(
         15,
-        "solo",
+        "man_solo",
         rates=STANDARD_RATES,
         fuel_price_eur_per_liter=FUEL_PRICE_EUR_PER_LITER,
     )
@@ -77,7 +77,7 @@ def test_rates_from_driver_profile() -> None:
 def test_breakdown_components_sum() -> None:
     breakdown = calculate_stop_cost(
         30,
-        "solo",
+        "man_solo",
         rates=STANDARD_RATES,
         fuel_price_eur_per_liter=FUEL_PRICE_EUR_PER_LITER,
     )
