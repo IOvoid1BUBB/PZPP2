@@ -1,53 +1,494 @@
-/**
- * @file loadStore.ts
- * @task Task 2.2 — useLoadStore (Zustand)
- *
- * TODO: Zaimplementuj store używając Zustand `create()`.
- *
- * Wymagane API:
- *   slots         : Record<string, PalletData | null>
- *   clearAllSlots : () => void
- *
- * Przykładowa implementacja Zustand:
- *
- *   import { create } from "zustand";
- *   export const useLoadStore = create<LoadStore>((set) => ({
- *     slots: {},
- *     clearAllSlots: () => set({ slots: {} }),
- *   }));
- *
- * Uwaga: SlotEditor nadal używa hooks/usePlannerLayout.ts + /api/v1/planner/*.
- * Migracja SlotEditor → useLoadStore jest osobnym zadaniem (nie rób tego tutaj).
- */
+"use client";
 
-export type {
-  ContextMenuItem,
-  LoadLayoutResponse,
-  PalletData,
-  SlotConflict,
-  VehicleConfig,
-} from "@/lib/types/load";
+import { useMemo } from "react";
+import { create } from "zustand";
+import {
+  createJSONStorage,
+  persist,
+  type StateStorage,
+} from "zustand/middleware";
+import { useShallow } from "zustand/shallow";
 
-import type { PalletData } from "@/lib/types/load";
+import type { PalletData, SlotConflict, VehicleConfig } from "@/lib/types/load";
 
-// ─── Interface ──────────────────────────────────────────────────────────────
+export type { PalletData, SlotConflict, VehicleConfig } from "@/lib/types/load";
 
 export interface LoadStore {
-  /** Mapa slotów ładunku: klucz = slotId, wartość = PalletData lub null (pusty slot) */
   slots: Record<string, PalletData | null>;
-  /** Wyczyść wszystkie sloty (wywołaj przy zmianie pojazdu w VehicleSelector) */
+  vehicle: VehicleConfig | null;
+  sessionId: string | null;
+  assignPallet: (slotId: string, pallet: PalletData) => void;
+  removePallet: (slotId: string) => void;
+  swapSlots: (slotA: string, slotB: string) => void;
   clearAllSlots: () => void;
+  autoArrange: () => void;
+  setVehicle: (vehicle: VehicleConfig) => void;
+  setSessionId: (sessionId: string | null) => void;
+  setSlots: (slots: Record<string, PalletData | null>) => void;
+  setLayout: (layout: PersistedLoadStore) => void;
 }
 
-// ─── Stub hook ──────────────────────────────────────────────────────────────
-// Tymczasowy stub — nie modyfikuj sygnatury. Zastąp implementacją Zustand.
+type PersistedLoadStore = Pick<LoadStore, "slots" | "vehicle" | "sessionId">;
 
-/** @todo Zastąp implementacją Zustand create<LoadStore>() */
-export function useLoadStore(): LoadStore {
+interface SlotMeta {
+  id: string;
+  row: number;
+  col: number;
+}
+
+interface ClientSummary {
+  offerId: string;
+  name: string;
+  color: string;
+  ldm: number;
+  weight: number;
+}
+
+const SLOT_ID_PATTERN = /^r(?<row>\d+)_c(?<col>\d+)$/;
+const CLIENT_SUMMARY_PALETTE = [
+  "#2563eb",
+  "#7c3aed",
+  "#0891b2",
+  "#16a34a",
+  "#ca8a04",
+  "#ea580c",
+  "#dc2626",
+  "#db2777",
+  "#4f46e5",
+  "#0f766e",
+  "#65a30d",
+  "#9333ea",
+] as const;
+
+const noopStorage: StateStorage = {
+  getItem: () => null,
+  setItem: () => undefined,
+  removeItem: () => undefined,
+};
+
+function toDate(value: Date | string | null | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function normalizePallet(pallet: PalletData): PalletData {
+  if (!pallet.timeWindow) {
+    return { ...pallet, timeWindow: null };
+  }
+
+  const open = toDate(pallet.timeWindow.open);
+  const close = toDate(pallet.timeWindow.close);
+
   return {
-    slots: {},
-    // eslint-disable-next-line @typescript-eslint/no-empty-function
-    clearAllSlots: () => {},
+    ...pallet,
+    timeWindow: open && close ? { open, close } : null,
   };
 }
+
+function normalizeSlots(
+  slots: Record<string, PalletData | null>,
+): Record<string, PalletData | null> {
+  return Object.fromEntries(
+    Object.entries(slots).map(([slotId, pallet]) => [
+      slotId,
+      pallet ? normalizePallet(pallet) : null,
+    ]),
+  );
+}
+
+function normalizeVehicle(vehicle: VehicleConfig): VehicleConfig {
+  const deliveryTime = toDate(vehicle.deliveryTime ?? null);
+
+  return {
+    ...vehicle,
+    deliveryTime: deliveryTime ?? vehicle.deliveryTime ?? null,
+  };
+}
+
+function isPallet(value: PalletData | null | undefined): value is PalletData {
+  return value !== null && value !== undefined;
+}
+
+function getVehicleSlotIds(
+  vehicle: VehicleConfig | null,
+  slots: Record<string, PalletData | null>,
+): string[] {
+  const vehicleSlotIds = vehicle ? Object.keys(vehicle.payloadSlots) : [];
+  return vehicleSlotIds.length > 0 ? vehicleSlotIds : Object.keys(slots);
+}
+
+function parseSlotMeta(slotId: string): SlotMeta | null {
+  const match = SLOT_ID_PATTERN.exec(slotId);
+  if (!match?.groups) {
+    return null;
+  }
+
+  return {
+    id: slotId,
+    row: Number.parseInt(match.groups.row, 10),
+    col: Number.parseInt(match.groups.col, 10),
+  };
+}
+
+function getOrderedSlots(
+  vehicle: VehicleConfig | null,
+  slots: Record<string, PalletData | null>,
+): SlotMeta[] {
+  const slotIds = getVehicleSlotIds(vehicle, slots);
+
+  return slotIds
+    .map((slotId) => {
+      const config = vehicle?.payloadSlots[slotId];
+      if (config) {
+        return {
+          id: slotId,
+          row: config.row,
+          col: config.col,
+        };
+      }
+
+      return parseSlotMeta(slotId);
+    })
+    .filter((slot): slot is SlotMeta => slot !== null);
+}
+
+function getMaxRows(
+  vehicle: VehicleConfig | null,
+  orderedSlots: SlotMeta[],
+): number {
+  if (typeof vehicle?.maxRows === "number" && vehicle.maxRows > 0) {
+    return vehicle.maxRows;
+  }
+
+  const maxRow = orderedSlots.reduce(
+    (currentMax, slot) => Math.max(currentMax, slot.row),
+    -1,
+  );
+
+  return maxRow + 1;
+}
+
+function sumUsedLdm(slots: Record<string, PalletData | null>): number {
+  return Object.values(slots).reduce(
+    (sum, pallet) => sum + (pallet?.ldm ?? 0),
+    0,
+  );
+}
+
+function sumUsedWeight(slots: Record<string, PalletData | null>): number {
+  return Object.values(slots).reduce(
+    (sum, pallet) => sum + (pallet?.weightKg ?? 0),
+    0,
+  );
+}
+
+function selectUniqueColor(preferred: string, usedColors: Set<string>): string {
+  if (preferred && !usedColors.has(preferred)) {
+    usedColors.add(preferred);
+    return preferred;
+  }
+
+  const fallback = CLIENT_SUMMARY_PALETTE.find((color) => !usedColors.has(color));
+  if (fallback) {
+    usedColors.add(fallback);
+    return fallback;
+  }
+
+  usedColors.add(preferred);
+  return preferred;
+}
+
+function buildConflicts(
+  slots: Record<string, PalletData | null>,
+  vehicle: VehicleConfig | null,
+): SlotConflict[] {
+  const conflicts: SlotConflict[] = [];
+  const orderedSlots = getOrderedSlots(vehicle, slots);
+  const columns = new Map<number, SlotMeta[]>();
+
+  for (const slot of orderedSlots) {
+    const existing = columns.get(slot.col);
+    if (existing) {
+      existing.push(slot);
+      continue;
+    }
+
+    columns.set(slot.col, [slot]);
+  }
+
+  for (const columnSlots of columns.values()) {
+    const occupied = columnSlots
+      .filter((slot) => isPallet(slots[slot.id]))
+      .sort((a, b) => a.row - b.row);
+
+    for (let index = 0; index < occupied.length; index += 1) {
+      const currentSlot = occupied[index];
+      const currentPallet = slots[currentSlot.id];
+      if (!currentPallet || currentPallet.stackable) {
+        continue;
+      }
+
+      const stackedAbove = occupied.slice(index + 1).map((slot) => slot.id);
+      if (stackedAbove.length === 0) {
+        continue;
+      }
+
+      conflicts.push({
+        type: "stacking_violation",
+        affectedSlotIds: [currentSlot.id, ...stackedAbove],
+        message: `Pallet in ${currentSlot.id} cannot have cargo stacked above it.`,
+      });
+    }
+  }
+
+  const totalWeight = sumUsedWeight(slots);
+  if (vehicle && totalWeight > vehicle.maxWeightKg) {
+    const occupiedSlotIds = Object.entries(slots)
+      .filter(([, pallet]) => isPallet(pallet))
+      .map(([slotId]) => slotId);
+
+    conflicts.push({
+      type: "weight_overload",
+      affectedSlotIds: occupiedSlotIds,
+      message: `Total payload weight ${totalWeight} kg exceeds vehicle limit ${vehicle.maxWeightKg} kg.`,
+    });
+  }
+
+  const deliveryTime = toDate(vehicle?.deliveryTime ?? null);
+  if (deliveryTime) {
+    for (const [slotId, pallet] of Object.entries(slots)) {
+      if (!pallet?.timeWindow) {
+        continue;
+      }
+
+      const open = toDate(pallet.timeWindow.open);
+      const close = toDate(pallet.timeWindow.close);
+      if (!open || !close) {
+        continue;
+      }
+
+      if (deliveryTime < open || deliveryTime > close) {
+        conflicts.push({
+          type: "time_window_breach",
+          affectedSlotIds: [slotId],
+          message: `Delivery time is outside the allowed window for ${slotId}.`,
+        });
+      }
+    }
+  }
+
+  return conflicts;
+}
+
+function createClearedSlots(
+  vehicle: VehicleConfig | null,
+  slots: Record<string, PalletData | null>,
+): Record<string, PalletData | null> {
+  return Object.fromEntries(
+    getVehicleSlotIds(vehicle, slots).map((slotId) => [slotId, null]),
+  );
+}
+
+const loadStoreStorage = createJSONStorage<PersistedLoadStore>(
+  () => (typeof window === "undefined" ? noopStorage : sessionStorage),
+  {
+    replacer: (_key, value) =>
+      value instanceof Date ? value.toISOString() : value,
+    reviver: (key, value) => {
+      if (
+        typeof value === "string" &&
+        (key === "open" || key === "close" || key === "deliveryTime")
+      ) {
+        const parsed = toDate(value);
+        return parsed ?? value;
+      }
+
+      return value;
+    },
+  },
+);
+
+export const useLoadStore = create<LoadStore>()(
+  persist(
+    (set) => ({
+      slots: {},
+      vehicle: null,
+      sessionId: null,
+      assignPallet: (slotId, pallet) =>
+        set((state) => ({
+          slots: {
+            ...state.slots,
+            [slotId]: normalizePallet(pallet),
+          },
+        })),
+      removePallet: (slotId) =>
+        set((state) => ({
+          slots: {
+            ...state.slots,
+            [slotId]: null,
+          },
+        })),
+      swapSlots: (slotA, slotB) =>
+        set((state) => {
+          const palletA = state.slots[slotA] ?? null;
+          const palletB = state.slots[slotB] ?? null;
+
+          return {
+            slots: {
+              ...state.slots,
+              [slotA]: palletB,
+              [slotB]: palletA,
+            },
+          };
+        }),
+      clearAllSlots: () =>
+        set((state) => ({
+          slots: createClearedSlots(state.vehicle, state.slots),
+        })),
+      autoArrange: () =>
+        set((state) => {
+          const orderedSlots = getOrderedSlots(state.vehicle, state.slots);
+          if (orderedSlots.length === 0) {
+            return { slots: state.slots };
+          }
+
+          const maxRows = getMaxRows(state.vehicle, orderedSlots);
+          const heavyRowStart = Math.floor(maxRows / 2);
+          const lowerRows = orderedSlots.filter((slot) => slot.row >= heavyRowStart);
+          const upperRows = orderedSlots.filter((slot) => slot.row < heavyRowStart);
+          const sortedPallets = Object.values(state.slots)
+            .filter(isPallet)
+            .map(normalizePallet)
+            .sort((a, b) => {
+              if (!a.stackable && b.stackable) return -1;
+              if (a.stackable && !b.stackable) return 1;
+              if (a.weightKg > 500 && b.weightKg <= 500) return -1;
+              if (a.weightKg <= 500 && b.weightKg > 500) return 1;
+              return b.ldm - a.ldm;
+            });
+
+          const nextSlots = Object.fromEntries(
+            orderedSlots.map((slot) => [slot.id, null]),
+          ) as Record<string, PalletData | null>;
+
+          let lowerIndex = 0;
+          let upperIndex = 0;
+
+          const takeSlot = (preferLowerRows: boolean): SlotMeta | undefined => {
+            if (preferLowerRows) {
+              return lowerRows[lowerIndex++] ?? upperRows[upperIndex++];
+            }
+
+            return upperRows[upperIndex++] ?? lowerRows[lowerIndex++];
+          };
+
+          sortedPallets.forEach((pallet) => {
+            const slot = takeSlot(pallet.weightKg > 500);
+            if (slot) {
+              nextSlots[slot.id] = pallet;
+            }
+          });
+
+          return { slots: nextSlots };
+        }),
+      setVehicle: (vehicle) =>
+        set((state) => {
+          const nextVehicle = normalizeVehicle(vehicle);
+          const slotIds = getVehicleSlotIds(nextVehicle, state.slots);
+
+          return {
+            vehicle: nextVehicle,
+            slots: Object.fromEntries(
+              slotIds.map((slotId) => [slotId, state.slots[slotId] ?? null]),
+            ) as Record<string, PalletData | null>,
+          };
+        }),
+      setSessionId: (sessionId) => set({ sessionId }),
+      setSlots: (slots) =>
+        set(() => ({
+          slots: normalizeSlots(slots),
+        })),
+      setLayout: (layout) =>
+        set(() => ({
+          slots: normalizeSlots(layout.slots),
+          vehicle: layout.vehicle ? normalizeVehicle(layout.vehicle) : null,
+          sessionId: layout.sessionId,
+        })),
+    }),
+    {
+      name: "load-store",
+      storage: loadStoreStorage,
+      partialize: (state) => ({
+        slots: state.slots,
+        vehicle: state.vehicle,
+        sessionId: state.sessionId,
+      }),
+    },
+  ),
+);
+
+export const useUsedLdm = (): number => {
+  const { slots } = useLoadStore(useShallow((state) => ({ slots: state.slots })));
+  return useMemo(() => sumUsedLdm(slots), [slots]);
+};
+
+export const useUsedWeight = (): number => {
+  const { slots } = useLoadStore(useShallow((state) => ({ slots: state.slots })));
+  return useMemo(() => sumUsedWeight(slots), [slots]);
+};
+
+export const useClientSummary = (): ClientSummary[] => {
+  const { slots } = useLoadStore(useShallow((state) => ({ slots: state.slots })));
+
+  return useMemo(() => {
+    const clients = new Map<string, ClientSummary>();
+    const usedColors = new Set<string>();
+
+    for (const pallet of Object.values(slots)) {
+      if (!pallet) {
+        continue;
+      }
+
+      const existing = clients.get(pallet.clientId);
+      if (existing) {
+        existing.ldm += pallet.ldm;
+        existing.weight += pallet.weightKg;
+        continue;
+      }
+
+      if (clients.size >= 12) {
+        continue;
+      }
+
+      clients.set(pallet.clientId, {
+        offerId: pallet.offerId,
+        name: pallet.clientName,
+        color: selectUniqueColor(pallet.clientColor, usedColors),
+        ldm: pallet.ldm,
+        weight: pallet.weightKg,
+      });
+    }
+
+    return Array.from(clients.values());
+  }, [slots]);
+};
+
+export const useConflicts = (): SlotConflict[] => {
+  const { slots, vehicle } = useLoadStore(
+    useShallow((state) => ({
+      slots: state.slots,
+      vehicle: state.vehicle,
+    })),
+  );
+
+  return useMemo(() => buildConflicts(slots, vehicle), [slots, vehicle]);
+};
 

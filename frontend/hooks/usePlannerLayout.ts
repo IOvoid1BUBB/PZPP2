@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useShallow } from "zustand/shallow";
 
 import {
   fetchDemoLayout,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/api/plannerClient";
 import { getConflictSlotIds } from "@/lib/load/capacity";
 import type { PalletData } from "@/lib/types/load";
+import { useConflicts, useLoadStore } from "@/lib/stores/loadStore";
 
 interface UsePlannerLayoutResult {
   loading: boolean;
@@ -27,67 +29,132 @@ interface UsePlannerLayoutResult {
 }
 
 export function usePlannerLayout(): UsePlannerLayoutResult {
-  const [loading, setLoading] = useState(true);
+  const initialState = useLoadStore.getState();
+  const [loading, setLoading] = useState(
+    initialState.vehicle === null &&
+      initialState.sessionId === null &&
+      Object.keys(initialState.slots).length === 0,
+  );
   const [error, setError] = useState<string | null>(null);
-  const [layout, setLayout] = useState<PlannerLayoutState | null>(null);
+  const { vehicle, slots, sessionId } = useLoadStore(
+    useShallow((state) => ({
+      vehicle: state.vehicle,
+      slots: state.slots,
+      sessionId: state.sessionId,
+    })),
+  );
+  const conflicts = useConflicts();
+
+  const hasLayout =
+    vehicle !== null || sessionId !== null || Object.keys(slots).length > 0;
+
+  const applyLayout = useCallback((next: PlannerLayoutState) => {
+    useLoadStore.getState().setLayout({
+      sessionId: next.sessionId,
+      vehicle: next.vehicle,
+      slots: next.slots,
+    });
+  }, []);
+
+  const hasStoreLayout = useCallback(() => {
+    const state = useLoadStore.getState();
+    return (
+      state.vehicle !== null ||
+      state.sessionId !== null ||
+      Object.keys(state.slots).length > 0
+    );
+  }, []);
 
   const reload = useCallback(async () => {
+    const hadLayoutBeforeFetch = hasStoreLayout();
     setLoading(true);
     setError(null);
     try {
       const next = await fetchDemoLayout();
-      setLayout(next);
+      if (!hadLayoutBeforeFetch && hasStoreLayout()) {
+        return;
+      }
+
+      applyLayout(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Nie udało się wczytać layoutu.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyLayout, hasStoreLayout]);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    if (hasLayout) {
+      setLoading(false);
+      return;
+    }
 
-  const applyLayout = useCallback((next: PlannerLayoutState) => {
-    setLayout(next);
-  }, []);
+    void reload();
+  }, [hasLayout, reload]);
 
   const persistSlots = useCallback(async (slots: Record<string, PalletData | null>) => {
-    const next = await saveDemoLayout(slots);
-    applyLayout(next);
-    return true;
+    setError(null);
+    try {
+      const next = await saveDemoLayout(slots);
+      applyLayout(next);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Nie udało się zapisać layoutu.");
+      return false;
+    }
   }, [applyLayout]);
 
   const movePallet = useCallback(async (fromSlot: string, toSlot: string) => {
-    const result = await moveDemoPallet(fromSlot, toSlot);
-    applyLayout(result.layout);
-    return { ok: result.ok, message: result.message };
+    setError(null);
+    try {
+      const result = await moveDemoPallet(fromSlot, toSlot);
+      applyLayout(result.layout);
+      return { ok: result.ok, message: result.message };
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Nie udało się przenieść ładunku.";
+      setError(message);
+      return { ok: false, message };
+    }
   }, [applyLayout]);
 
   const removePallet = useCallback(async (slotId: string) => {
-    const next = await removeDemoSlot(slotId);
-    applyLayout(next);
+    setError(null);
+    try {
+      const next = await removeDemoSlot(slotId);
+      applyLayout(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Nie udało się usunąć ładunku.");
+    }
   }, [applyLayout]);
 
   const moveToFirstFree = useCallback(async (slotId: string) => {
-    const result = await moveDemoToFirstFree(slotId);
-    applyLayout(result.layout);
-    return { ok: result.ok, message: result.message };
+    setError(null);
+    try {
+      const result = await moveDemoToFirstFree(slotId);
+      applyLayout(result.layout);
+      return { ok: result.ok, message: result.message };
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Nie udało się przenieść do wolnego slotu.";
+      setError(message);
+      return { ok: false, message };
+    }
   }, [applyLayout]);
 
   const conflictSlotIds = useMemo(
-    () => getConflictSlotIds(layout?.conflicts ?? []),
-    [layout?.conflicts],
+    () => getConflictSlotIds(conflicts),
+    [conflicts],
   );
 
   return {
     loading,
     error,
-    vehicle: layout?.vehicle ?? null,
-    slots: layout?.slots ?? {},
-    conflicts: layout?.conflicts ?? [],
+    vehicle,
+    slots,
+    conflicts,
     conflictSlotIds,
-    sessionId: layout?.sessionId ?? null,
+    sessionId,
     reload,
     persistSlots,
     movePallet,
