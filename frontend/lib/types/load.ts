@@ -28,12 +28,16 @@ export interface PayloadSlotConfig {
   ldmPerSlot: number;
   xOffsetCm: number;
   yOffsetCm: number;
+  /** Footprint width across the bed (cm). Default 80 — euro pallet longitudinal. */
+  widthCm?: number;
+  /** Footprint depth along the bed (cm). Default 120 — euro pallet longitudinal. */
+  depthCm?: number;
 }
 
 export interface VehicleConfig {
   id: string;
   name: string;
-  type: "bus_8" | "bus_9" | "bus_10" | "solo";
+  type: "master_l2" | "master_l3" | "master_l4" | "man_solo";
   maxLdm: number;
   maxWeightKg: number;
   trailerLengthCm: number;

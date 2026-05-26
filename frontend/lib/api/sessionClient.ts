@@ -38,7 +38,7 @@ const DEFAULT_BBOX: [number, number, number, number] = [18.0, 49.0, 24.0, 55.0];
 interface VehicleApiRecord {
   id: string;
   name: string;
-  type: "bus_8" | "bus_9" | "bus_10" | "solo";
+  type: "master_l2" | "master_l3" | "master_l4" | "man_solo";
   max_ldm: number;
   max_weight_kg: number;
   trailer_length_cm: number;
