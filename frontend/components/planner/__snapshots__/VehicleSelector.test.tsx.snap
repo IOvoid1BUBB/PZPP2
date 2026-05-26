@@ -1,0 +1,844 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapshot 1`] = `
+<div>
+  <section
+    aria-label="Wybór pojazdu"
+    class="vehicle-selector"
+  >
+    <h2
+      class="vehicle-selector__heading"
+    >
+      Wybierz pojazd
+    </h2>
+    <div
+      aria-label="Wybór pojazdu"
+      class="vehicle-selector__grid"
+      role="radiogroup"
+    >
+      <button
+        aria-checked="true"
+        aria-disabled="false"
+        aria-label="Bus 8-pak, max 6 przystanków"
+        class="vehicle-selector__card vehicle-selector__card--selected"
+        id="vehicle-card-bus_8"
+        role="radio"
+        tabindex="0"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Bus 8-pak
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 3.4166666666666665; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              13.6
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              6
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              6
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              18.5
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Bus 9-pak, max 6 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-bus_9"
+        role="radio"
+        tabindex="-1"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Bus 9-pak
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 3.8333333333333335; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              13.6
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              7
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              6
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              19
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Bus 10-pak, max 6 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-bus_10"
+        role="radio"
+        tabindex="-1"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Bus 10-pak
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 4.25; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              13.6
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              8
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              6
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              19.5
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Solówka, max 10 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-solo"
+        role="radio"
+        tabindex="-1"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Solówka
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 5.666666666666667; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              33
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              24
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              10
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              28
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+    </div>
+  </section>
+</div>
+`;
+
+exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot 1`] = `
+<div>
+  <section
+    aria-label="Wybór pojazdu"
+    class="vehicle-selector"
+  >
+    <h2
+      class="vehicle-selector__heading"
+    >
+      Wybierz pojazd
+    </h2>
+    <div
+      aria-label="Wybór pojazdu"
+      class="vehicle-selector__grid"
+      role="radiogroup"
+    >
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Bus 8-pak, max 6 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-bus_8"
+        role="radio"
+        tabindex="0"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Bus 8-pak
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 3.4166666666666665; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              13.6
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              6
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              6
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              18.5
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Bus 9-pak, max 6 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-bus_9"
+        role="radio"
+        tabindex="-1"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Bus 9-pak
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 3.8333333333333335; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              13.6
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              7
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              6
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              19
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Bus 10-pak, max 6 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-bus_10"
+        role="radio"
+        tabindex="-1"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Bus 10-pak
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 4.25; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              13.6
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              8
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              6
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              19.5
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+      <button
+        aria-checked="true"
+        aria-disabled="false"
+        aria-label="Solówka, max 10 przystanków"
+        class="vehicle-selector__card vehicle-selector__card--selected"
+        id="vehicle-card-solo"
+        role="radio"
+        tabindex="-1"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Solówka
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 5.666666666666667; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              33
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              24
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              10
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              28
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+    </div>
+  </section>
+</div>
+`;
+
+exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1`] = `
+<div>
+  <section
+    aria-label="Wybór pojazdu"
+    class="vehicle-selector"
+  >
+    <h2
+      class="vehicle-selector__heading"
+    >
+      Wybierz pojazd
+    </h2>
+    <div
+      aria-label="Wybór pojazdu"
+      class="vehicle-selector__grid"
+      role="radiogroup"
+    >
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Bus 8-pak, max 6 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-bus_8"
+        role="radio"
+        tabindex="0"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Bus 8-pak
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 3.4166666666666665; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              13.6
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              6
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              6
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              18.5
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Bus 9-pak, max 6 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-bus_9"
+        role="radio"
+        tabindex="-1"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Bus 9-pak
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 3.8333333333333335; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              13.6
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              7
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              6
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              19
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Bus 10-pak, max 6 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-bus_10"
+        role="radio"
+        tabindex="-1"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Bus 10-pak
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 4.25; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              13.6
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              8
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              6
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              19.5
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Solówka, max 10 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-solo"
+        role="radio"
+        tabindex="-1"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Solówka
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 5.666666666666667; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              33
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              24
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              10
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              28
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+    </div>
+  </section>
+</div>
+`;
