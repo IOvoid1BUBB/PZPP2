@@ -50,6 +50,8 @@ class PayloadSlotConfig(BaseModel):
     ldm_per_slot: float = Field(..., alias="ldmPerSlot")
     x_offset_cm: float = Field(..., alias="xOffsetCm")
     y_offset_cm: float = Field(..., alias="yOffsetCm")
+    width_cm: float = Field(default=80.0, alias="widthCm")
+    depth_cm: float = Field(default=120.0, alias="depthCm")
 
 
 class PlannerVehicle(BaseModel):
@@ -59,7 +61,7 @@ class PlannerVehicle(BaseModel):
 
     id: str
     name: str
-    type: Literal["bus_8", "bus_9", "bus_10", "solo"]
+    type: Literal["master_l2", "master_l3", "master_l4", "man_solo"]
     max_ldm: float = Field(..., alias="maxLdm")
     max_weight_kg: int = Field(..., alias="maxWeightKg")
     trailer_length_cm: int = Field(..., alias="trailerLengthCm")
