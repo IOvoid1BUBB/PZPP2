@@ -5,8 +5,8 @@ export interface PalletDims {
 }
 
 export interface PalletTimeWindow {
-  open: string;
-  close: string;
+  open: string | Date;
+  close: string | Date;
 }
 
 export interface PalletData {
@@ -39,6 +39,8 @@ export interface VehicleConfig {
   trailerLengthCm: number;
   trailerWidthCm: number;
   payloadSlots: Record<string, PayloadSlotConfig>;
+  deliveryTime?: string | Date | null;
+  maxRows?: number;
   /** Maksymalna liczba przystanków — z API (GET /api/v1/vehicles) */
   maxStops?: number;
   /** Zużycie paliwa bazowe l/100 km — z API (GET /api/v1/vehicles) */
