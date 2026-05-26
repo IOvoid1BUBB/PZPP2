@@ -39,6 +39,10 @@ export interface VehicleConfig {
   trailerLengthCm: number;
   trailerWidthCm: number;
   payloadSlots: Record<string, PayloadSlotConfig>;
+  /** Maksymalna liczba przystanków — z API (GET /api/v1/vehicles) */
+  maxStops?: number;
+  /** Zużycie paliwa bazowe l/100 km — z API (GET /api/v1/vehicles) */
+  fuelPer100kmBase?: number;
 }
 
 export type SlotConflictType =
