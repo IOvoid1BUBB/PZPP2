@@ -20,12 +20,12 @@ def _vehicle() -> PlannerVehicle:
     }
     return PlannerVehicle(
         id="demo",
-        name="Bus 8m",
-        type="bus_8",
-        maxLdm=13.6,
-        maxWeightKg=6000,
-        trailerLengthCm=820,
-        trailerWidthCm=240,
+        name="Renault Master L2",
+        type="master_l2",
+        maxLdm=6.4,
+        maxWeightKg=3500,
+        trailerLengthCm=420,
+        trailerWidthCm=220,
         payloadSlots=payload_slots,
     )
 
@@ -68,7 +68,14 @@ def test_can_assign_respects_capacity() -> None:
 
 
 def test_build_demo_slots_populates_known_ids() -> None:
-    vehicle = _vehicle()
-    slots = build_demo_slots(vehicle.payload_slots)
-    assert slots["r0_c0"] is not None
-    assert slots["r0_c1"] is not None
+    payload_slots = {
+        "s0": PayloadSlotConfig(
+            row=0, col=0, ldmPerSlot=0.8, xOffsetCm=0, yOffsetCm=0, widthCm=80, depthCm=120,
+        ),
+        "s3": PayloadSlotConfig(
+            row=0, col=1, ldmPerSlot=0.8, xOffsetCm=80, yOffsetCm=0, widthCm=120, depthCm=80,
+        ),
+    }
+    slots = build_demo_slots(payload_slots)
+    assert slots["s0"] is not None
+    assert slots["s3"] is not None

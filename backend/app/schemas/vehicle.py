@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-VehicleType = Literal["bus_8", "bus_9", "bus_10", "solo"]
+VehicleType = Literal["master_l2", "master_l3", "master_l4", "man_solo"]
 
 
 class VehicleRead(BaseModel):

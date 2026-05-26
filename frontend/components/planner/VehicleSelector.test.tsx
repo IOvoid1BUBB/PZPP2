@@ -27,49 +27,49 @@ import type { VehicleConfig } from "@/lib/types/load";
 
 const MOCK_VEHICLES: VehicleConfig[] = [
   {
-    id: "uuid-bus-8",
-    name: "Bus 8m",
-    type: "bus_8",
-    maxLdm: 13.6,
-    maxWeightKg: 6000,
-    trailerLengthCm: 820,
-    trailerWidthCm: 240,
+    id: "uuid-master-l2",
+    name: "Renault Master L2",
+    type: "master_l2",
+    maxLdm: 6.4,
+    maxWeightKg: 3500,
+    trailerLengthCm: 420,
+    trailerWidthCm: 220,
     maxStops: 6,
     fuelPer100kmBase: 18.5,
     payloadSlots: {},
   },
   {
-    id: "uuid-bus-9",
-    name: "Bus 9m",
-    type: "bus_9",
-    maxLdm: 13.6,
-    maxWeightKg: 7000,
-    trailerLengthCm: 920,
-    trailerWidthCm: 240,
+    id: "uuid-master-l3",
+    name: "Renault Master L3",
+    type: "master_l3",
+    maxLdm: 7.2,
+    maxWeightKg: 3600,
+    trailerLengthCm: 440,
+    trailerWidthCm: 220,
+    maxStops: 6,
+    fuelPer100kmBase: 18.5,
+    payloadSlots: {},
+  },
+  {
+    id: "uuid-master-l4",
+    name: "Renault Master L4",
+    type: "master_l4",
+    maxLdm: 8.0,
+    maxWeightKg: 3800,
+    trailerLengthCm: 484,
+    trailerWidthCm: 220,
     maxStops: 6,
     fuelPer100kmBase: 19.0,
     payloadSlots: {},
   },
   {
-    id: "uuid-bus-10",
-    name: "Bus 10m",
-    type: "bus_10",
-    maxLdm: 13.6,
-    maxWeightKg: 8000,
-    trailerLengthCm: 1020,
-    trailerWidthCm: 240,
-    maxStops: 6,
-    fuelPer100kmBase: 19.5,
-    payloadSlots: {},
-  },
-  {
-    id: "uuid-solo",
-    name: "Solówka",
-    type: "solo",
-    maxLdm: 33.0,
+    id: "uuid-man-solo",
+    name: "MAN Solówka",
+    type: "man_solo",
+    maxLdm: 17.6,
     maxWeightKg: 24000,
-    trailerLengthCm: 1360,
-    trailerWidthCm: 240,
+    trailerLengthCm: 890,
+    trailerWidthCm: 245,
     maxStops: 10,
     fuelPer100kmBase: 28.0,
     payloadSlots: {},
@@ -177,10 +177,11 @@ async function renderAndWait() {
   let result: ReturnType<typeof render>;
   await act(async () => {
     result = render(<VehicleSelector />);
-    // Poczekaj na zakończenie useEffect (fetchVehicles)
   });
   await waitFor(() =>
-    expect(screen.queryByRole("radio", { name: /bus 8-pak/i })).not.toBeNull(),
+    expect(
+      screen.queryByRole("radio", { name: /renault master l2/i }),
+    ).not.toBeNull(),
   );
   return result!;
 }
@@ -193,14 +194,14 @@ describe("VehicleSelector — snapshots", () => {
     expect(container).toMatchSnapshot();
   });
 
-  it("karta bus_8 jest zaznaczona — snapshot", async () => {
-    mockSelectedVehicle = MOCK_VEHICLES[0]; // bus_8
+  it("karta master_l2 jest zaznaczona — snapshot", async () => {
+    mockSelectedVehicle = MOCK_VEHICLES[0];
     const { container } = await renderAndWait();
     expect(container).toMatchSnapshot();
   });
 
-  it("karta solo jest zaznaczona — snapshot", async () => {
-    mockSelectedVehicle = MOCK_VEHICLES[3]; // solo
+  it("karta man_solo jest zaznaczona — snapshot", async () => {
+    mockSelectedVehicle = MOCK_VEHICLES[3];
     const { container } = await renderAndWait();
     expect(container).toMatchSnapshot();
   });
@@ -209,10 +210,10 @@ describe("VehicleSelector — snapshots", () => {
 // ─── Interaction tests ────────────────────────────────────────────────────────
 
 describe("VehicleSelector — interakcje", () => {
-  it("kliknięcie bus_8 wywołuje selectVehicle z poprawnym vehicle", async () => {
+  it("kliknięcie master_l2 wywołuje selectVehicle z poprawnym vehicle", async () => {
     await renderAndWait();
 
-    const card = screen.getByRole("radio", { name: /bus 8-pak/i });
+    const card = screen.getByRole("radio", { name: /renault master l2/i });
     await act(async () => {
       fireEvent.click(card);
     });
@@ -220,7 +221,7 @@ describe("VehicleSelector — interakcje", () => {
     await waitFor(() => {
       expect(mockSelectVehicle).toHaveBeenCalledOnce();
       expect(mockSelectVehicle).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "bus_8", id: "uuid-bus-8" }),
+        expect.objectContaining({ type: "master_l2", id: "uuid-master-l2" }),
       );
     });
   });
@@ -228,7 +229,7 @@ describe("VehicleSelector — interakcje", () => {
   it("kliknięcie karty wywołuje clearAllSlots", async () => {
     await renderAndWait();
 
-    const card = screen.getByRole("radio", { name: /bus 8-pak/i });
+    const card = screen.getByRole("radio", { name: /renault master l2/i });
     await act(async () => {
       fireEvent.click(card);
     });
@@ -241,7 +242,7 @@ describe("VehicleSelector — interakcje", () => {
   it("kliknięcie karty wywołuje setSessionId z UUID z API", async () => {
     await renderAndWait();
 
-    const card = screen.getByRole("radio", { name: /bus 8-pak/i });
+    const card = screen.getByRole("radio", { name: /renault master l2/i });
     await act(async () => {
       fireEvent.click(card);
     });
@@ -254,7 +255,7 @@ describe("VehicleSelector — interakcje", () => {
   it("Enter na sfokusowanej karcie ma taki sam efekt co click", async () => {
     await renderAndWait();
 
-    const card = screen.getByRole("radio", { name: /bus 8-pak/i });
+    const card = screen.getByRole("radio", { name: /renault master l2/i });
     card.focus();
 
     await act(async () => {
@@ -263,7 +264,7 @@ describe("VehicleSelector — interakcje", () => {
 
     await waitFor(() => {
       expect(mockSelectVehicle).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "bus_8" }),
+        expect.objectContaining({ type: "master_l2" }),
       );
       expect(mockClearAllSlots).toHaveBeenCalledOnce();
     });
@@ -272,7 +273,7 @@ describe("VehicleSelector — interakcje", () => {
   it("Space na sfokusowanej karcie ma taki sam efekt co click", async () => {
     await renderAndWait();
 
-    const card = screen.getByRole("radio", { name: /bus 8-pak/i });
+    const card = screen.getByRole("radio", { name: /renault master l2/i });
     card.focus();
 
     await act(async () => {
@@ -284,19 +285,17 @@ describe("VehicleSelector — interakcje", () => {
     });
   });
 
-  it("bus_8 wyświetla 'max 6 przystanków' (bus_8/9/10 mają tę samą wartość)", async () => {
+  it("master_l2 wyświetla 'max 6 przystanków'", async () => {
     await renderAndWait();
-    // bus_8, bus_9 i bus_10 mają maxStops=6 — oczekujemy 3 elementów
     const items = screen.getAllByText("max 6 przystanków");
     expect(items.length).toBeGreaterThanOrEqual(1);
-    // Weryfikacja że bus_8 jest wśród nich
-    const bus8card = screen.getByRole("radio", { name: /bus 8-pak/i });
-    expect(bus8card).toHaveTextContent("max 6 przystanków");
+    const l2Card = screen.getByRole("radio", { name: /renault master l2/i });
+    expect(l2Card).toHaveTextContent("max 6 przystanków");
   });
 
-  it("solo wyświetla 'max 10 przystanków'", async () => {
+  it("man_solo wyświetla 'max 10 przystanków'", async () => {
     await renderAndWait();
-    const soloCard = screen.getByRole("radio", { name: /solówka/i });
+    const soloCard = screen.getByRole("radio", { name: /man solówka/i });
     expect(soloCard).toHaveTextContent("max 10 przystanków");
   });
 
@@ -307,13 +306,13 @@ describe("VehicleSelector — interakcje", () => {
   });
 
   it("aria-checked=false dla niewybrane, true dla wybranej", async () => {
-    mockSelectedVehicle = MOCK_VEHICLES[0]; // bus_8
+    mockSelectedVehicle = MOCK_VEHICLES[0];
     await renderAndWait();
 
-    const bus8card = screen.getByRole("radio", { name: /bus 8-pak/i });
-    const soloCard = screen.getByRole("radio", { name: /solówka/i });
+    const l2Card = screen.getByRole("radio", { name: /renault master l2/i });
+    const soloCard = screen.getByRole("radio", { name: /man solówka/i });
 
-    expect(bus8card).toHaveAttribute("aria-checked", "true");
+    expect(l2Card).toHaveAttribute("aria-checked", "true");
     expect(soloCard).toHaveAttribute("aria-checked", "false");
   });
 });
@@ -329,11 +328,11 @@ describe("VehicleSelector — obsługa błędów", () => {
     });
     await waitFor(() =>
       expect(
-        screen.queryByRole("radio", { name: /bus 8-pak/i }),
+        screen.queryByRole("radio", { name: /renault master l2/i }),
       ).not.toBeNull(),
     );
 
-    const card = screen.getByRole("radio", { name: /bus 8-pak/i });
+    const card = screen.getByRole("radio", { name: /renault master l2/i });
     await act(async () => {
       fireEvent.click(card);
     });

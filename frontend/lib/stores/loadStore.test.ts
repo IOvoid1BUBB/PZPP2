@@ -8,11 +8,11 @@ function makeVehicle(overrides?: Partial<VehicleConfig>): VehicleConfig {
   return {
     id: "vehicle-test",
     name: "Test trailer",
-    type: "solo",
+    type: "man_solo",
     maxLdm: 20,
     maxWeightKg: 5000,
-    trailerLengthCm: 1360,
-    trailerWidthCm: 240,
+    trailerLengthCm: 890,
+    trailerWidthCm: 245,
     maxRows: 4,
     payloadSlots: {
       r0_c0: { row: 0, col: 0, ldmPerSlot: 1, xOffsetCm: 0, yOffsetCm: 0 },

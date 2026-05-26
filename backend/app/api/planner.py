@@ -26,7 +26,7 @@ def _service(db: AsyncSession) -> PlannerLayoutService:
 @router.get(
     "/demo",
     response_model=LoadLayoutResponse,
-    summary="Demo load layout for SlotEditor (bus_8 + sample pallets)",
+    summary="Demo load layout for SlotEditor (master_l2 + sample pallets)",
 )
 async def get_demo_layout(db: AsyncSession = Depends(get_db)) -> LoadLayoutResponse:
     return await _service(db).get_demo_layout()

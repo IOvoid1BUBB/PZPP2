@@ -19,7 +19,7 @@ class Vehicle(Base):
     __tablename__ = "vehicles"
     __table_args__ = (
         CheckConstraint(
-            "type IN ('bus_8','bus_9','bus_10','solo')",
+            "type IN ('master_l2','master_l3','master_l4','man_solo')",
             name="ck_vehicles_type",
         ),
     )

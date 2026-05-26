@@ -129,7 +129,7 @@ def test_avg_consumption_matches_total_liters_over_distance() -> None:
 
 
 def test_deterministic_for_identical_inputs() -> None:
-    test_vehicle = vehicle("solo", fuel_per_100km_base=28.0, max_weight_kg=24000)
+    test_vehicle = vehicle("man_solo", fuel_per_100km_base=28.0, max_weight_kg=24000)
     legs = [
         leg(200.0, from_index=0, to_index=1),
         leg(150.0, from_index=1, to_index=2),
@@ -160,7 +160,7 @@ def test_deterministic_for_identical_inputs() -> None:
 
 
 def test_weight_at_leg_includes_tare_and_heaviest_leg_index() -> None:
-    test_vehicle = vehicle("bus_9")
+    test_vehicle = vehicle("master_l3")
     legs = [
         leg(10.0, from_index=0, to_index=1),
         leg(10.0, from_index=1, to_index=2),
@@ -178,7 +178,7 @@ def test_weight_at_leg_includes_tare_and_heaviest_leg_index() -> None:
         weight_fuel_factor=WEIGHT_FUEL_FACTOR,
     )
 
-    tare = TARE_WEIGHTS_KG["bus_9"]
+    tare = TARE_WEIGHTS_KG["master_l3"]
     assert result.leg_costs[0].weight_kg_at_leg == pytest.approx(tare)
     assert result.leg_costs[1].weight_kg_at_leg == pytest.approx(tare + 2000)
     assert result.heaviest_leg_index == 1

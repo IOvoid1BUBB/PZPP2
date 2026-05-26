@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, model_validator
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -32,18 +32,24 @@ from app.models.vehicle import Vehicle
 
 logger = logging.getLogger(__name__)
 
-VehicleType = Literal["bus_8", "bus_9", "bus_10", "solo"]
+VehicleType = Literal["master_l2", "master_l3", "master_l4", "man_solo"]
+
+FLEET_TYPES: tuple[VehicleType, ...] = (
+    "master_l2",
+    "master_l3",
+    "master_l4",
+    "man_solo",
+)
 
 LDM_PER_SLOT = 0.8
 PALLET_DEPTH_CM = 80
-BUS_ROW_PITCH_CM = 120
-BUS_COL_PITCH_CM = 80
-BUS_COLS = 4
-BUS_CAB_OFFSET_CM = 580
 SOLO_ROW_PITCH_CM = 80
 SOLO_COL_PITCH_CM = 120
 SOLO_COLS = 2
-SOLO_FULL_ROWS = 16
+
+# Euro pallet footprints (cm) — cargo bed origin at front-left of load area.
+P_W, P_D = 80.0, 120.0  # longitudinal (w × d)
+P_W_T, P_D_T = 120.0, 80.0  # transverse (w × d)
 
 
 class SlotConfig(BaseModel):
@@ -53,6 +59,8 @@ class SlotConfig(BaseModel):
     ldm_per_slot: float
     x_offset_cm: float
     y_offset_cm: float
+    width_cm: float = P_W
+    depth_cm: float = P_D
 
 
 class VehicleSlotMap(BaseModel):
@@ -85,95 +93,189 @@ class VehicleSeed:
         return self.slot_map.model_dump()
 
 
-def _bus_row_count(trailer_length_cm: int) -> int:
-    usable = trailer_length_cm - BUS_CAB_OFFSET_CM
-    return max(1, usable // BUS_ROW_PITCH_CM)
+def _slot(
+    slot_id: str,
+    *,
+    x: float,
+    y: float,
+    row: int,
+    col: int,
+    width_cm: float,
+    depth_cm: float,
+) -> SlotConfig:
+    return SlotConfig(
+        id=slot_id,
+        row=row,
+        col=col,
+        ldm_per_slot=LDM_PER_SLOT,
+        x_offset_cm=x,
+        y_offset_cm=y,
+        width_cm=width_cm,
+        depth_cm=depth_cm,
+    )
 
 
-def build_bus_slots(trailer_length_cm: int) -> VehicleSlotMap:
-    """Bus layout: 4 columns (80 cm pitch), rows from usable trailer length."""
-    rows = _bus_row_count(trailer_length_cm)
-    slots: list[SlotConfig] = []
-    for row in range(rows):
-        for col in range(BUS_COLS):
-            slots.append(
-                SlotConfig(
-                    id=f"r{row}_c{col}",
-                    row=row,
-                    col=col,
-                    ldm_per_slot=LDM_PER_SLOT,
-                    x_offset_cm=col * BUS_COL_PITCH_CM,
-                    y_offset_cm=row * BUS_ROW_PITCH_CM,
-                ),
-            )
-    total_ldm = round(len(slots) * LDM_PER_SLOT, 2)
-    return VehicleSlotMap(slots=slots, total_ldm=total_ldm)
+def _long(slot_id: str, x: float, y: float, row: int, col: int) -> SlotConfig:
+    return _slot(slot_id, x=x, y=y, row=row, col=col, width_cm=P_W, depth_cm=P_D)
+
+
+def _trans(slot_id: str, x: float, y: float, row: int, col: int) -> SlotConfig:
+    return _slot(slot_id, x=x, y=y, row=row, col=col, width_cm=P_W_T, depth_cm=P_D_T)
+
+
+def build_master_l2_slots() -> VehicleSlotMap:
+    """8 EUR pallets — diagram: 3× longitudinal left, 5× transverse right."""
+    slots = [
+        _long("s0", 0, 0, 0, 0),
+        _long("s1", 0, 120, 1, 0),
+        _long("s2", 0, 240, 2, 0),
+        _trans("s3", P_W, 0, 0, 1),
+        _trans("s4", P_W, 80, 1, 1),
+        _trans("s5", P_W, 160, 2, 1),
+        _trans("s6", P_W, 240, 3, 1),
+        _trans("s7", P_W, 320, 4, 1),
+    ]
+    return VehicleSlotMap(slots=slots, total_ldm=round(len(slots) * LDM_PER_SLOT, 2))
+
+
+def build_master_l3_slots() -> VehicleSlotMap:
+    """9 EUR pallets — interlocking L3 layout (440 cm bed)."""
+    slots = [
+        _long("s0", 0, 0, 0, 0),
+        _long("s1", 0, 120, 1, 0),
+        _trans("s2", 0, 240, 2, 0),
+        _long("s3", 0, 320, 3, 0),
+        _trans("s4", P_W, 0, 0, 1),
+        _trans("s5", P_W, 80, 1, 1),
+        _trans("s6", P_W, 160, 2, 1),
+        _long("s7", P_W, 240, 3, 1),
+        _trans("s8", P_W, 360, 4, 1),
+    ]
+    return VehicleSlotMap(slots=slots, total_ldm=round(len(slots) * LDM_PER_SLOT, 2))
+
+
+def build_master_l4_slots() -> VehicleSlotMap:
+    """10 EUR pallets — interlocking L4 layout (484 cm bed)."""
+    slots = [
+        _long("s0", 0, 0, 0, 0),
+        _long("s1", 0, 120, 1, 0),
+        _trans("s2", 0, 240, 2, 0),
+        _trans("s3", 0, 320, 3, 0),
+        _trans("s4", 0, 400, 4, 0),
+        _trans("s5", P_W, 0, 0, 1),
+        _trans("s6", P_W, 80, 1, 1),
+        _trans("s7", P_W, 160, 2, 1),
+        _long("s8", P_W, 240, 3, 1),
+        _long("s9", P_W, 360, 4, 1),
+    ]
+    return VehicleSlotMap(slots=slots, total_ldm=round(len(slots) * LDM_PER_SLOT, 2))
 
 
 def build_solo_slots(trailer_length_cm: int) -> VehicleSlotMap:
-    """Solo: 2 columns (120 cm), 16 full rows + 1 single slot (33 LDM slots total)."""
-    if trailer_length_cm < SOLO_FULL_ROWS * SOLO_ROW_PITCH_CM + PALLET_DEPTH_CM:
-        msg = f"trailer_length_cm {trailer_length_cm} too short for solo slot layout"
+    """MAN solówka: 2 columns (120 cm), rows every 80 cm; optional last single slot."""
+    full_rows = trailer_length_cm // SOLO_ROW_PITCH_CM
+    if full_rows < 1:
+        msg = f"trailer_length_cm {trailer_length_cm} too short for man_solo slot layout"
         raise ValueError(msg)
 
     slots: list[SlotConfig] = []
-    for row in range(SOLO_FULL_ROWS):
+    for row in range(full_rows):
         for col in range(SOLO_COLS):
             slots.append(
-                SlotConfig(
-                    id=f"r{row}_c{col}",
+                _slot(
+                    f"r{row}_c{col}",
+                    x=col * SOLO_COL_PITCH_CM,
+                    y=row * SOLO_ROW_PITCH_CM,
                     row=row,
                     col=col,
-                    ldm_per_slot=LDM_PER_SLOT,
-                    x_offset_cm=col * SOLO_COL_PITCH_CM,
-                    y_offset_cm=row * SOLO_ROW_PITCH_CM,
+                    width_cm=SOLO_COL_PITCH_CM,
+                    depth_cm=SOLO_ROW_PITCH_CM,
                 ),
             )
 
-    last_row = SOLO_FULL_ROWS
-    slots.append(
-        SlotConfig(
-            id=f"r{last_row}_c0",
-            row=last_row,
-            col=0,
-            ldm_per_slot=LDM_PER_SLOT,
-            x_offset_cm=0.0,
-            y_offset_cm=last_row * SOLO_ROW_PITCH_CM,
-        ),
-    )
+    remainder = trailer_length_cm % SOLO_ROW_PITCH_CM
+    if remainder >= PALLET_DEPTH_CM:
+        last_row = full_rows
+        slots.append(
+            _slot(
+                f"r{last_row}_c0",
+                x=0.0,
+                y=last_row * SOLO_ROW_PITCH_CM,
+                row=last_row,
+                col=0,
+                width_cm=SOLO_COL_PITCH_CM,
+                depth_cm=SOLO_ROW_PITCH_CM,
+            ),
+        )
 
     total_ldm = round(len(slots) * LDM_PER_SLOT, 2)
     return VehicleSlotMap(slots=slots, total_ldm=total_ldm)
 
 
 def build_vehicle_seeds() -> list[VehicleSeed]:
-    specs: list[tuple[VehicleType, str, int, int, float, int, float, int]] = [
-        ("bus_8", "Bus 8m", 820, 240, 13.6, 6000, 18.5, 6),
-        ("bus_9", "Bus 9m", 920, 240, 13.6, 7000, 19.0, 6),
-        ("bus_10", "Bus 10m", 1020, 240, 13.6, 8000, 19.5, 6),
-        ("solo", "Solo zestaw", 1360, 240, 33.0, 24000, 28.0, 10),
-    ]
+    master_builders: dict[str, tuple[str, int, int, int, float, int, Any]] = {
+        "master_l2": (
+            "Renault Master L2",
+            420,
+            220,
+            3500,
+            18.5,
+            6,
+            build_master_l2_slots,
+        ),
+        "master_l3": (
+            "Renault Master L3",
+            440,
+            220,
+            3600,
+            18.5,
+            6,
+            build_master_l3_slots,
+        ),
+        "master_l4": (
+            "Renault Master L4",
+            484,
+            220,
+            3800,
+            19.0,
+            6,
+            build_master_l4_slots,
+        ),
+    }
 
     seeds: list[VehicleSeed] = []
-    for vtype, name, length, width, max_ldm, max_weight, fuel, max_stops in specs:
-        if vtype == "solo":
-            slot_map = build_solo_slots(length)
-        else:
-            slot_map = build_bus_slots(length)
-
+    for vtype, (name, length, width, max_weight, fuel, max_stops, builder) in (
+        master_builders.items()
+    ):
+        slot_map = builder()
         seeds.append(
             VehicleSeed(
-                type=vtype,
+                type=vtype,  # type: ignore[arg-type]
                 name=name,
                 trailer_length_cm=length,
                 trailer_width_cm=width,
-                max_ldm=max_ldm,
+                max_ldm=slot_map.total_ldm,
                 max_weight_kg=max_weight,
                 fuel_per_100km_base=fuel,
                 max_stops=max_stops,
                 slot_map=slot_map,
             ),
         )
+
+    solo_map = build_solo_slots(890)
+    seeds.append(
+        VehicleSeed(
+            type="man_solo",
+            name="MAN Solówka",
+            trailer_length_cm=890,
+            trailer_width_cm=245,
+            max_ldm=solo_map.total_ldm,
+            max_weight_kg=24000,
+            fuel_per_100km_base=28.0,
+            max_stops=10,
+            slot_map=solo_map,
+        ),
+    )
     return seeds
 
 
@@ -219,19 +321,37 @@ async def upsert_vehicle(session: AsyncSession, seed: VehicleSeed) -> None:
 async def seed_vehicles() -> int:
     seeds = build_vehicle_seeds()
 
-    bus_8 = next(s for s in seeds if s.type == "bus_8")
-    solo = next(s for s in seeds if s.type == "solo")
+    master_l2 = next(s for s in seeds if s.type == "master_l2")
+    master_l3 = next(s for s in seeds if s.type == "master_l3")
+    master_l4 = next(s for s in seeds if s.type == "master_l4")
+    man_solo = next(s for s in seeds if s.type == "man_solo")
     logger.info(
-        "bus_8 slot LDM sum: %.2f (expected 6.4)",
-        bus_8.slot_map.total_ldm,
+        "master_l2: %d slots, LDM %.2f",
+        len(master_l2.slot_map.slots),
+        master_l2.slot_map.total_ldm,
     )
     logger.info(
-        "solo slot LDM sum: %.2f (expected 26.4)",
-        solo.slot_map.total_ldm,
+        "master_l3: %d slots, LDM %.2f",
+        len(master_l3.slot_map.slots),
+        master_l3.slot_map.total_ldm,
+    )
+    logger.info(
+        "master_l4: %d slots, LDM %.2f",
+        len(master_l4.slot_map.slots),
+        master_l4.slot_map.total_ldm,
+    )
+    logger.info(
+        "man_solo: %d slots, LDM %.2f",
+        len(man_solo.slot_map.slots),
+        man_solo.slot_map.total_ldm,
     )
 
     session_factory = get_sessionmaker()
     async with session_factory() as session:
+        await session.execute(
+            delete(Vehicle).where(Vehicle.type.not_in(FLEET_TYPES)),
+        )
+
         for seed in seeds:
             VehicleSlotMap.model_validate(seed.payload_slots)
             await upsert_vehicle(session, seed)

@@ -30,7 +30,7 @@ class MockVehicle:
 
 
 def vehicle(
-    vtype: str = "bus_8",
+    vtype: str = "master_l2",
     *,
     fuel_per_100km_base: float = 18.5,
     max_weight_kg: int = 6000,
