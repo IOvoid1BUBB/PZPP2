@@ -60,3 +60,29 @@ class OfferRead(BaseModel):
     handling_time_minutes: int | None = None
     stackable: bool = True
     is_within_corridor: bool = False
+
+
+class OfferScore(BaseModel):
+    """Deterministic multi-criteria score for a market offer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    offer_id: UUID
+    total_score: float
+    revenue_density_score: float
+    detour_penalty_score: float
+    fill_contribution_score: float
+    time_window_score: float
+    added_km: float
+    estimated_added_cost_eur: float
+
+
+class RankedOffersResponse(BaseModel):
+    """Top-ranked offers for a consolidation session."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: UUID
+    limit: int
+    scored_count: int
+    offers: list[OfferScore]

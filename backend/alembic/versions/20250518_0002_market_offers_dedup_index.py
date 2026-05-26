@@ -1,7 +1,7 @@
 """Add deduplication unique index on market_offers.
 
-Revision ID: 20250518_0002
-Revises: 20250513_0001
+Revision ID: 20250518_0002a
+Revises: 20250518_0002
 Create Date: 2026-05-18
 
 """
@@ -10,8 +10,8 @@ from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = "20250518_0002"
-down_revision: Union[str, None] = "20250513_0001"
+revision: str = "20250518_0002a"
+down_revision: Union[str, None] = "20250518_0002"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
