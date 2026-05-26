@@ -38,7 +38,7 @@ import { useSessionStore } from "@/lib/stores/sessionStore";
  * Wartości zgodne z backend/scripts/seed_vehicles.py.
  */
 export interface VehicleSelectorConfig {
-  type: "bus_8" | "bus_9" | "bus_10" | "solo";
+  type: "master_l2" | "master_l3" | "master_l4" | "man_solo";
   label: string;
   trailerLengthCm: number;
   trailerWidthCm: number;
@@ -50,41 +50,41 @@ export interface VehicleSelectorConfig {
 
 export const VEHICLE_CONFIGS: VehicleSelectorConfig[] = [
   {
-    type: "bus_8",
-    label: "Bus 8-pak",
-    trailerLengthCm: 820,
-    trailerWidthCm: 240,
-    maxLdm: 13.6,
-    maxWeightKg: 6000,
+    type: "master_l2",
+    label: "Renault Master L2",
+    trailerLengthCm: 420,
+    trailerWidthCm: 220,
+    maxLdm: 6.4,
+    maxWeightKg: 3500,
     maxStops: 6,
     fuelPer100kmBase: 18.5,
   },
   {
-    type: "bus_9",
-    label: "Bus 9-pak",
-    trailerLengthCm: 920,
-    trailerWidthCm: 240,
-    maxLdm: 13.6,
-    maxWeightKg: 7000,
+    type: "master_l3",
+    label: "Renault Master L3",
+    trailerLengthCm: 440,
+    trailerWidthCm: 220,
+    maxLdm: 7.2,
+    maxWeightKg: 3600,
+    maxStops: 6,
+    fuelPer100kmBase: 18.5,
+  },
+  {
+    type: "master_l4",
+    label: "Renault Master L4",
+    trailerLengthCm: 484,
+    trailerWidthCm: 220,
+    maxLdm: 8.0,
+    maxWeightKg: 3800,
     maxStops: 6,
     fuelPer100kmBase: 19.0,
   },
   {
-    type: "bus_10",
-    label: "Bus 10-pak",
-    trailerLengthCm: 1020,
-    trailerWidthCm: 240,
-    maxLdm: 13.6,
-    maxWeightKg: 8000,
-    maxStops: 6,
-    fuelPer100kmBase: 19.5,
-  },
-  {
-    type: "solo",
-    label: "Solówka",
-    trailerLengthCm: 1360,
-    trailerWidthCm: 240,
-    maxLdm: 33.0,
+    type: "man_solo",
+    label: "MAN Solówka",
+    trailerLengthCm: 890,
+    trailerWidthCm: 245,
+    maxLdm: 17.6,
     maxWeightKg: 24000,
     maxStops: 10,
     fuelPer100kmBase: 28.0,

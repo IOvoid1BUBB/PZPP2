@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapshot 1`] = `
+exports[`VehicleSelector — snapshots > karta man_solo jest zaznaczona — snapshot 1`] = `
 <div>
   <section
     aria-label="Wybór pojazdu"
@@ -17,11 +17,11 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
       role="radiogroup"
     >
       <button
-        aria-checked="true"
+        aria-checked="false"
         aria-disabled="false"
-        aria-label="Bus 8-pak, max 6 przystanków"
-        class="vehicle-selector__card vehicle-selector__card--selected"
-        id="vehicle-card-bus_8"
+        aria-label="Renault Master L2, max 6 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-master_l2"
         role="radio"
         tabindex="0"
         type="button"
@@ -29,7 +29,7 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
         <span
           class="vehicle-selector__label"
         >
-          Bus 8-pak
+          Renault Master L2
         </span>
         <div
           class="vehicle-selector__thumb-wrapper"
@@ -37,7 +37,7 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 3.4166666666666665; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 1.9090909090909092; background: var(--color-trailer-bed);"
           />
         </div>
         <dl
@@ -48,7 +48,7 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
               Max LDM
             </dt>
             <dd>
-              13.6
+              6.4
             </dd>
           </div>
           <div>
@@ -56,7 +56,7 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
               Max tonaż
             </dt>
             <dd>
-              6
+              3,5
                t
             </dd>
           </div>
@@ -84,9 +84,9 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
       <button
         aria-checked="false"
         aria-disabled="false"
-        aria-label="Bus 9-pak, max 6 przystanków"
+        aria-label="Renault Master L3, max 6 przystanków"
         class="vehicle-selector__card"
-        id="vehicle-card-bus_9"
+        id="vehicle-card-master_l3"
         role="radio"
         tabindex="-1"
         type="button"
@@ -94,7 +94,7 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
         <span
           class="vehicle-selector__label"
         >
-          Bus 9-pak
+          Renault Master L3
         </span>
         <div
           class="vehicle-selector__thumb-wrapper"
@@ -102,7 +102,7 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 3.8333333333333335; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 2; background: var(--color-trailer-bed);"
           />
         </div>
         <dl
@@ -113,7 +113,7 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
               Max LDM
             </dt>
             <dd>
-              13.6
+              7.2
             </dd>
           </div>
           <div>
@@ -121,7 +121,72 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
               Max tonaż
             </dt>
             <dd>
-              7
+              3,6
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              6
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              18.5
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Renault Master L4, max 6 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-master_l4"
+        role="radio"
+        tabindex="-1"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Renault Master L4
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 2.2; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              8
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              3,8
                t
             </dd>
           </div>
@@ -147,11 +212,11 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
         </dl>
       </button>
       <button
-        aria-checked="false"
+        aria-checked="true"
         aria-disabled="false"
-        aria-label="Bus 10-pak, max 6 przystanków"
-        class="vehicle-selector__card"
-        id="vehicle-card-bus_10"
+        aria-label="MAN Solówka, max 10 przystanków"
+        class="vehicle-selector__card vehicle-selector__card--selected"
+        id="vehicle-card-man_solo"
         role="radio"
         tabindex="-1"
         type="button"
@@ -159,7 +224,7 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
         <span
           class="vehicle-selector__label"
         >
-          Bus 10-pak
+          MAN Solówka
         </span>
         <div
           class="vehicle-selector__thumb-wrapper"
@@ -167,7 +232,7 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 4.25; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 3.63265306122449; background: var(--color-trailer-bed);"
           />
         </div>
         <dl
@@ -178,72 +243,7 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
               Max LDM
             </dt>
             <dd>
-              13.6
-            </dd>
-          </div>
-          <div>
-            <dt>
-              Max tonaż
-            </dt>
-            <dd>
-              8
-               t
-            </dd>
-          </div>
-          <div>
-            <dt>
-              Przystanki
-            </dt>
-            <dd>
-              max 
-              6
-               przystanków
-            </dd>
-          </div>
-          <div>
-            <dt>
-              Paliwo (baza)
-            </dt>
-            <dd>
-              19.5
-               l/100 km
-            </dd>
-          </div>
-        </dl>
-      </button>
-      <button
-        aria-checked="false"
-        aria-disabled="false"
-        aria-label="Solówka, max 10 przystanków"
-        class="vehicle-selector__card"
-        id="vehicle-card-solo"
-        role="radio"
-        tabindex="-1"
-        type="button"
-      >
-        <span
-          class="vehicle-selector__label"
-        >
-          Solówka
-        </span>
-        <div
-          class="vehicle-selector__thumb-wrapper"
-        >
-          <div
-            aria-hidden="true"
-            class="vehicle-selector__thumb"
-            style="--trailer-ratio: 5.666666666666667; background: var(--color-trailer-bed);"
-          />
-        </div>
-        <dl
-          class="vehicle-selector__stats"
-        >
-          <div>
-            <dt>
-              Max LDM
-            </dt>
-            <dd>
-              33
+              17.6
             </dd>
           </div>
           <div>
@@ -281,7 +281,7 @@ exports[`VehicleSelector — snapshots > karta bus_8 jest zaznaczona — snapsho
 </div>
 `;
 
-exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot 1`] = `
+exports[`VehicleSelector — snapshots > karta master_l2 jest zaznaczona — snapshot 1`] = `
 <div>
   <section
     aria-label="Wybór pojazdu"
@@ -298,11 +298,11 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
       role="radiogroup"
     >
       <button
-        aria-checked="false"
+        aria-checked="true"
         aria-disabled="false"
-        aria-label="Bus 8-pak, max 6 przystanków"
-        class="vehicle-selector__card"
-        id="vehicle-card-bus_8"
+        aria-label="Renault Master L2, max 6 przystanków"
+        class="vehicle-selector__card vehicle-selector__card--selected"
+        id="vehicle-card-master_l2"
         role="radio"
         tabindex="0"
         type="button"
@@ -310,7 +310,7 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
         <span
           class="vehicle-selector__label"
         >
-          Bus 8-pak
+          Renault Master L2
         </span>
         <div
           class="vehicle-selector__thumb-wrapper"
@@ -318,7 +318,7 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 3.4166666666666665; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 1.9090909090909092; background: var(--color-trailer-bed);"
           />
         </div>
         <dl
@@ -329,7 +329,7 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
               Max LDM
             </dt>
             <dd>
-              13.6
+              6.4
             </dd>
           </div>
           <div>
@@ -337,7 +337,7 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
               Max tonaż
             </dt>
             <dd>
-              6
+              3,5
                t
             </dd>
           </div>
@@ -365,9 +365,9 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
       <button
         aria-checked="false"
         aria-disabled="false"
-        aria-label="Bus 9-pak, max 6 przystanków"
+        aria-label="Renault Master L3, max 6 przystanków"
         class="vehicle-selector__card"
-        id="vehicle-card-bus_9"
+        id="vehicle-card-master_l3"
         role="radio"
         tabindex="-1"
         type="button"
@@ -375,7 +375,7 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
         <span
           class="vehicle-selector__label"
         >
-          Bus 9-pak
+          Renault Master L3
         </span>
         <div
           class="vehicle-selector__thumb-wrapper"
@@ -383,7 +383,7 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 3.8333333333333335; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 2; background: var(--color-trailer-bed);"
           />
         </div>
         <dl
@@ -394,7 +394,7 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
               Max LDM
             </dt>
             <dd>
-              13.6
+              7.2
             </dd>
           </div>
           <div>
@@ -402,7 +402,72 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
               Max tonaż
             </dt>
             <dd>
-              7
+              3,6
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              6
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              18.5
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Renault Master L4, max 6 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-master_l4"
+        role="radio"
+        tabindex="-1"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Renault Master L4
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 2.2; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              8
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              3,8
                t
             </dd>
           </div>
@@ -430,9 +495,9 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
       <button
         aria-checked="false"
         aria-disabled="false"
-        aria-label="Bus 10-pak, max 6 przystanków"
+        aria-label="MAN Solówka, max 10 przystanków"
         class="vehicle-selector__card"
-        id="vehicle-card-bus_10"
+        id="vehicle-card-man_solo"
         role="radio"
         tabindex="-1"
         type="button"
@@ -440,7 +505,7 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
         <span
           class="vehicle-selector__label"
         >
-          Bus 10-pak
+          MAN Solówka
         </span>
         <div
           class="vehicle-selector__thumb-wrapper"
@@ -448,7 +513,7 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 4.25; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 3.63265306122449; background: var(--color-trailer-bed);"
           />
         </div>
         <dl
@@ -459,72 +524,7 @@ exports[`VehicleSelector — snapshots > karta solo jest zaznaczona — snapshot
               Max LDM
             </dt>
             <dd>
-              13.6
-            </dd>
-          </div>
-          <div>
-            <dt>
-              Max tonaż
-            </dt>
-            <dd>
-              8
-               t
-            </dd>
-          </div>
-          <div>
-            <dt>
-              Przystanki
-            </dt>
-            <dd>
-              max 
-              6
-               przystanków
-            </dd>
-          </div>
-          <div>
-            <dt>
-              Paliwo (baza)
-            </dt>
-            <dd>
-              19.5
-               l/100 km
-            </dd>
-          </div>
-        </dl>
-      </button>
-      <button
-        aria-checked="true"
-        aria-disabled="false"
-        aria-label="Solówka, max 10 przystanków"
-        class="vehicle-selector__card vehicle-selector__card--selected"
-        id="vehicle-card-solo"
-        role="radio"
-        tabindex="-1"
-        type="button"
-      >
-        <span
-          class="vehicle-selector__label"
-        >
-          Solówka
-        </span>
-        <div
-          class="vehicle-selector__thumb-wrapper"
-        >
-          <div
-            aria-hidden="true"
-            class="vehicle-selector__thumb"
-            style="--trailer-ratio: 5.666666666666667; background: var(--color-trailer-bed);"
-          />
-        </div>
-        <dl
-          class="vehicle-selector__stats"
-        >
-          <div>
-            <dt>
-              Max LDM
-            </dt>
-            <dd>
-              33
+              17.6
             </dd>
           </div>
           <div>
@@ -581,9 +581,9 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
       <button
         aria-checked="false"
         aria-disabled="false"
-        aria-label="Bus 8-pak, max 6 przystanków"
+        aria-label="Renault Master L2, max 6 przystanków"
         class="vehicle-selector__card"
-        id="vehicle-card-bus_8"
+        id="vehicle-card-master_l2"
         role="radio"
         tabindex="0"
         type="button"
@@ -591,7 +591,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
         <span
           class="vehicle-selector__label"
         >
-          Bus 8-pak
+          Renault Master L2
         </span>
         <div
           class="vehicle-selector__thumb-wrapper"
@@ -599,7 +599,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 3.4166666666666665; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 1.9090909090909092; background: var(--color-trailer-bed);"
           />
         </div>
         <dl
@@ -610,7 +610,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
               Max LDM
             </dt>
             <dd>
-              13.6
+              6.4
             </dd>
           </div>
           <div>
@@ -618,7 +618,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
               Max tonaż
             </dt>
             <dd>
-              6
+              3,5
                t
             </dd>
           </div>
@@ -646,9 +646,9 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
       <button
         aria-checked="false"
         aria-disabled="false"
-        aria-label="Bus 9-pak, max 6 przystanków"
+        aria-label="Renault Master L3, max 6 przystanków"
         class="vehicle-selector__card"
-        id="vehicle-card-bus_9"
+        id="vehicle-card-master_l3"
         role="radio"
         tabindex="-1"
         type="button"
@@ -656,7 +656,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
         <span
           class="vehicle-selector__label"
         >
-          Bus 9-pak
+          Renault Master L3
         </span>
         <div
           class="vehicle-selector__thumb-wrapper"
@@ -664,7 +664,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 3.8333333333333335; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 2; background: var(--color-trailer-bed);"
           />
         </div>
         <dl
@@ -675,7 +675,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
               Max LDM
             </dt>
             <dd>
-              13.6
+              7.2
             </dd>
           </div>
           <div>
@@ -683,7 +683,72 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
               Max tonaż
             </dt>
             <dd>
-              7
+              3,6
+               t
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Przystanki
+            </dt>
+            <dd>
+              max 
+              6
+               przystanków
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Paliwo (baza)
+            </dt>
+            <dd>
+              18.5
+               l/100 km
+            </dd>
+          </div>
+        </dl>
+      </button>
+      <button
+        aria-checked="false"
+        aria-disabled="false"
+        aria-label="Renault Master L4, max 6 przystanków"
+        class="vehicle-selector__card"
+        id="vehicle-card-master_l4"
+        role="radio"
+        tabindex="-1"
+        type="button"
+      >
+        <span
+          class="vehicle-selector__label"
+        >
+          Renault Master L4
+        </span>
+        <div
+          class="vehicle-selector__thumb-wrapper"
+        >
+          <div
+            aria-hidden="true"
+            class="vehicle-selector__thumb"
+            style="--trailer-ratio: 2.2; background: var(--color-trailer-bed);"
+          />
+        </div>
+        <dl
+          class="vehicle-selector__stats"
+        >
+          <div>
+            <dt>
+              Max LDM
+            </dt>
+            <dd>
+              8
+            </dd>
+          </div>
+          <div>
+            <dt>
+              Max tonaż
+            </dt>
+            <dd>
+              3,8
                t
             </dd>
           </div>
@@ -711,9 +776,9 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
       <button
         aria-checked="false"
         aria-disabled="false"
-        aria-label="Bus 10-pak, max 6 przystanków"
+        aria-label="MAN Solówka, max 10 przystanków"
         class="vehicle-selector__card"
-        id="vehicle-card-bus_10"
+        id="vehicle-card-man_solo"
         role="radio"
         tabindex="-1"
         type="button"
@@ -721,7 +786,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
         <span
           class="vehicle-selector__label"
         >
-          Bus 10-pak
+          MAN Solówka
         </span>
         <div
           class="vehicle-selector__thumb-wrapper"
@@ -729,7 +794,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 4.25; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 3.63265306122449; background: var(--color-trailer-bed);"
           />
         </div>
         <dl
@@ -740,72 +805,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
               Max LDM
             </dt>
             <dd>
-              13.6
-            </dd>
-          </div>
-          <div>
-            <dt>
-              Max tonaż
-            </dt>
-            <dd>
-              8
-               t
-            </dd>
-          </div>
-          <div>
-            <dt>
-              Przystanki
-            </dt>
-            <dd>
-              max 
-              6
-               przystanków
-            </dd>
-          </div>
-          <div>
-            <dt>
-              Paliwo (baza)
-            </dt>
-            <dd>
-              19.5
-               l/100 km
-            </dd>
-          </div>
-        </dl>
-      </button>
-      <button
-        aria-checked="false"
-        aria-disabled="false"
-        aria-label="Solówka, max 10 przystanków"
-        class="vehicle-selector__card"
-        id="vehicle-card-solo"
-        role="radio"
-        tabindex="-1"
-        type="button"
-      >
-        <span
-          class="vehicle-selector__label"
-        >
-          Solówka
-        </span>
-        <div
-          class="vehicle-selector__thumb-wrapper"
-        >
-          <div
-            aria-hidden="true"
-            class="vehicle-selector__thumb"
-            style="--trailer-ratio: 5.666666666666667; background: var(--color-trailer-bed);"
-          />
-        </div>
-        <dl
-          class="vehicle-selector__stats"
-        >
-          <div>
-            <dt>
-              Max LDM
-            </dt>
-            <dd>
-              33
+              17.6
             </dd>
           </div>
           <div>
