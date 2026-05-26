@@ -37,7 +37,7 @@ CLIENT_COLORS = [
     "#d8b4fe",
 ]
 
-DEMO_VEHICLE_TYPE = "bus_8"
+DEMO_VEHICLE_TYPE = "master_l2"
 
 _demo_layout_cache: dict[str, PalletData | None] | None = None
 
@@ -53,6 +53,8 @@ def _normalize_payload_slots(raw: dict[str, Any]) -> dict[str, PayloadSlotConfig
                 ldmPerSlot=float(entry["ldm_per_slot"]),
                 xOffsetCm=float(entry["x_offset_cm"]),
                 yOffsetCm=float(entry["y_offset_cm"]),
+                widthCm=float(entry.get("width_cm", entry.get("widthCm", 80))),
+                depthCm=float(entry.get("depth_cm", entry.get("depthCm", 120))),
             )
         return slots
 
@@ -65,6 +67,8 @@ def _normalize_payload_slots(raw: dict[str, Any]) -> dict[str, PayloadSlotConfig
             ldmPerSlot=float(entry.get("ldm_per_slot", entry.get("ldmPerSlot", 0.8))),
             xOffsetCm=float(entry.get("x_offset_cm", entry.get("xOffsetCm", 0))),
             yOffsetCm=float(entry.get("y_offset_cm", entry.get("yOffsetCm", 0))),
+            widthCm=float(entry.get("width_cm", entry.get("widthCm", 80))),
+            depthCm=float(entry.get("depth_cm", entry.get("depthCm", 120))),
         )
     return slots
 
@@ -162,6 +166,7 @@ def build_demo_slots(payload_slots: dict[str, PayloadSlotConfig]) -> dict[str, P
     ) -> None:
         if slot_id not in payload_slots:
             return
+        slot_cfg = payload_slots[slot_id]
         slots[slot_id] = PalletData(
             id=pallet_id,
             offerId=offer_id,
@@ -170,21 +175,25 @@ def build_demo_slots(payload_slots: dict[str, PayloadSlotConfig]) -> dict[str, P
             clientColor=CLIENT_COLORS[color_index % len(CLIENT_COLORS)],
             ldm=ldm,
             weightKg=weight_kg,
-            dims=PalletDims(wMm=800, dMm=1200, hMm=1600),
+            dims=PalletDims(
+                wMm=int(slot_cfg.width_cm * 10),
+                dMm=int(slot_cfg.depth_cm * 10),
+                hMm=1600,
+            ),
             stackable=stackable,
             timeWindow=time_window,
         )
 
-    pallet("r0_c0", "p1", "o1", "c1", "IKEA", 0, 0.8, 420, True)
-    pallet("r0_c1", "p2", "o2", "c2", "Amazon", 1, 0.8, 680, False)
-    pallet("r0_c2", "p3", "o3", "c1", "IKEA", 0, 0.8, 350, True)
-    pallet("r1_c0", "p4", "o4", "c3", "Gamma Transport", 2, 0.8, 910, True)
+    # Demo fill for master_l2 diagram layout (slot ids s0–s7)
+    pallet("s0", "p1", "o1", "c1", "IKEA", 0, 0.8, 420, True)
+    pallet("s1", "p2", "o2", "c2", "Amazon", 1, 0.8, 680, False)
+    pallet("s3", "p4", "o4", "c3", "Gamma", 2, 0.8, 910, True)
     pallet(
-        "r1_c1",
+        "s4",
         "p5",
         "o5",
         "c4",
-        "Delta Cargo",
+        "Delta",
         3,
         0.8,
         540,

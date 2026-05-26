@@ -13,10 +13,10 @@ if TYPE_CHECKING:
     from app.models.vehicle import Vehicle
 
 TARE_WEIGHTS_KG: dict[str, int] = {
-    "bus_8": 3500,
-    "bus_9": 3800,
-    "bus_10": 4000,
-    "solo": 8000,
+    "master_l2": 3500,
+    "master_l3": 3600,
+    "master_l4": 3800,
+    "man_solo": 8000,
 }
 
 
