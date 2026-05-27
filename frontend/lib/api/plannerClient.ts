@@ -1,3 +1,4 @@
+import { normalizePalletDims, normalizePayloadSlots } from "@/lib/load/capacity";
 import type { LoadLayoutResponse, PalletData, SlotConflict, VehicleConfig } from "@/lib/types/load";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
@@ -9,31 +10,67 @@ export interface PlannerLayoutState {
   conflicts: SlotConflict[];
 }
 
+function normalizeSlots(
+  slots: Record<string, PalletData | null>,
+): Record<string, PalletData | null> {
+  return Object.fromEntries(
+    Object.entries(slots).map(([slotId, pallet]) => [
+      slotId,
+      pallet ? normalizePalletDims(pallet) : null,
+    ]),
+  );
+}
+
 function normalizeLayout(payload: LoadLayoutResponse): PlannerLayoutState {
   return {
     sessionId: payload.sessionId,
-    vehicle: payload.vehicle,
-    slots: payload.slots,
+    vehicle: {
+      ...payload.vehicle,
+      payloadSlots: normalizePayloadSlots(payload.vehicle.payloadSlots),
+    },
+    slots: normalizeSlots(payload.slots),
     conflicts: payload.conflicts,
   };
 }
+function withVehicleType(path: string, vehicleType?: string | null): string {
+  if (!vehicleType) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}vehicleType=${encodeURIComponent(vehicleType)}`;
+}
 
-export async function fetchDemoLayout(): Promise<PlannerLayoutState> {
-  const response = await fetch(`${API_BASE}/api/v1/planner/demo`);
+export async function fetchDemoLayout(vehicleType?: string | null): Promise<PlannerLayoutState> {
+  const response = await fetch(
+    `${API_BASE}${withVehicleType("/api/v1/planner/demo", vehicleType)}`,
+  );
   if (!response.ok) {
     throw new Error(`Failed to load demo layout (${response.status})`);
   }
   return normalizeLayout(await response.json());
 }
 
+export async function resetDemoLayout(vehicleType?: string | null): Promise<PlannerLayoutState> {
+  const response = await fetch(
+    `${API_BASE}${withVehicleType("/api/v1/planner/demo/reset", vehicleType)}`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to reset demo layout (${response.status})`);
+  }
+  return normalizeLayout(await response.json());
+}
+
 export async function saveDemoLayout(
   slots: Record<string, PalletData | null>,
+  vehicleType?: string | null,
 ): Promise<PlannerLayoutState> {
-  const response = await fetch(`${API_BASE}/api/v1/planner/demo`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ slots }),
-  });
+  const response = await fetch(
+    `${API_BASE}${withVehicleType("/api/v1/planner/demo", vehicleType)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slots }),
+    },
+  );
   if (!response.ok) {
     throw new Error(`Failed to save demo layout (${response.status})`);
   }
@@ -43,8 +80,12 @@ export async function saveDemoLayout(
 export async function moveDemoPallet(
   fromSlot: string,
   toSlot: string,
+  vehicleType?: string | null,
 ): Promise<{ ok: boolean; layout: PlannerLayoutState; message?: string }> {
   const params = new URLSearchParams({ fromSlot, toSlot });
+  if (vehicleType) {
+    params.set("vehicleType", vehicleType);
+  }
   const response = await fetch(`${API_BASE}/api/v1/planner/demo/move?${params}`, {
     method: "POST",
   });
@@ -59,10 +100,14 @@ export async function moveDemoPallet(
   };
 }
 
-export async function removeDemoSlot(slotId: string): Promise<PlannerLayoutState> {
-  const response = await fetch(`${API_BASE}/api/v1/planner/demo/slots/${slotId}`, {
-    method: "DELETE",
-  });
+export async function removeDemoSlot(
+  slotId: string,
+  vehicleType?: string | null,
+): Promise<PlannerLayoutState> {
+  const response = await fetch(
+    `${API_BASE}${withVehicleType(`/api/v1/planner/demo/slots/${slotId}`, vehicleType)}`,
+    { method: "DELETE" },
+  );
   if (!response.ok) {
     throw new Error(`Failed to remove slot (${response.status})`);
   }
@@ -71,9 +116,13 @@ export async function removeDemoSlot(slotId: string): Promise<PlannerLayoutState
 
 export async function moveDemoToFirstFree(
   slotId: string,
+  vehicleType?: string | null,
 ): Promise<{ ok: boolean; layout: PlannerLayoutState; message?: string }> {
   const response = await fetch(
-    `${API_BASE}/api/v1/planner/demo/slots/${slotId}/move-to-first-free`,
+    `${API_BASE}${withVehicleType(
+      `/api/v1/planner/demo/slots/${slotId}/move-to-first-free`,
+      vehicleType,
+    )}`,
     { method: "POST" },
   );
   if (!response.ok) {
