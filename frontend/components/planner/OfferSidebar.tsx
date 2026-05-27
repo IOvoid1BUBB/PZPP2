@@ -72,8 +72,14 @@ export function OfferSidebar({ slots }: OfferSidebarProps) {
           style={{ "--offer-accent": offer.clientColor } as CSSProperties}
         >
           <header className="offer-card__header">
-            <strong>{offer.clientName}</strong>
-            <span>#{offer.offerId.toUpperCase()}</span>
+            <div className="offer-card__title">
+              <strong>{offer.clientName}</strong>
+              <span className="offer-card__id">#{offer.offerId.toUpperCase()}</span>
+            </div>
+            <span className="offer-card__badge" aria-label="Status oferty">
+              <span className="offer-card__badge-dot" aria-hidden="true" />
+              Loaded
+            </span>
           </header>
           <p className="offer-card__route">{offer.route}</p>
           <dl className="offer-card__meta">

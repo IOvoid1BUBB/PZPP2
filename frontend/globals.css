@@ -184,18 +184,45 @@ select {
 .offer-card__header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 6px;
 }
 
-.offer-card__header strong {
+.offer-card__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.offer-card__title strong {
   font-size: 0.95rem;
 }
 
-.offer-card__header span {
-  font-size: 0.75rem;
+.offer-card__id {
+  font-size: 0.72rem;
   color: var(--color-text-muted);
+}
+
+.offer-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.offer-card__badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #15803d;
 }
 
 .offer-card__route {
@@ -228,7 +255,7 @@ select {
 
 .vehicle-header {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   justify-content: space-between;
   gap: 16px;
 }
@@ -246,38 +273,142 @@ select {
   color: var(--color-text-secondary);
 }
 
+.vehicle-header--metrics {
+  align-items: center;
+}
+
+.vehicle-header__metrics {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px 18px;
+}
+
+.vehicle-header__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.vehicle-header__metric-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.01em;
+}
+
+.vehicle-header__metric-value {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vehicle-header__metric-value--accent {
+  color: var(--color-accent);
+}
+
+.vehicle-header__metric--lfil {
+  grid-column: span 1;
+}
+
+.vehicle-header__lfil-bar {
+  margin-top: 2px;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-accent-muted);
+  overflow: hidden;
+}
+
+.vehicle-header__lfil-fill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 250ms ease;
+}
+
+.vehicle-header__send {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.vehicle-header__send-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+@media (max-width: 1100px) {
+  .vehicle-header--metrics {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .vehicle-header__metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .vehicle-header__send {
+    align-self: flex-end;
+  }
+}
+
 /* ── Trailer stage ── */
 
 .trailer-stage {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  padding: 20px;
+  padding: 24px;
   overflow-x: auto;
+  display: flex;
+  justify-content: center;
+}
+
+.trailer-svg-wrap {
+  position: relative;
+  width: 100%;
+  max-width: var(--trailer-canvas-width, 720px);
+  min-height: var(--trailer-canvas-height, auto);
+  margin: 0 auto;
 }
 
 .trailer-canvas-root {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
-}
-
-.trailer-svg-wrap {
-  position: relative;
-  display: inline-block;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .trailer-canvas__svg {
   display: block;
-  max-width: 100%;
+  width: 100%;
   height: auto;
+  vertical-align: top;
 }
 
 .trailer-canvas {
-  position: relative;
-  margin: 0 auto;
+  position: absolute;
+  inset: 0;
   touch-action: none;
 }
 
@@ -289,6 +420,8 @@ select {
 
 .trailer-dnd-overlay .trailer-slot,
 .trailer-dnd-overlay .trailer-pallet {
+  position: absolute;
+  box-sizing: border-box;
   pointer-events: auto;
 }
 
@@ -473,8 +606,14 @@ select {
 
 @media (prefers-reduced-motion: reduce) {
   .conflict-slot,
-  .trailer-pallet--shake {
+  .trailer-pallet--shake,
+  .trailer-slot--conflict-pulse {
     animation: none;
+  }
+
+  .trailer-slot--conflict-pulse,
+  .conflict-slot {
+    stroke: var(--color-warning);
   }
 }
 
