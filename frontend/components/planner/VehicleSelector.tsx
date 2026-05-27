@@ -24,6 +24,7 @@ import {
   type KeyboardEvent,
 } from "react";
 
+import { resetDemoLayout } from "@/lib/api/plannerClient";
 import { fetchVehicles, createSession } from "@/lib/api/sessionClient";
 import type { VehicleConfig } from "@/lib/types/load";
 import { useVehicleStore } from "@/lib/stores/vehicleStore";
@@ -128,7 +129,7 @@ function TrailerThumbnail({ lengthCm, widthCm }: TrailerThumbnailProps) {
 
 export function VehicleSelector() {
   const { selectedVehicle, selectVehicle } = useVehicleStore();
-  const { clearAllSlots } = useLoadStore();
+  const { clearAllSlots, setLayout } = useLoadStore();
   const { setSessionId } = useSessionStore();
 
   /** Cache pojazdów z API — klucz: type */
@@ -178,24 +179,37 @@ export function VehicleSelector() {
       setError(null);
 
       try {
-        // 1. Aktualizuj wybrany pojazd
+        // 1. Aktualizuj wybrany pojazd (vehicleStore + loadStore.vehicle)
         selectVehicle(vehicle);
 
-        // 2. Wyczyść sloty ładunku
+        // 2. Wyczyść sloty ładunku synchronicznie — UI od razu pokazuje pustą
+        //    naczepę, zanim backend zdąży zwrócić demo dla nowego pojazdu.
         clearAllSlots();
 
         // 3. Utwórz nową sesję konsolidacji
         const session = await createSession({ vehicle_id: vehicle.id });
-
-        // 4. Zapisz ID sesji
         setSessionId(session.id);
+
+        // 4. Pobierz demo paletki dla wybranego pojazdu i nadpisz layout
+        //    (sloty + vehicle atomicznie). Failure tutaj jest miękki — sesja
+        //    została utworzona, więc zostawiamy pustą naczepę.
+        try {
+          const demo = await resetDemoLayout(vehicle.type);
+          setLayout({
+            sessionId: demo.sessionId,
+            vehicle: demo.vehicle,
+            slots: demo.slots,
+          });
+        } catch {
+          /* pusty layout — użytkownik dograj ręcznie */
+        }
       } catch {
         setError("Nie udało się zainicjować sesji. Spróbuj ponownie.");
       } finally {
         setLoading(false);
       }
     },
-    [vehicleMap, selectVehicle, clearAllSlots, setSessionId],
+    [vehicleMap, selectVehicle, clearAllSlots, setLayout, setSessionId],
   );
 
   // ── Roving tabindex keyboard navigation ────────────────────────────────────
