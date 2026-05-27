@@ -53,6 +53,8 @@ export interface VehicleConfig {
 
 export type SlotConflictType =
   | "stacking_violation"
+  | "footprint_overlap"
+  | "dimension_mismatch"
   | "time_window_breach"
   | "weight_overload";
 

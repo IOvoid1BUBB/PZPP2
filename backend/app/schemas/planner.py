@@ -7,7 +7,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SlotConflictType = Literal["stacking_violation", "time_window_breach", "weight_overload"]
+SlotConflictType = Literal[
+    "stacking_violation",
+    "footprint_overlap",
+    "dimension_mismatch",
+    "time_window_breach",
+    "weight_overload",
+]
 
 
 class PalletDims(BaseModel):
