@@ -26,10 +26,13 @@ def _service(db: AsyncSession) -> PlannerLayoutService:
 @router.get(
     "/demo",
     response_model=LoadLayoutResponse,
-    summary="Demo load layout for SlotEditor (master_l2 + sample pallets)",
+    summary="Demo load layout for SlotEditor (any vehicle type)",
 )
-async def get_demo_layout(db: AsyncSession = Depends(get_db)) -> LoadLayoutResponse:
-    return await _service(db).get_demo_layout()
+async def get_demo_layout(
+    vehicle_type: str | None = Query(default=None, alias="vehicleType"),
+    db: AsyncSession = Depends(get_db),
+) -> LoadLayoutResponse:
+    return await _service(db).get_demo_layout(vehicle_type)
 
 
 @router.put(
@@ -39,9 +42,22 @@ async def get_demo_layout(db: AsyncSession = Depends(get_db)) -> LoadLayoutRespo
 )
 async def update_demo_layout(
     payload: LoadLayoutUpdate,
+    vehicle_type: str | None = Query(default=None, alias="vehicleType"),
     db: AsyncSession = Depends(get_db),
 ) -> LoadLayoutResponse:
-    return await _service(db).update_demo_layout(payload)
+    return await _service(db).update_demo_layout(payload, vehicle_type)
+
+
+@router.post(
+    "/demo/reset",
+    response_model=LoadLayoutResponse,
+    summary="Rebuild demo layout for a given vehicle type",
+)
+async def reset_demo_layout(
+    vehicle_type: str | None = Query(default=None, alias="vehicleType"),
+    db: AsyncSession = Depends(get_db),
+) -> LoadLayoutResponse:
+    return await _service(db).reset_demo_layout(vehicle_type)
 
 
 @router.post(
@@ -52,13 +68,24 @@ async def update_demo_layout(
 async def demo_move_pallet(
     from_slot: str = Query(..., alias="fromSlot"),
     to_slot: str = Query(..., alias="toSlot"),
+    vehicle_type: str | None = Query(default=None, alias="vehicleType"),
     db: AsyncSession = Depends(get_db),
 ) -> LayoutActionResult:
     service = _service(db)
     try:
-        layout = await service.apply_move(None, from_slot=from_slot, to_slot=to_slot, demo=True)
+        layout = await service.apply_move(
+            None,
+            from_slot=from_slot,
+            to_slot=to_slot,
+            demo=True,
+            vehicle_type=vehicle_type,
+        )
     except ValidationAppError as exc:
-        return LayoutActionResult(ok=False, layout=await service.get_demo_layout(), message=str(exc.detail))
+        return LayoutActionResult(
+            ok=False,
+            layout=await service.get_demo_layout(vehicle_type),
+            message=str(exc.detail),
+        )
     return LayoutActionResult(ok=True, layout=layout)
 
 
@@ -67,8 +94,12 @@ async def demo_move_pallet(
     response_model=LoadLayoutResponse,
     summary="Remove pallet from demo slot",
 )
-async def demo_remove_slot(slot_id: str, db: AsyncSession = Depends(get_db)) -> LoadLayoutResponse:
-    return await _service(db).remove_slot(None, slot_id, demo=True)
+async def demo_remove_slot(
+    slot_id: str,
+    vehicle_type: str | None = Query(default=None, alias="vehicleType"),
+    db: AsyncSession = Depends(get_db),
+) -> LoadLayoutResponse:
+    return await _service(db).remove_slot(None, slot_id, demo=True, vehicle_type=vehicle_type)
 
 
 @router.post(
@@ -78,13 +109,23 @@ async def demo_remove_slot(slot_id: str, db: AsyncSession = Depends(get_db)) -> 
 )
 async def demo_move_to_first_free(
     slot_id: str,
+    vehicle_type: str | None = Query(default=None, alias="vehicleType"),
     db: AsyncSession = Depends(get_db),
 ) -> LayoutActionResult:
     service = _service(db)
     try:
-        layout = await service.move_to_first_free(None, slot_id, demo=True)
+        layout = await service.move_to_first_free(
+            None,
+            slot_id,
+            demo=True,
+            vehicle_type=vehicle_type,
+        )
     except ValidationAppError as exc:
-        return LayoutActionResult(ok=False, layout=await service.get_demo_layout(), message=str(exc.detail))
+        return LayoutActionResult(
+            ok=False,
+            layout=await service.get_demo_layout(vehicle_type),
+            message=str(exc.detail),
+        )
     return LayoutActionResult(ok=True, layout=layout)
 
 
