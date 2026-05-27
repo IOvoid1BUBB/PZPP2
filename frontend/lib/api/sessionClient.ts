@@ -9,6 +9,7 @@
  *   POST /api/v1/sessions   → createSession()
  */
 
+import { normalizePayloadSlots } from "@/lib/load/capacity";
 import type { VehicleConfig } from "@/lib/types/load";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
@@ -74,8 +75,7 @@ function mapVehicle(raw: VehicleApiRecord): VehicleConfig {
     trailerWidthCm: raw.trailer_width_cm,
     fuelPer100kmBase: raw.fuel_per_100km_base,
     maxStops: raw.max_stops,
-    // payload_slots klucze bez zmian per spec
-    payloadSlots: raw.payload_slots as VehicleConfig["payloadSlots"],
+    payloadSlots: normalizePayloadSlots(raw.payload_slots),
   };
 }
 

@@ -38,7 +38,15 @@ import { useToast } from "@/components/ui/Toast";
 
 import { usePlannerLayout } from "@/hooks/usePlannerLayout";
 
-import { canAssign, canSwap } from "@/lib/load/capacity";
+import {
+  assignBlockedByFootprint,
+  assignBlockedBySize,
+  canAssign,
+  canSwap,
+  getUsedLdm,
+  getUsedWeight,
+  palletFitsSlot,
+} from "@/lib/load/capacity";
 
 import type { ContextMenuItem, PalletData } from "@/lib/types/load";
 
@@ -352,6 +360,21 @@ export function SlotEditor() {
 
     const targetOccupied = Boolean(slots[toSlot]);
 
+    const footprintBlocked = assignBlockedByFootprint(
+      slots,
+      vehicle,
+      toSlot,
+      fromSlot,
+    );
+
+    const sizeBlocked = targetOccupied
+      ? Boolean(
+          vehicle &&
+            (!palletFitsSlot(sourcePallet, vehicle.payloadSlots[toSlot]!) ||
+              !palletFitsSlot(slots[toSlot]!, vehicle.payloadSlots[fromSlot]!)),
+        )
+      : assignBlockedBySize(sourcePallet, vehicle, toSlot);
+
     const allowed = targetOccupied
 
       ? canSwap(slots, vehicle, fromSlot, toSlot)
@@ -364,7 +387,14 @@ export function SlotEditor() {
 
       triggerShake(toSlot);
 
-      showToast({ type: "error", message: "Brak miejsca: przekroczono LDM lub tonaż." });
+      showToast({
+        type: "error",
+        message: footprintBlocked
+          ? "To miejsce nachodzi na inną paletę."
+          : sizeBlocked
+            ? "Paleta nie mieści się w tym slocie."
+            : "Brak miejsca: przekroczono LDM lub tonaż.",
+      });
 
       return;
 
@@ -444,6 +474,12 @@ export function SlotEditor() {
 
   const displayVehicleName = vehicle.name.replace("Bus 8m", "Renault master (8EP)");
 
+  const loadedCount = Object.values(slots).filter((pallet) => pallet !== null).length;
+
+  const usedWeightKg = getUsedWeight(slots);
+
+  const usedLdm = getUsedLdm(slots);
+
 
 
   return (
@@ -461,6 +497,18 @@ export function SlotEditor() {
           <VehicleHeader
 
             name={displayVehicleName}
+
+            driverName="Jan Kowalski"
+
+            itemsCount={loadedCount}
+
+            usedWeightKg={usedWeightKg}
+
+            maxWeightKg={vehicle.maxWeightKg}
+
+            usedLdm={usedLdm}
+
+            maxLdm={vehicle.maxLdm}
 
             saving={saving}
 

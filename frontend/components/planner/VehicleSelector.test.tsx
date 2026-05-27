@@ -123,6 +123,19 @@ function mockFetch(overrides?: { vehiclesOk?: boolean; sessionOk?: boolean }) {
         } as Response);
       }
 
+      if (url.includes("/api/v1/planner/demo")) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              sessionId: "demo:master_l2",
+              vehicle: makeVehicleApiRecord(MOCK_VEHICLES[0]),
+              slots: {},
+              conflicts: [],
+            }),
+        } as Response);
+      }
+
       return Promise.reject(new Error(`Unmocked URL: ${url}`));
     }),
   );
@@ -132,6 +145,7 @@ function mockFetch(overrides?: { vehiclesOk?: boolean; sessionOk?: boolean }) {
 
 const mockSelectVehicle = vi.fn();
 const mockClearAllSlots = vi.fn();
+const mockSetLayout = vi.fn();
 const mockSetSessionId = vi.fn();
 
 let mockSelectedVehicle: VehicleConfig | null = null;
@@ -147,6 +161,7 @@ vi.mock("@/lib/stores/loadStore", () => ({
   useLoadStore: () => ({
     slots: {},
     clearAllSlots: mockClearAllSlots,
+    setLayout: mockSetLayout,
   }),
 }));
 
@@ -163,6 +178,7 @@ beforeEach(() => {
   mockSelectedVehicle = null;
   mockSelectVehicle.mockClear();
   mockClearAllSlots.mockClear();
+  mockSetLayout.mockClear();
   mockSetSessionId.mockClear();
 });
 

@@ -14,10 +14,11 @@ import { DroppableSlot } from "@/components/planner/DroppableSlot";
 import { useClientSummary } from "@/lib/stores/loadStore";
 import type { PalletData, PayloadSlotConfig, VehicleConfig } from "@/lib/types/load";
 
-const SCALE = 0.4;
-const SLOT_WIDTH_PX = 80 * SCALE;
-const SLOT_HEIGHT_PX = 120 * SCALE;
-const TRAILER_PADDING = 8;
+/** Cargo bed runs left → right; cab on the left. */
+const SCALE = 0.88;
+const TRAILER_PADDING = 10;
+/** Equal inset on every slot so strokes do not merge — same proportion for all. */
+const SLOT_STROKE_INSET_PX = 1;
 
 const CLIENT_COLORS = [
   "#4E9AF1",
@@ -34,6 +35,8 @@ const CLIENT_COLORS = [
   "#FF5722",
 ] as const;
 
+const OCCUPIED_FILL_OPACITY = 0.55;
+
 interface TrailerCanvasProps {
   vehicle: VehicleConfig;
   slots: Record<string, PalletData | null>;
@@ -43,23 +46,62 @@ interface TrailerCanvasProps {
   bindSlotMenu: (slotId: string) => Record<string, unknown>;
 }
 
-interface OutlineProps {
+interface BedLayout {
+  cabX: number;
+  bedX: number;
+  bedY: number;
+  bedW: number;
+  bedH: number;
+}
+
+interface CanvasRect {
+  x: number;
+  y: number;
   width: number;
   height: number;
 }
 
-/** Placeholder — replace with real Master top-view SVG asset later. */
-function MasterOutlinePlaceholder({ width, height }: OutlineProps) {
-  const cabH = height * 0.22;
-  const bedY = cabH;
-  const w = width;
+interface CanvasLayout extends BedLayout {
+  canvasW: number;
+  canvasH: number;
+}
+
+function cabWidthPx(vehicleType: VehicleConfig["type"], bedHeightPx: number): number {
+  const ratio = vehicleType === "man_solo" ? 0.34 : 0.42;
+  return Math.round(bedHeightPx * ratio);
+}
+
+function buildCanvasLayout(vehicle: VehicleConfig): CanvasLayout {
+  const bedW = vehicle.trailerLengthCm * SCALE;
+  const bedH = vehicle.trailerWidthCm * SCALE;
+  const cabW = cabWidthPx(vehicle.type, bedH);
+  const cabX = TRAILER_PADDING;
+  const bedX = TRAILER_PADDING + cabW;
+  const bedY = TRAILER_PADDING;
+  const canvasW = bedX + bedW + TRAILER_PADDING;
+  const canvasH = bedY + bedH + TRAILER_PADDING;
+
+  return { cabX, bedX, bedY, bedW, bedH, canvasW, canvasH };
+}
+
+/** Cab on the left; bed edges match the cargo grid origin. */
+function MasterOutlineHorizontal({ cabX, bedX, bedY, bedW, bedH }: BedLayout) {
+  const bedRight = bedX + bedW;
+  const bedBottom = bedY + bedH;
+  const midY = bedY + bedH / 2;
+  const joinTop = bedY + bedH * 0.14;
+  const joinBottom = bedY + bedH * 0.86;
+  const hoodX = cabX + (bedX - cabX) * 0.58;
+
   const path = [
-    `M ${w * 0.12} ${bedY}`,
-    `L ${w * 0.12} ${cabH * 0.35}`,
-    `Q ${w * 0.5} 0 ${w * 0.88} ${cabH * 0.35}`,
-    `L ${w * 0.88} ${bedY}`,
-    `L ${w * 0.88} ${height - 4}`,
-    `L ${w * 0.12} ${height - 4}`,
+    `M ${bedX} ${bedY}`,
+    `L ${bedRight - 3} ${bedY}`,
+    `L ${bedRight - 3} ${bedBottom}`,
+    `L ${bedX} ${bedBottom}`,
+    `L ${bedX} ${joinBottom}`,
+    `L ${hoodX} ${joinBottom}`,
+    `Q ${cabX} ${midY} ${hoodX} ${joinTop}`,
+    `L ${bedX} ${joinTop}`,
     "Z",
   ].join(" ");
 
@@ -74,18 +116,23 @@ function MasterOutlinePlaceholder({ width, height }: OutlineProps) {
   );
 }
 
-/** Placeholder — replace with real MAN truck top-view SVG asset later. */
-function ManOutlinePlaceholder({ width, height }: OutlineProps) {
-  const cabH = height * 0.12;
-  const bedY = cabH;
-  const w = width;
+function ManOutlineHorizontal({ cabX, bedX, bedY, bedW, bedH }: BedLayout) {
+  const bedRight = bedX + bedW;
+  const bedBottom = bedY + bedH;
+  const midY = bedY + bedH / 2;
+  const joinTop = bedY + bedH * 0.12;
+  const joinBottom = bedY + bedH * 0.86;
+  const hoodX = cabX + (bedX - cabX) * 0.52;
+
   const path = [
-    `M ${w * 0.08} ${bedY}`,
-    `L ${w * 0.08} ${cabH * 0.4}`,
-    `Q ${w * 0.5} 2 ${w * 0.92} ${cabH * 0.4}`,
-    `L ${w * 0.92} ${bedY}`,
-    `L ${w * 0.92} ${height - 4}`,
-    `L ${w * 0.08} ${height - 4}`,
+    `M ${bedX} ${bedY}`,
+    `L ${bedRight - 3} ${bedY}`,
+    `L ${bedRight - 3} ${bedBottom}`,
+    `L ${bedX} ${bedBottom}`,
+    `L ${bedX} ${joinBottom}`,
+    `L ${hoodX} ${joinBottom}`,
+    `Q ${cabX} ${midY} ${hoodX} ${joinTop}`,
+    `L ${bedX} ${joinTop}`,
     "Z",
   ].join(" ");
 
@@ -100,11 +147,11 @@ function ManOutlinePlaceholder({ width, height }: OutlineProps) {
   );
 }
 
-const VEHICLE_OUTLINES: Record<VehicleConfig["type"], FC<OutlineProps>> = {
-  master_l2: MasterOutlinePlaceholder,
-  master_l3: MasterOutlinePlaceholder,
-  master_l4: MasterOutlinePlaceholder,
-  man_solo: ManOutlinePlaceholder,
+const VEHICLE_OUTLINES: Record<VehicleConfig["type"], FC<BedLayout>> = {
+  master_l2: MasterOutlineHorizontal,
+  master_l3: MasterOutlineHorizontal,
+  master_l4: MasterOutlineHorizontal,
+  man_solo: ManOutlineHorizontal,
 };
 
 export function getClientColor(offerId: string): string {
@@ -114,7 +161,7 @@ export function getClientColor(offerId: string): string {
   return CLIENT_COLORS[hash % CLIENT_COLORS.length];
 }
 
-function truncateLabel(name: string, max = 6): string {
+function truncateLabel(name: string, max = 8): string {
   if (name.length <= max) {
     return name;
   }
@@ -124,20 +171,67 @@ function truncateLabel(name: string, max = 6): string {
 const DEFAULT_SLOT_WIDTH_CM = 80;
 const DEFAULT_SLOT_DEPTH_CM = 120;
 
-function slotFootprintPx(config: PayloadSlotConfig): { width: number; height: number } {
-  const widthCm = config.widthCm ?? DEFAULT_SLOT_WIDTH_CM;
-  const depthCm = config.depthCm ?? DEFAULT_SLOT_DEPTH_CM;
+function safeNumber(value: unknown, fallback: number): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+interface SlotBoundsCm {
+  xOff: number;
+  yOff: number;
+  widthCm: number;
+  depthCm: number;
+}
+
+/** Physical slot footprint — long 80×120 cm, trans 120×80 cm (matches EUR schematic). */
+function slotBoundsFromConfig(config: PayloadSlotConfig): SlotBoundsCm {
   return {
-    width: widthCm * SCALE,
-    height: depthCm * SCALE,
+    xOff: safeNumber(config.xOffsetCm, 0),
+    yOff: safeNumber(config.yOffsetCm, 0),
+    widthCm: safeNumber(config.widthCm, DEFAULT_SLOT_WIDTH_CM),
+    depthCm: safeNumber(config.depthCm, DEFAULT_SLOT_DEPTH_CM),
   };
 }
 
-function slotPosition(config: { xOffsetCm: number; yOffsetCm: number }) {
+/** Map DB offsets (x = lateral, y = along bed) to horizontal canvas coordinates. */
+function slotCanvasRect(
+  layout: CanvasLayout,
+  bounds: SlotBoundsCm,
+  insetPx = SLOT_STROKE_INSET_PX,
+): CanvasRect {
+  const rawW = bounds.depthCm * SCALE;
+  const rawH = bounds.widthCm * SCALE;
+  const inset = Math.min(insetPx, rawW / 4, rawH / 4);
+
   return {
-    x: TRAILER_PADDING + config.xOffsetCm * SCALE,
-    y: TRAILER_PADDING + config.yOffsetCm * SCALE,
+    x: layout.bedX + bounds.yOff * SCALE + inset,
+    y: layout.bedY + bounds.xOff * SCALE + inset,
+    width: rawW - inset * 2,
+    height: rawH - inset * 2,
   };
+}
+
+function slotSortKey(config: PayloadSlotConfig): number {
+  return config.yOffsetCm * 1000 + config.xOffsetCm;
+}
+
+function pct(value: number, total: number): string {
+  return `${(value / total) * 100}%`;
+}
+
+function isValidSlotConfig(config: unknown): config is PayloadSlotConfig {
+  if (!config || typeof config !== "object") return false;
+  const cfg = config as Record<string, unknown>;
+  const row = Number(cfg.row);
+  const col = Number(cfg.col);
+  const xOffsetCm = Number(cfg.xOffsetCm ?? cfg.x_offset_cm);
+  const yOffsetCm = Number(cfg.yOffsetCm ?? cfg.y_offset_cm);
+  return (
+    Number.isFinite(row) &&
+    Number.isFinite(col) &&
+    Number.isFinite(xOffsetCm) &&
+    Number.isFinite(yOffsetCm)
+  );
 }
 
 export function exportToPng(svgRef: RefObject<SVGSVGElement | null>): void {
@@ -200,13 +294,23 @@ export function TrailerCanvas({
   const svgRef = useRef<SVGSVGElement>(null);
   const clientSummary = useClientSummary();
 
-  const bedWidthPx = vehicle.trailerWidthCm * SCALE + 2 * TRAILER_PADDING;
-  const bedHeightPx = vehicle.trailerLengthCm * SCALE + 2 * TRAILER_PADDING;
+  const layout = useMemo(() => buildCanvasLayout(vehicle), [vehicle]);
+  const { canvasW, canvasH, bedX, bedY, bedW, bedH } = layout;
   const Outline = VEHICLE_OUTLINES[vehicle.type];
+
+  const validSlotEntries = useMemo(
+    () =>
+      Object.entries(vehicle.payloadSlots)
+        .filter(
+          (entry): entry is [string, PayloadSlotConfig] => isValidSlotConfig(entry[1]),
+        )
+        .sort(([, a], [, b]) => slotSortKey(a) - slotSortKey(b)),
+    [vehicle.payloadSlots],
+  );
 
   const slotTitles = useMemo(() => {
     const titles: Record<string, string> = {};
-    for (const [slotId, config] of Object.entries(vehicle.payloadSlots)) {
+    for (const [slotId] of validSlotEntries) {
       const pallet = slots[slotId] ?? null;
       if (pallet) {
         titles[slotId] =
@@ -216,7 +320,7 @@ export function TrailerCanvas({
       }
     }
     return titles;
-  }, [vehicle.payloadSlots, slots]);
+  }, [validSlotEntries, slots]);
 
   const handleExportPng = useCallback(() => {
     exportToPng(svgRef);
@@ -226,40 +330,41 @@ export function TrailerCanvas({
     <div className="trailer-canvas-root">
       <div
         className="trailer-svg-wrap"
-        style={{ width: bedWidthPx, maxWidth: "100%" }}
+        style={{
+          ["--trailer-canvas-width" as string]: `${canvasW}px`,
+          ["--trailer-canvas-height" as string]: `${canvasH}px`,
+        }}
       >
         <svg
           ref={svgRef}
           className="trailer-canvas__svg"
-          viewBox={`0 0 ${bedWidthPx} ${bedHeightPx}`}
-          width={bedWidthPx}
-          height={bedHeightPx}
+          viewBox={`0 0 ${canvasW} ${canvasH}`}
+          width="100%"
           preserveAspectRatio="xMidYMid meet"
           role="img"
           aria-label={`Plan załadunku ${vehicle.name}`}
         >
           <g className="trailer-outline">
-            <Outline width={bedWidthPx} height={bedHeightPx} />
+            <Outline {...layout} />
           </g>
 
           <rect
-            x={TRAILER_PADDING}
-            y={TRAILER_PADDING}
-            width={vehicle.trailerWidthCm * SCALE}
-            height={vehicle.trailerLengthCm * SCALE}
+            x={bedX}
+            y={bedY}
+            width={bedW}
+            height={bedH}
             fill="var(--color-trailer-bed)"
             opacity={0.1}
             rx={2}
           />
 
           <g className="trailer-slots">
-            {Object.entries(vehicle.payloadSlots).map(([slotId, config]) => {
-              const { x, y } = slotPosition(config);
+            {validSlotEntries.map(([slotId, config]) => {
+              const bounds = slotBoundsFromConfig(config);
+              const rect = slotCanvasRect(layout, bounds);
               const pallet = slots[slotId] ?? null;
               const isConflict = conflictSlotIds.has(slotId);
               const title = slotTitles[slotId] ?? `Slot ${slotId}`;
-
-              const footprint = slotFootprintPx(config);
 
               if (!pallet) {
                 return (
@@ -267,21 +372,20 @@ export function TrailerCanvas({
                     key={slotId}
                     slotId={slotId}
                     title={title}
-                    x={x}
-                    y={y}
-                    width={footprint.width}
-                    height={footprint.height}
+                    x={rect.x}
+                    y={rect.y}
+                    width={rect.width}
+                    height={rect.height}
                     fill="var(--color-surface-raised)"
                     stroke="var(--color-border)"
                     strokeWidth={1}
                     strokeDasharray="4 2"
-                    rx={2}
+                    rx={3}
                   />
                 );
               }
 
-              const { width: rectW, height: rectH } = footprint;
-              const fill = getClientColor(pallet.offerId);
+              const fill = pallet.clientColor || getClientColor(pallet.offerId);
               const conflictClass = isConflict
                 ? "trailer-slot--conflict-pulse"
                 : undefined;
@@ -291,67 +395,49 @@ export function TrailerCanvas({
                   <SlotSvgRect
                     slotId={slotId}
                     title={title}
-                    x={x}
-                    y={y}
-                    width={rectW}
-                    height={rectH}
+                    x={rect.x}
+                    y={rect.y}
+                    width={rect.width}
+                    height={rect.height}
                     fill={fill}
-                    opacity={0.85}
-                    stroke={
-                      isConflict ? "var(--color-warning)" : "none"
-                    }
-                    strokeWidth={isConflict ? 2 : 0}
-                    strokeDasharray={
-                      !pallet.stackable ? "3 2" : undefined
-                    }
-                    rx={2}
+                    fillOpacity={OCCUPIED_FILL_OPACITY}
+                    stroke={isConflict ? "var(--color-warning)" : "var(--color-border-strong)"}
+                    strokeWidth={isConflict ? 2 : 1}
+                    strokeDasharray={!pallet.stackable ? "3 2" : undefined}
+                    rx={3}
                     className={conflictClass}
                   />
                   <text
-                    x={x + rectW / 2}
-                    y={y + rectH / 2}
+                    x={rect.x + rect.width / 2}
+                    y={rect.y + rect.height / 2}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill="#fff"
-                    fontSize={10}
+                    fill="var(--color-text-primary)"
+                    fontSize={Math.min(13, rect.width * 0.2, rect.height * 0.35)}
                     fontWeight={600}
                     pointerEvents="none"
                   >
                     {truncateLabel(pallet.clientName)}
                   </text>
-                  {!pallet.stackable ? (
-                    <text
-                      x={x + 2}
-                      y={y + 8}
-                      fill="var(--color-warning)"
-                      fontSize={7}
-                      fontWeight={600}
-                      pointerEvents="none"
-                    >
-                      NONSTD
-                    </text>
-                  ) : null}
                 </g>
               );
             })}
           </g>
         </svg>
 
-        <div
-          className="trailer-canvas trailer-dnd-overlay"
-          style={{ width: bedWidthPx, height: bedHeightPx }}
-        >
-          {Object.entries(vehicle.payloadSlots).map(([slotId, config]) => {
-            const { x, y } = slotPosition(config);
-            const left = x;
-            const top = y;
+        <div className="trailer-canvas trailer-dnd-overlay">
+          {validSlotEntries.map(([slotId, config]) => {
+            const rect = slotCanvasRect(layout, slotBoundsFromConfig(config), 0);
             const pallet = slots[slotId] ?? null;
             const isConflict = conflictSlotIds.has(slotId);
             const menuProps = bindSlotMenu(slotId);
 
-            const footprint = slotFootprintPx(config);
-            const hitW = footprint.width;
-            const hitH = footprint.height;
+            const boxStyle = {
+              left: pct(rect.x, canvasW),
+              top: pct(rect.y, canvasH),
+              width: pct(rect.width, canvasW),
+              height: pct(rect.height, canvasH),
+            };
 
             if (pallet) {
               return (
@@ -359,10 +445,7 @@ export function TrailerCanvas({
                   key={slotId}
                   slotId={slotId}
                   pallet={pallet}
-                  left={left}
-                  top={top}
-                  width={hitW}
-                  height={hitH}
+                  boxStyle={boxStyle}
                   isConflict={isConflict}
                   isShaking={shakingSlotIds.has(slotId)}
                   menuProps={menuProps}
@@ -374,10 +457,7 @@ export function TrailerCanvas({
               <DroppableSlot
                 key={slotId}
                 slotId={slotId}
-                left={left}
-                top={top}
-                width={hitW}
-                height={hitH}
+                boxStyle={boxStyle}
                 isOver={activeSlotId === slotId}
                 isConflict={isConflict}
                 menuProps={menuProps}

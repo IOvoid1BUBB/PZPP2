@@ -9,6 +9,7 @@ import {
 } from "zustand/middleware";
 import { useShallow } from "zustand/shallow";
 
+import { detectDimensionViolations, detectStackingViolations, normalizePayloadSlots } from "@/lib/load/capacity";
 import type { PalletData, SlotConflict, VehicleConfig } from "@/lib/types/load";
 
 export type { PalletData, SlotConflict, VehicleConfig } from "@/lib/types/load";
@@ -109,6 +110,7 @@ function normalizeVehicle(vehicle: VehicleConfig): VehicleConfig {
 
   return {
     ...vehicle,
+    payloadSlots: normalizePayloadSlots(vehicle.payloadSlots),
     deliveryTime: deliveryTime ?? vehicle.deliveryTime ?? null,
   };
 }
@@ -211,42 +213,10 @@ function buildConflicts(
   vehicle: VehicleConfig | null,
 ): SlotConflict[] {
   const conflicts: SlotConflict[] = [];
-  const orderedSlots = getOrderedSlots(vehicle, slots);
-  const columns = new Map<number, SlotMeta[]>();
 
-  for (const slot of orderedSlots) {
-    const existing = columns.get(slot.col);
-    if (existing) {
-      existing.push(slot);
-      continue;
-    }
-
-    columns.set(slot.col, [slot]);
-  }
-
-  for (const columnSlots of columns.values()) {
-    const occupied = columnSlots
-      .filter((slot) => isPallet(slots[slot.id]))
-      .sort((a, b) => a.row - b.row);
-
-    for (let index = 0; index < occupied.length; index += 1) {
-      const currentSlot = occupied[index];
-      const currentPallet = slots[currentSlot.id];
-      if (!currentPallet || currentPallet.stackable) {
-        continue;
-      }
-
-      const stackedAbove = occupied.slice(index + 1).map((slot) => slot.id);
-      if (stackedAbove.length === 0) {
-        continue;
-      }
-
-      conflicts.push({
-        type: "stacking_violation",
-        affectedSlotIds: [currentSlot.id, ...stackedAbove],
-        message: `Pallet in ${currentSlot.id} cannot have cargo stacked above it.`,
-      });
-    }
+  if (vehicle) {
+    conflicts.push(...detectStackingViolations(slots, vehicle.payloadSlots));
+    conflicts.push(...detectDimensionViolations(slots, vehicle.payloadSlots));
   }
 
   const totalWeight = sumUsedWeight(slots);
