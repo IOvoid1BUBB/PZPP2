@@ -89,7 +89,7 @@ describe("useLoadStore", () => {
     expect(useLoadStore.getState().slots).toEqual(originalSlots);
   });
 
-  it("reports stacking violation when cargo sits above non-stackable pallet", () => {
+  it("does not report stacking violation for sequential slots in the same lane", () => {
     const vehicle = makeVehicle();
     const { result } = renderHook(() => useConflicts());
 
@@ -106,11 +106,52 @@ describe("useLoadStore", () => {
       });
     });
 
+    expect(result.current.some((conflict) => conflict.type === "stacking_violation")).toBe(
+      false,
+    );
+  });
+
+  it("reports stacking violation when footprints overlap", () => {
+    const vehicle = makeVehicle({
+      payloadSlots: {
+        base: {
+          row: 0,
+          col: 0,
+          ldmPerSlot: 1,
+          xOffsetCm: 0,
+          yOffsetCm: 0,
+          widthCm: 80,
+          depthCm: 120,
+        },
+        top: {
+          row: 0,
+          col: 0,
+          ldmPerSlot: 1,
+          xOffsetCm: 0,
+          yOffsetCm: 0,
+          widthCm: 80,
+          depthCm: 120,
+        },
+      },
+    });
+    const { result } = renderHook(() => useConflicts());
+
+    act(() => {
+      useLoadStore.getState().setLayout({
+        vehicle,
+        sessionId: "session-overlap",
+        slots: {
+          base: makePallet("bottom", { stackable: false }),
+          top: makePallet("upper"),
+        },
+      });
+    });
+
     expect(result.current).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: "stacking_violation",
-          affectedSlotIds: ["r0_c0", "r1_c0"],
+          affectedSlotIds: expect.arrayContaining(["base", "top"]),
         }),
       ]),
     );
