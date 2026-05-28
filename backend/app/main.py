@@ -41,6 +41,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialize on startup, release external clients on shutdown."""
     settings = get_settings()
     configure_logging(settings.LOG_LEVEL)
+    from app.services.toll_calculator import load_country_geometries
+
+    load_country_geometries()
     _logger.info("application_startup", extra={"app": settings.APP_NAME})
     try:
         yield
