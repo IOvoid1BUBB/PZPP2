@@ -31,6 +31,7 @@ services:
     volumes:
       - ./backend/app:/app/app
       - ./backend/tests:/app/tests
+      - ./backend/data:/app/data
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://loadmax:loadmax@db:5432/loadmax}
