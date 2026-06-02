@@ -24,6 +24,8 @@ import { useCallback, useMemo, useState, type CSSProperties } from "react";
 
 import { OfferSidebar } from "@/components/planner/OfferSidebar";
 
+import { DriverHoursWarning } from "@/components/planner/DriverHoursWarning";
+
 import { ProfitWaterfall } from "@/components/planner/ProfitWaterfall";
 
 import { ContextMenu, useContextMenuTrigger } from "@/components/planner/ContextMenu";
@@ -493,6 +495,8 @@ export function SlotEditor() {
 
 
         <div className="planning-lab__main">
+
+          <DriverHoursWarning />
 
           <VehicleHeader
 
