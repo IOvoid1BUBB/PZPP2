@@ -116,7 +116,7 @@ function TrailerThumbnail({ lengthCm, widthCm }: TrailerThumbnailProps) {
         style={
           {
             "--trailer-ratio": ratio,
-            background: "var(--color-trailer-bed)",
+            background: "var(--ui-trailer-bed)",
           } as CSSProperties
         }
         aria-hidden="true"

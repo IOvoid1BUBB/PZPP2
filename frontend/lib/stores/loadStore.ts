@@ -9,7 +9,12 @@ import {
 } from "zustand/middleware";
 import { useShallow } from "zustand/shallow";
 
-import { detectDimensionViolations, detectStackingViolations, normalizePayloadSlots } from "@/lib/load/capacity";
+import { getCompanyColorPair } from "@/lib/colors/companyColors";
+import {
+  detectDimensionViolations,
+  detectStackingViolations,
+  normalizePayloadSlots,
+} from "@/lib/load/capacity";
 import type { PalletData, SlotConflict, VehicleConfig } from "@/lib/types/load";
 
 export type { PalletData, SlotConflict, VehicleConfig } from "@/lib/types/load";
@@ -46,20 +51,6 @@ interface ClientSummary {
 }
 
 const SLOT_ID_PATTERN = /^r(?<row>\d+)_c(?<col>\d+)$/;
-const CLIENT_SUMMARY_PALETTE = [
-  "#2563eb",
-  "#7c3aed",
-  "#0891b2",
-  "#16a34a",
-  "#ca8a04",
-  "#ea580c",
-  "#dc2626",
-  "#db2777",
-  "#4f46e5",
-  "#0f766e",
-  "#65a30d",
-  "#9333ea",
-] as const;
 
 const noopStorage: StateStorage = {
   getItem: () => null,
@@ -192,22 +183,6 @@ function sumUsedWeight(slots: Record<string, PalletData | null>): number {
   );
 }
 
-function selectUniqueColor(preferred: string, usedColors: Set<string>): string {
-  if (preferred && !usedColors.has(preferred)) {
-    usedColors.add(preferred);
-    return preferred;
-  }
-
-  const fallback = CLIENT_SUMMARY_PALETTE.find((color) => !usedColors.has(color));
-  if (fallback) {
-    usedColors.add(fallback);
-    return fallback;
-  }
-
-  usedColors.add(preferred);
-  return preferred;
-}
-
 function buildConflicts(
   slots: Record<string, PalletData | null>,
   vehicle: VehicleConfig | null,
@@ -332,8 +307,12 @@ export const useLoadStore = create<LoadStore>()(
 
           const maxRows = getMaxRows(state.vehicle, orderedSlots);
           const heavyRowStart = Math.floor(maxRows / 2);
-          const lowerRows = orderedSlots.filter((slot) => slot.row >= heavyRowStart);
-          const upperRows = orderedSlots.filter((slot) => slot.row < heavyRowStart);
+          const lowerRows = orderedSlots.filter(
+            (slot) => slot.row >= heavyRowStart,
+          );
+          const upperRows = orderedSlots.filter(
+            (slot) => slot.row < heavyRowStart,
+          );
           const sortedPallets = Object.values(state.slots)
             .filter(isPallet)
             .map(normalizePallet)
@@ -406,21 +385,26 @@ export const useLoadStore = create<LoadStore>()(
 );
 
 export const useUsedLdm = (): number => {
-  const { slots } = useLoadStore(useShallow((state) => ({ slots: state.slots })));
+  const { slots } = useLoadStore(
+    useShallow((state) => ({ slots: state.slots })),
+  );
   return useMemo(() => sumUsedLdm(slots), [slots]);
 };
 
 export const useUsedWeight = (): number => {
-  const { slots } = useLoadStore(useShallow((state) => ({ slots: state.slots })));
+  const { slots } = useLoadStore(
+    useShallow((state) => ({ slots: state.slots })),
+  );
   return useMemo(() => sumUsedWeight(slots), [slots]);
 };
 
 export const useClientSummary = (): ClientSummary[] => {
-  const { slots } = useLoadStore(useShallow((state) => ({ slots: state.slots })));
+  const { slots } = useLoadStore(
+    useShallow((state) => ({ slots: state.slots })),
+  );
 
   return useMemo(() => {
     const clients = new Map<string, ClientSummary>();
-    const usedColors = new Set<string>();
 
     for (const pallet of Object.values(slots)) {
       if (!pallet) {
@@ -441,7 +425,7 @@ export const useClientSummary = (): ClientSummary[] => {
       clients.set(pallet.clientId, {
         offerId: pallet.offerId,
         name: pallet.clientName,
-        color: selectUniqueColor(pallet.clientColor, usedColors),
+        color: getCompanyColorPair(pallet.clientId || pallet.offerId).intense,
         ldm: pallet.ldm,
         weight: pallet.weightKg,
       });
@@ -461,4 +445,3 @@ export const useConflicts = (): SlotConflict[] => {
 
   return useMemo(() => buildConflicts(slots, vehicle), [slots, vehicle]);
 };
-

@@ -37,7 +37,7 @@ exports[`VehicleSelector — snapshots > karta man_solo jest zaznaczona — snap
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 1.9090909090909092; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 1.9090909090909092; background: var(--ui-trailer-bed);"
           />
         </div>
         <dl
@@ -102,7 +102,7 @@ exports[`VehicleSelector — snapshots > karta man_solo jest zaznaczona — snap
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 2; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 2; background: var(--ui-trailer-bed);"
           />
         </div>
         <dl
@@ -167,7 +167,7 @@ exports[`VehicleSelector — snapshots > karta man_solo jest zaznaczona — snap
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 2.2; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 2.2; background: var(--ui-trailer-bed);"
           />
         </div>
         <dl
@@ -232,7 +232,7 @@ exports[`VehicleSelector — snapshots > karta man_solo jest zaznaczona — snap
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 3.63265306122449; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 3.63265306122449; background: var(--ui-trailer-bed);"
           />
         </div>
         <dl
@@ -318,7 +318,7 @@ exports[`VehicleSelector — snapshots > karta master_l2 jest zaznaczona — sna
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 1.9090909090909092; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 1.9090909090909092; background: var(--ui-trailer-bed);"
           />
         </div>
         <dl
@@ -383,7 +383,7 @@ exports[`VehicleSelector — snapshots > karta master_l2 jest zaznaczona — sna
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 2; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 2; background: var(--ui-trailer-bed);"
           />
         </div>
         <dl
@@ -448,7 +448,7 @@ exports[`VehicleSelector — snapshots > karta master_l2 jest zaznaczona — sna
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 2.2; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 2.2; background: var(--ui-trailer-bed);"
           />
         </div>
         <dl
@@ -513,7 +513,7 @@ exports[`VehicleSelector — snapshots > karta master_l2 jest zaznaczona — sna
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 3.63265306122449; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 3.63265306122449; background: var(--ui-trailer-bed);"
           />
         </div>
         <dl
@@ -599,7 +599,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 1.9090909090909092; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 1.9090909090909092; background: var(--ui-trailer-bed);"
           />
         </div>
         <dl
@@ -664,7 +664,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 2; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 2; background: var(--ui-trailer-bed);"
           />
         </div>
         <dl
@@ -729,7 +729,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 2.2; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 2.2; background: var(--ui-trailer-bed);"
           />
         </div>
         <dl
@@ -794,7 +794,7 @@ exports[`VehicleSelector — snapshots > renderuje 4 karty w domyślnym stanie 1
           <div
             aria-hidden="true"
             class="vehicle-selector__thumb"
-            style="--trailer-ratio: 3.63265306122449; background: var(--color-trailer-bed);"
+            style="--trailer-ratio: 3.63265306122449; background: var(--ui-trailer-bed);"
           />
         </div>
         <dl

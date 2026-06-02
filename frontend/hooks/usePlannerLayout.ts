@@ -10,7 +10,10 @@ import {
   saveDemoLayout,
   type PlannerLayoutState,
 } from "@/lib/api/plannerClient";
-import { getConflictSlotIds, payloadSlotsGeometryStale } from "@/lib/load/capacity";
+import {
+  getConflictSlotIds,
+  payloadSlotsGeometryStale,
+} from "@/lib/load/capacity";
 import type { PalletData } from "@/lib/types/load";
 import { useConflicts, useLoadStore } from "@/lib/stores/loadStore";
 
@@ -25,9 +28,14 @@ interface UsePlannerLayoutResult {
   reload: () => Promise<void>;
   loadDemoFor: (vehicleType: string) => Promise<void>;
   persistSlots: (slots: Record<string, PalletData | null>) => Promise<boolean>;
-  movePallet: (fromSlot: string, toSlot: string) => Promise<{ ok: boolean; message?: string }>;
+  movePallet: (
+    fromSlot: string,
+    toSlot: string,
+  ) => Promise<{ ok: boolean; message?: string }>;
   removePallet: (slotId: string) => Promise<void>;
-  moveToFirstFree: (slotId: string) => Promise<{ ok: boolean; message?: string }>;
+  moveToFirstFree: (
+    slotId: string,
+  ) => Promise<{ ok: boolean; message?: string }>;
 }
 
 export function usePlannerLayout(): UsePlannerLayoutResult {
@@ -80,7 +88,9 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
 
       applyLayout(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nie udało się wczytać layoutu.");
+      setError(
+        err instanceof Error ? err.message : "Nie udało się wczytać layoutu.",
+      );
     } finally {
       setLoading(false);
     }
@@ -94,7 +104,11 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
         const next = await resetDemoLayout(vehicleType);
         applyLayout(next);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Nie udało się wczytać layoutu pojazdu.");
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Nie udało się wczytać layoutu pojazdu.",
+        );
       } finally {
         setLoading(false);
       }
@@ -104,7 +118,9 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
 
   useEffect(() => {
     if (!hasLayout) {
-      void reload();
+      queueMicrotask(() => {
+        void reload();
+      });
       return;
     }
 
@@ -149,7 +165,9 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
         applyLayout(next);
         return true;
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Nie udało się zapisać layoutu.");
+        setError(
+          err instanceof Error ? err.message : "Nie udało się zapisać layoutu.",
+        );
         return false;
       }
     },
@@ -160,12 +178,18 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
     async (fromSlot: string, toSlot: string) => {
       setError(null);
       try {
-        const result = await moveDemoPallet(fromSlot, toSlot, currentVehicleType());
+        const result = await moveDemoPallet(
+          fromSlot,
+          toSlot,
+          currentVehicleType(),
+        );
         applyLayout(result.layout);
         return { ok: result.ok, message: result.message };
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "Nie udało się przenieść ładunku.";
+          err instanceof Error
+            ? err.message
+            : "Nie udało się przenieść ładunku.";
         setError(message);
         return { ok: false, message };
       }
@@ -180,7 +204,9 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
         const next = await removeDemoSlot(slotId, currentVehicleType());
         applyLayout(next);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Nie udało się usunąć ładunku.");
+        setError(
+          err instanceof Error ? err.message : "Nie udało się usunąć ładunku.",
+        );
       }
     },
     [applyLayout, currentVehicleType],
@@ -195,7 +221,9 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
         return { ok: result.ok, message: result.message };
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "Nie udało się przenieść do wolnego slotu.";
+          err instanceof Error
+            ? err.message
+            : "Nie udało się przenieść do wolnego slotu.";
         setError(message);
         return { ok: false, message };
       }
