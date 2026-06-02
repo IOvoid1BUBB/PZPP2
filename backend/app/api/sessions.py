@@ -17,6 +17,7 @@ from app.schemas.session import (
     SessionRead,
     SessionStatusUpdate,
 )
+from app.services.driver_compliance import ComplianceResult, DriverComplianceService
 from app.services.market_offers import bulk_insert_offers
 from app.services.market_simulator import generate_batch
 from app.services.offer_scorer import OfferScorerService
@@ -83,6 +84,20 @@ async def get_session(
 ) -> SessionFullResponse:
     service = _service(db, osrm)
     return await service.get_full(session_id)
+
+
+@router.get(
+    "/{id}/driver-compliance",
+    response_model=ComplianceResult,
+    summary="Check planned route against EU 561/2006 driver rules",
+)
+async def get_driver_compliance(
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+    osrm: OSRMClient = Depends(get_osrm_client),
+) -> ComplianceResult:
+    service = DriverComplianceService(db, osrm=osrm)
+    return await service.evaluate_session(id)
 
 
 @router.post(
