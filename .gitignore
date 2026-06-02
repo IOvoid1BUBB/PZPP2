@@ -36,3 +36,9 @@ Thumbs.db
 # Frontend (Next.js)
 frontend/node_modules/
 frontend/.next/
+
+# Pliki OSRM (lokalne dane map)
+*.osrm*
+*.pbf
+
+*docker-compose.override.yml

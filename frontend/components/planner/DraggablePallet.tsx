@@ -2,12 +2,15 @@ import { CSS } from "@dnd-kit/utilities";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 
+import { getCompanyColorPair } from "@/lib/colors/companyColors";
 import type { PalletData } from "@/lib/types/load";
 
 type PointerHandler = (event: ReactPointerEvent<HTMLDivElement>) => void;
 
 function asPointerHandler(handler: unknown): PointerHandler | undefined {
-  return typeof handler === "function" ? (handler as PointerHandler) : undefined;
+  return typeof handler === "function"
+    ? (handler as PointerHandler)
+    : undefined;
 }
 
 function chainPointerHandlers(...handlers: Array<PointerHandler | undefined>) {
@@ -35,10 +38,13 @@ export function DraggablePallet({
   isShaking,
   menuProps,
 }: DraggablePalletProps) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: slotId,
-    data: { slotId, pallet },
-  });
+  const companyColors = getCompanyColorPair(pallet.clientId || pallet.offerId);
+
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({
+      id: slotId,
+      data: { slotId, pallet },
+    });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: slotId,
@@ -62,7 +68,8 @@ export function DraggablePallet({
     ...boxStyle,
     transform: transform ? CSS.Translate.toString(transform) : undefined,
     zIndex: isDragging ? 20 : 2,
-    ["--pallet-color" as string]: pallet.clientColor,
+    ["--pallet-intense" as string]: companyColors.intense,
+    ["--pallet-muted" as string]: companyColors.muted,
     touchAction: "none",
   };
 
