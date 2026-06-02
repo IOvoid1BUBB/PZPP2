@@ -7,9 +7,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.lib.osrm import OSRMClient, get_osrm_client
 from app.schemas.offer import RankedOffersResponse, SimulateOffersResponse
+from app.schemas.profit import SessionProfitBreakdown
 from app.schemas.session import (
     SessionCreate,
     SessionCreatedResponse,
@@ -17,9 +19,11 @@ from app.schemas.session import (
     SessionRead,
     SessionStatusUpdate,
 )
+from app.services.driver_compliance import ComplianceResult, DriverComplianceService
 from app.services.market_offers import bulk_insert_offers
 from app.services.market_simulator import generate_batch
 from app.services.offer_scorer import OfferScorerService
+from app.services.profit_calculator import SessionProfitCalculator
 from app.services.sessions import SessionService
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -83,6 +87,20 @@ async def get_session(
 ) -> SessionFullResponse:
     service = _service(db, osrm)
     return await service.get_full(session_id)
+
+
+@router.get(
+    "/{id}/driver-compliance",
+    response_model=ComplianceResult,
+    summary="Check planned route against EU 561/2006 driver rules",
+)
+async def get_driver_compliance(
+    id: UUID,
+    db: AsyncSession = Depends(get_db),
+    osrm: OSRMClient = Depends(get_osrm_client),
+) -> ComplianceResult:
+    service = DriverComplianceService(db, osrm=osrm)
+    return await service.evaluate_session(id)
 
 
 @router.post(
@@ -149,6 +167,23 @@ async def delete_session(
     service = SessionService(db)
     await service.delete(session_id)
     await db.commit()
+
+
+@router.post(
+    "/{session_id}/profit",
+    response_model=SessionProfitBreakdown,
+    summary="Compute 5-category cost breakdown and net profit for a session",
+)
+async def calculate_session_profit(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    osrm: OSRMClient = Depends(get_osrm_client),
+    settings: Settings = Depends(get_settings),
+) -> SessionProfitBreakdown:
+    calc = SessionProfitCalculator(db, osrm=osrm, settings=settings)
+    breakdown = await calc.calculate_session_profit(session_id)
+    await db.commit()
+    return breakdown
 
 
 @router.post(
