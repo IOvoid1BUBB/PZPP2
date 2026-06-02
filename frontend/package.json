@@ -7,6 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -32,6 +34,8 @@
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.5.1",
+    "eslint": "^9.31.0",
+    "eslint-config-next": "^16.2.6",
     "jsdom": "^26.1.0",
     "tailwindcss": "^4.1.8",
     "typescript": "^6.0.3",

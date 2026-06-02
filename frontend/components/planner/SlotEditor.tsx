@@ -351,10 +351,10 @@ export function SlotEditor() {
 
   return (
     <section className="slot-editor">
-      <div className="planning-lab__layout">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
         <OfferSidebar slots={slots} />
 
-        <div className="planning-lab__main">
+        <div className="flex min-w-0 flex-col gap-5">
           <VehicleHeader
             name={displayVehicleName}
             driverName="Jan Kowalski"

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { ToastProvider, ToastViewport } from "@/components/ui/Toast";
 
 const NAV_ITEMS = [
@@ -26,6 +27,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <div className="mx-auto grid min-h-screen max-w-[1600px] grid-cols-1 md:grid-cols-[240px_1fr]">
           <aside className="border-b border-[var(--ui-border)] bg-[var(--ui-nav)] p-4 md:border-b-0 md:border-r">
             <div className="mb-6 text-lg font-semibold">Loadmax AI</div>
+            <div className="mb-6">
+              <ThemeToggle />
+            </div>
             <nav className="grid gap-2" aria-label="Dashboard navigation">
               {NAV_ITEMS.map((item) => {
                 const active = pathname === item.href;
