@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { useClientHydrated } from "@/hooks/useClientHydrated";
+
 type ThemeMode = "light" | "dark";
 
 const THEME_STORAGE_KEY = "theme";
@@ -10,11 +12,7 @@ function applyTheme(theme: ThemeMode) {
   document.documentElement.classList.toggle("dark", theme === "dark");
 }
 
-function detectInitialTheme(): ThemeMode {
-  if (typeof window === "undefined") {
-    return "light";
-  }
-
+function detectStoredTheme(): ThemeMode {
   const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
   if (saved === "dark" || saved === "light") {
     return saved;
@@ -24,14 +22,27 @@ function detectInitialTheme(): ThemeMode {
 }
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<ThemeMode>(() => detectInitialTheme());
+  const hydrated = useClientHydrated();
+  const [theme, setTheme] = useState<ThemeMode>("light");
 
   useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+    const stored = detectStoredTheme();
+    setTheme(stored);
+    applyTheme(stored);
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
     applyTheme(theme);
-  }, [theme]);
+  }, [theme, hydrated]);
 
   const nextTheme: ThemeMode = theme === "dark" ? "light" : "dark";
-  const isDark = theme === "dark";
+  const isDark = hydrated && theme === "dark";
 
   return (
     <button
