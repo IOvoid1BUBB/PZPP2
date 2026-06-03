@@ -11,11 +11,13 @@ import {
 
 import { useCallback, useMemo, useState, type CSSProperties } from "react";
 
+import { useClientHydrated } from "@/hooks/useClientHydrated";
+
 import { OfferSidebar } from "@/components/planner/OfferSidebar";
 
 import { DriverHoursWarning } from "@/components/planner/DriverHoursWarning";
 
-import { ProfitWaterfall } from "@/components/planner/ProfitWaterfall";
+import { ProfitWaterfall } from "@/components/analytics/ProfitWaterfall";
 
 import {
   ContextMenu,
@@ -102,6 +104,7 @@ function PalletDetails({ pallet }: { pallet: PalletData }) {
 }
 
 export function SlotEditor() {
+  const hydrated = useClientHydrated();
   const {
     loading,
 
@@ -308,7 +311,7 @@ export function SlotEditor() {
     }
   };
 
-  if (loading) {
+  if (!hydrated || loading) {
     return <p className="planner-empty">Wczytywanie layoutu…</p>;
   }
 

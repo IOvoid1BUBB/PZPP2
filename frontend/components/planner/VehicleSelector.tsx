@@ -26,6 +26,7 @@ import {
 
 import { resetDemoLayout } from "@/lib/api/plannerClient";
 import { fetchVehicles, createSession } from "@/lib/api/sessionClient";
+import { useClientHydrated } from "@/hooks/useClientHydrated";
 import type { VehicleConfig } from "@/lib/types/load";
 import { useVehicleStore } from "@/lib/stores/vehicleStore";
 import { useLoadStore } from "@/lib/stores/loadStore";
@@ -128,6 +129,7 @@ function TrailerThumbnail({ lengthCm, widthCm }: TrailerThumbnailProps) {
 // ─── Main component ──────────────────────────────────────────────────────────
 
 export function VehicleSelector() {
+  const hydrated = useClientHydrated();
   const { selectedVehicle, selectVehicle } = useVehicleStore();
   const { clearAllSlots, setLayout } = useLoadStore();
   const { setSessionId } = useSessionStore();
@@ -264,7 +266,8 @@ export function VehicleSelector() {
         className="vehicle-selector__grid"
       >
         {VEHICLE_CONFIGS.map((config, index) => {
-          const isSelected = selectedVehicle?.type === config.type;
+          const isSelected =
+            hydrated && selectedVehicle?.type === config.type;
           const isDisabled = loading;
 
           return (
