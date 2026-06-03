@@ -6,13 +6,21 @@ import type { ReactNode } from "react";
 
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { ToastProvider, ToastViewport } from "@/components/ui/Toast";
+import { useHydratedSessionId } from "@/hooks/useHydratedSessionId";
 
-const NAV_ITEMS = [
-  { href: "/planner", label: "Planner" },
-  { href: "/analytics", label: "Analytics" },
-  { href: "/sessions/demo-session", label: "Session" },
-  { href: "/sessions/demo-session/map", label: "Route Map" },
-];
+function useNavItems() {
+  const sessionId = useHydratedSessionId();
+  const sessionPath = sessionId
+    ? `/sessions/${sessionId}`
+    : "/sessions/demo-session";
+
+  return [
+    { href: "/planner", label: "Planner" },
+    { href: "/analytics", label: "Analytics" },
+    { href: sessionPath, label: "Sesja" },
+    { href: `${sessionPath}/map`, label: "Mapa trasy" },
+  ];
+}
 
 function classes(...items: Array<string | false>) {
   return items.filter(Boolean).join(" ");
@@ -20,6 +28,7 @@ function classes(...items: Array<string | false>) {
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const navItems = useNavItems();
 
   return (
     <ToastProvider>
@@ -31,7 +40,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <ThemeToggle />
             </div>
             <nav className="grid gap-2" aria-label="Dashboard navigation">
-              {NAV_ITEMS.map((item) => {
+              {navItems.map((item) => {
                 const active = pathname === item.href;
                 return (
                   <Link

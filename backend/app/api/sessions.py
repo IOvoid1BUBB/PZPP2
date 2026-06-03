@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.lib.osrm import OSRMClient, get_osrm_client
 from app.schemas.offer import RankedOffersResponse, SimulateOffersResponse
 from app.schemas.profit import SessionProfitBreakdown
+from app.schemas.route_map import RouteMapResponse
 from app.schemas.session import (
     SessionCreate,
     SessionCreatedResponse,
@@ -24,6 +25,7 @@ from app.services.market_offers import bulk_insert_offers
 from app.services.market_simulator import generate_batch
 from app.services.offer_scorer import OfferScorerService
 from app.services.profit_calculator import SessionProfitCalculator
+from app.services.route_map import RouteMapService
 from app.services.sessions import SessionService
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -167,6 +169,20 @@ async def delete_session(
     service = SessionService(db)
     await service.delete(session_id)
     await db.commit()
+
+
+@router.get(
+    "/{session_id}/route-map",
+    response_model=RouteMapResponse,
+    summary="Route geometry per leg with load weights for heat-map visualization",
+)
+async def get_session_route_map(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    osrm: OSRMClient = Depends(get_osrm_client),
+) -> RouteMapResponse:
+    service = RouteMapService(db, osrm=osrm)
+    return await service.get_route_map(session_id)
 
 
 @router.post(

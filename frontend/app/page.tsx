@@ -1,13 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { PlanningLabPage } from "@/components/planner/PlanningLabPage";
-import { ToastProvider, ToastViewport } from "@/components/ui/Toast";
-
-export default function Page() {
-  return (
-    <ToastProvider>
-      <PlanningLabPage />
-      <ToastViewport />
-    </ToastProvider>
-  );
+/** Główny entrypoint — planner ma boczne menu z linkiem do mapy trasy. */
+export default function HomePage() {
+  redirect("/planner");
 }
