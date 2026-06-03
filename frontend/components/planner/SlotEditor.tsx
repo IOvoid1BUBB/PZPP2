@@ -15,8 +15,6 @@ import { useClientHydrated } from "@/hooks/useClientHydrated";
 
 import { OfferSidebar } from "@/components/planner/OfferSidebar";
 
-import { DriverHoursWarning } from "@/components/planner/DriverHoursWarning";
-
 import { ProfitWaterfall } from "@/components/analytics/ProfitWaterfall";
 
 import {
