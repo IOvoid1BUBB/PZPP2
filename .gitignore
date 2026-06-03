@@ -1,5 +1,7 @@
 # Środowisko (Environment)
 .env
+.env.local
+frontend/.env.local
 .venv/
 venv/
 env/
