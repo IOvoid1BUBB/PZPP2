@@ -56,7 +56,7 @@ export default function SessionPage() {
 
       <div>
         <Link href={`/sessions/${session.id}/map`}>
-          <Button variant="secondary">Open Route Map</Button>
+          <Button variant="secondary">Mapa trasy</Button>
         </Link>
       </div>
     </section>
