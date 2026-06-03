@@ -65,7 +65,7 @@ def _normalize_payload_slots(raw: dict[str, Any]) -> dict[str, PayloadSlotConfig
                 widthCm=float(entry.get("width_cm", entry.get("widthCm", 80))),
                 depthCm=float(entry.get("depth_cm", entry.get("depthCm", 120))),
             )
-        return slots
+        return _repair_overlapping_slots(slots)
 
     for slot_id, entry in raw.items():
         if not isinstance(entry, dict):
@@ -79,7 +79,44 @@ def _normalize_payload_slots(raw: dict[str, Any]) -> dict[str, PayloadSlotConfig
             widthCm=float(entry.get("width_cm", entry.get("widthCm", 80))),
             depthCm=float(entry.get("depth_cm", entry.get("depthCm", 120))),
         )
-    return slots
+    return _repair_overlapping_slots(slots)
+
+
+def _repair_overlapping_slots(
+    slots: dict[str, PayloadSlotConfig],
+) -> dict[str, PayloadSlotConfig]:
+    """Shift right-column longitudinal slots whose x-range overlaps a wider left-column slot.
+
+    E.g. a left slot at x=0, w=120 extends to x=120; a right slot at x=80, w=80
+    overlaps in [80,120).  Move it to x=120 so the footprints merely touch.
+    """
+    fixed = dict(slots)
+    patched = False
+
+    for slot_id, cfg in slots.items():
+        w = cfg.width_cm
+        d = cfg.depth_cm
+        if cfg.x_offset_cm == 0 or w >= 100:
+            continue
+
+        y_start = cfg.y_offset_cm
+        y_end = y_start + d
+
+        for other in slots.values():
+            if other.x_offset_cm != 0:
+                continue
+            ow = other.width_cm
+            if ow <= cfg.x_offset_cm:
+                continue
+            oy_start = other.y_offset_cm
+            oy_end = oy_start + other.depth_cm
+
+            if y_start < oy_end and y_end > oy_start and cfg.x_offset_cm < ow:
+                fixed[slot_id] = cfg.model_copy(update={"x_offset_cm": ow})
+                patched = True
+                break
+
+    return fixed if patched else slots
 
 
 def vehicle_to_planner(vehicle: Vehicle) -> PlannerVehicle:
