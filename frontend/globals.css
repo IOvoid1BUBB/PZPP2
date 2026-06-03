@@ -1115,3 +1115,45 @@ select {
     opacity: 0.6;
   }
 }
+
+/* ── Route map (Leaflet) ── */
+
+.route-map-leaflet.leaflet-container {
+  height: 100%;
+  width: 100%;
+  min-height: 420px;
+  border-radius: 0;
+  z-index: 0;
+  background: var(--ui-surface-raised);
+}
+
+.route-map-pin-wrapper {
+  background: transparent;
+  border: none;
+}
+
+.route-map-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid var(--ui-accent);
+  background: var(--ui-surface);
+  color: var(--ui-text-primary);
+  font-size: 0.65rem;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.route-map-pin-kind {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.route-map-pin-num {
+  font-size: 0.6rem;
+  line-height: 1;
+}
