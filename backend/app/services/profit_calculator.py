@@ -17,7 +17,13 @@ from app.core.exceptions import NotFoundError, ValidationAppError
 from app.lib.geo import lat_lon_from_geometry
 from app.lib.osrm import MultiStopRouteResult, OSRMClient, get_osrm_client
 from app.models import ConsolidationSession, CostEvent, RouteStop
-from app.schemas.profit import SessionProfitBreakdown
+from app.schemas.profit import (
+    CostFormulaMeta,
+    LegFuelBreakdown,
+    OfferRevenueRow,
+    ProfitFormulas,
+    SessionProfitBreakdown,
+)
 from app.services.fuel_calculator import calculate_multi_stop_fuel
 from app.services.stop_cost_calculator import StopCostRates, calculate_stop_cost
 from app.services.toll_calculator import calculate_route_tolls
@@ -98,11 +104,21 @@ class SessionProfitCalculator:
         rates = StopCostRates.from_driver_profile(driver_profile)
 
         # Step 1 — Revenue: sum unique pickup offer prices
-        revenue = sum(
-            float(s.offer.price_eur)
-            for s in stops
-            if s.stop_type == "pickup" and s.offer is not None
-        )
+        offer_revenue_rows: list[OfferRevenueRow] = []
+        seen_pickup_offers: set[UUID] = set()
+        revenue = 0.0
+        for stop in stops:
+            if stop.stop_type != "pickup" or stop.offer is None:
+                continue
+            offer_id = stop.offer.id
+            if offer_id in seen_pickup_offers:
+                continue
+            seen_pickup_offers.add(offer_id)
+            price = float(stop.offer.price_eur)
+            revenue += price
+            offer_revenue_rows.append(
+                OfferRevenueRow(offer_id=offer_id, revenue_eur=round(price, 2))
+            )
 
         # Step 2 — Fuel (load-aware per-leg consumption)
         fuel_result = calculate_multi_stop_fuel(
@@ -136,6 +152,10 @@ class SessionProfitCalculator:
             )
             stop_costs_acc += breakdown.total_eur
         stop_costs_eur = round(stop_costs_acc, 2)
+        stop_count = len(stops)
+        per_stop_cost = (
+            round(stop_costs_eur / stop_count, 2) if stop_count > 0 else 0.0
+        )
 
         # Step 5 — Driver (daily allowance based on driving hours)
         total_duration_hours = sum(leg.duration_minutes for leg in route.legs) / 60.0
@@ -146,6 +166,38 @@ class SessionProfitCalculator:
         total_distance_km = sum(leg.distance_km for leg in route.legs)
         maintenance_eur = round(
             total_distance_km * self._settings.MAINTENANCE_EUR_PER_KM, 2
+        )
+
+        fuel_price = self._settings.FUEL_PRICE_EUR_PER_LITER
+        daily_allowance = self._settings.DRIVER_DAILY_ALLOWANCE_EUR
+        maint_rate = self._settings.MAINTENANCE_EUR_PER_KM
+
+        leg_rows = [
+            LegFuelBreakdown(
+                leg_id=leg_cost.leg_index + 1,
+                fuel_consumption=round(leg_cost.liters, 2),
+            )
+            for leg_cost in fuel_result.leg_costs
+        ]
+
+        formulas = ProfitFormulas(
+            fuel=CostFormulaMeta(
+                liters_total=round(fuel_result.total_liters, 2),
+                fuel_price=fuel_price,
+            ),
+            toll=CostFormulaMeta(distance_km=round(total_distance_km, 2)),
+            stops=CostFormulaMeta(
+                stop_count=stop_count,
+                per_stop_cost=per_stop_cost,
+            ),
+            driver=CostFormulaMeta(
+                days_on_road=days_on_road,
+                daily_allowance=daily_allowance,
+            ),
+            maintenance=CostFormulaMeta(
+                distance_km=round(total_distance_km, 2),
+                maint_rate=maint_rate,
+            ),
         )
 
         # Step 7 — Aggregate
@@ -200,6 +252,10 @@ class SessionProfitCalculator:
             cost_per_km_eur=cost_per_km_eur,
             revenue_per_ldm_eur=revenue_per_ldm_eur,
             breakeven_fill_pct=breakeven_fill_pct,
+            stop_count=stop_count,
+            formulas=formulas,
+            legs=leg_rows,
+            offer_revenue=offer_revenue_rows,
         )
 
     async def _load_session(self, session_id: UUID) -> ConsolidationSession | None:

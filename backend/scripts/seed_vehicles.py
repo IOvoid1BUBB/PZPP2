@@ -139,7 +139,11 @@ def build_master_l2_slots() -> VehicleSlotMap:
 
 
 def build_master_l3_slots() -> VehicleSlotMap:
-    """9 EUR pallets — interlocking L3 layout (440 cm bed)."""
+    """9 EUR pallets — non-overlapping L3 layout (440 cm bed).
+
+    Left column transverse slots (s2, width 120 cm) extend to x=120,
+    so right-column longitudinal slot s7 starts at x=120 to avoid overlap.
+    """
     slots = [
         _long("s0", 0, 0, 0, 0),
         _long("s1", 0, 120, 1, 0),
@@ -148,14 +152,18 @@ def build_master_l3_slots() -> VehicleSlotMap:
         _trans("s4", P_W, 0, 0, 1),
         _trans("s5", P_W, 80, 1, 1),
         _trans("s6", P_W, 160, 2, 1),
-        _long("s7", P_W, 240, 3, 1),
+        _long("s7", P_W_T, 240, 3, 1),
         _trans("s8", P_W, 360, 4, 1),
     ]
     return VehicleSlotMap(slots=slots, total_ldm=round(len(slots) * LDM_PER_SLOT, 2))
 
 
 def build_master_l4_slots() -> VehicleSlotMap:
-    """10 EUR pallets — interlocking L4 layout (484 cm bed)."""
+    """10 EUR pallets — non-overlapping L4 layout (484 cm bed).
+
+    Left column transverse slots (s2–s4, width 120 cm) extend to x=120,
+    so right-column longitudinal slots s8/s9 start at x=120 to avoid overlap.
+    """
     slots = [
         _long("s0", 0, 0, 0, 0),
         _long("s1", 0, 120, 1, 0),
@@ -165,8 +173,8 @@ def build_master_l4_slots() -> VehicleSlotMap:
         _trans("s5", P_W, 0, 0, 1),
         _trans("s6", P_W, 80, 1, 1),
         _trans("s7", P_W, 160, 2, 1),
-        _long("s8", P_W, 240, 3, 1),
-        _long("s9", P_W, 360, 4, 1),
+        _long("s8", P_W_T, 240, 3, 1),
+        _long("s9", P_W_T, 360, 4, 1),
     ]
     return VehicleSlotMap(slots=slots, total_ldm=round(len(slots) * LDM_PER_SLOT, 2))
 

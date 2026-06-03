@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/shallow";
 
+import { useClientHydrated } from "@/hooks/useClientHydrated";
+
 import {
   fetchDemoLayout,
   moveDemoPallet,
@@ -39,12 +41,8 @@ interface UsePlannerLayoutResult {
 }
 
 export function usePlannerLayout(): UsePlannerLayoutResult {
-  const initialState = useLoadStore.getState();
-  const [loading, setLoading] = useState(
-    initialState.vehicle === null &&
-      initialState.sessionId === null &&
-      Object.keys(initialState.slots).length === 0,
-  );
+  const hydrated = useClientHydrated();
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { vehicle, slots, sessionId } = useLoadStore(
     useShallow((state) => ({
@@ -117,6 +115,10 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
   );
 
   useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+
     if (!hasLayout) {
       queueMicrotask(() => {
         void reload();
@@ -150,7 +152,7 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
         /* keep existing layout if refresh fails */
       }
     })();
-  }, [applyLayout, hasLayout, reload, vehicle]);
+  }, [applyLayout, hasLayout, hydrated, reload, vehicle]);
 
   const currentVehicleType = useCallback(
     () => useLoadStore.getState().vehicle?.type ?? null,

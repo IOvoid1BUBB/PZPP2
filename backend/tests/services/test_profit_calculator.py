@@ -265,6 +265,13 @@ async def test_profit_3_offers_6_stops_within_tolerance() -> None:
     # Net profit (manual ≈ 1447.61 EUR)
     assert 1440.0 < result.net_profit_eur < 1460.0, f"net_profit_eur={result.net_profit_eur}"
 
+    assert result.stop_count == 6
+    assert len(result.legs) == 6
+    assert result.legs[0].leg_id == 1
+    assert result.legs[0].fuel_consumption > 0
+    assert result.formulas.fuel.liters_total is not None
+    assert len(result.offer_revenue) == 3
+
     # stop_costs_eur must be a separate field, not included in fuel_eur
     assert result.stop_costs_eur > 0
     assert result.fuel_eur != pytest.approx(result.fuel_eur + result.stop_costs_eur)
