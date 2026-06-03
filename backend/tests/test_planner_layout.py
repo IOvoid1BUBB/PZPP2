@@ -175,10 +175,10 @@ def _master_l4_payload_slots() -> dict[str, PayloadSlotConfig]:
             row=2, col=1, ldmPerSlot=0.8, xOffsetCm=80, yOffsetCm=160, widthCm=120, depthCm=80,
         ),
         "s8": PayloadSlotConfig(
-            row=3, col=1, ldmPerSlot=0.8, xOffsetCm=80, yOffsetCm=240, widthCm=80, depthCm=120,
+            row=3, col=1, ldmPerSlot=0.8, xOffsetCm=120, yOffsetCm=240, widthCm=80, depthCm=120,
         ),
         "s9": PayloadSlotConfig(
-            row=4, col=1, ldmPerSlot=0.8, xOffsetCm=80, yOffsetCm=360, widthCm=80, depthCm=120,
+            row=4, col=1, ldmPerSlot=0.8, xOffsetCm=120, yOffsetCm=360, widthCm=80, depthCm=120,
         ),
     }
 
@@ -225,6 +225,32 @@ def test_build_demo_slots_l4_uses_non_overlapping_rear_slots() -> None:
 
 
 def test_can_assign_rejects_overlapping_target() -> None:
+    """Two slots at the same physical position block assignment."""
+    payload_slots = {
+        "base": PayloadSlotConfig(
+            row=0, col=0, ldmPerSlot=0.8, xOffsetCm=0, yOffsetCm=0, widthCm=80, depthCm=120,
+        ),
+        "stacked": PayloadSlotConfig(
+            row=0, col=0, ldmPerSlot=0.8, xOffsetCm=0, yOffsetCm=0, widthCm=80, depthCm=120,
+        ),
+    }
+    vehicle = PlannerVehicle(
+        id="overlap",
+        name="Overlap test",
+        type="master_l2",
+        maxLdm=6.4,
+        maxWeightKg=3500,
+        trailerLengthCm=420,
+        trailerWidthCm=220,
+        payloadSlots=payload_slots,
+    )
+    slots = empty_slots(payload_slots)
+    slots["base"] = _pallet("bottom")
+    assert can_assign(slots, vehicle, _pallet("top"), "stacked") is False
+
+
+def test_can_assign_allows_adjacent_non_overlapping_l4_slots() -> None:
+    """L4 s3 and s8 no longer overlap after geometry fix — assignment should succeed."""
     payload_slots = _master_l4_payload_slots()
     vehicle = PlannerVehicle(
         id="l4",
@@ -238,35 +264,7 @@ def test_can_assign_rejects_overlapping_target() -> None:
     )
     slots = empty_slots(payload_slots)
     slots["s3"] = _pallet("rear-left")
-    assert can_assign(slots, vehicle, _pallet("rear-right"), "s8") is False
-
-
-def test_can_assign_rejects_move_within_overlapping_pair() -> None:
-    payload_slots = _master_l4_payload_slots()
-    vehicle = PlannerVehicle(
-        id="l4",
-        name="Renault Master L4",
-        type="master_l4",
-        maxLdm=8.0,
-        maxWeightKg=3800,
-        trailerLengthCm=484,
-        trailerWidthCm=220,
-        payloadSlots=payload_slots,
-    )
-    slots = empty_slots(payload_slots)
-    amazon = PalletData(
-        id="amazon",
-        offerId="o2",
-        clientId="c2",
-        clientName="Amazon",
-        clientColor="#2563eb",
-        ldm=0.8,
-        weightKg=680,
-        dims=PalletDims(wMm=1200, dMm=800, hMm=1600),
-        stackable=False,
-    )
-    slots["s3"] = amazon
-    assert can_assign(slots, vehicle, amazon, "s8", "s3") is False
+    assert can_assign(slots, vehicle, _pallet("rear-right"), "s8") is True
 
 
 def test_can_assign_allows_rotation_between_long_and_trans() -> None:
@@ -361,6 +359,7 @@ def test_can_assign_rejects_oversized_pallet() -> None:
 
 
 def test_find_first_assignable_slot_skips_footprint_overlap() -> None:
+    """With stacked slots at the same position, occupied bottom blocks the top."""
     payload_slots = {
         "s0": PayloadSlotConfig(
             row=0, col=0, ldmPerSlot=0.8, xOffsetCm=0, yOffsetCm=0, widthCm=80, depthCm=120,
@@ -368,11 +367,11 @@ def test_find_first_assignable_slot_skips_footprint_overlap() -> None:
         "s1": PayloadSlotConfig(
             row=1, col=0, ldmPerSlot=0.8, xOffsetCm=0, yOffsetCm=120, widthCm=80, depthCm=120,
         ),
+        "overlap_s1": PayloadSlotConfig(
+            row=1, col=0, ldmPerSlot=0.8, xOffsetCm=0, yOffsetCm=120, widthCm=80, depthCm=120,
+        ),
         "s2": PayloadSlotConfig(
             row=2, col=0, ldmPerSlot=0.8, xOffsetCm=0, yOffsetCm=240, widthCm=120, depthCm=80,
-        ),
-        "s7": PayloadSlotConfig(
-            row=3, col=1, ldmPerSlot=0.8, xOffsetCm=80, yOffsetCm=240, widthCm=80, depthCm=120,
         ),
     }
     vehicle = PlannerVehicle(
