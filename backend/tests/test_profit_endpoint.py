@@ -121,9 +121,20 @@ async def test_profit_returns_5_cost_components(client: AsyncClient) -> None:
             "profit_margin_pct",
             "cost_per_km_eur",
             "revenue_per_ldm_eur",
+            "stop_count",
+            "formulas",
+            "legs",
+            "offer_revenue",
         )
         for field in required_fields:
             assert field in data, f"missing field: {field}"
+
+        assert isinstance(data["legs"], list)
+        assert len(data["legs"]) >= 1
+        assert "leg_id" in data["legs"][0]
+        assert "fuel_consumption" in data["legs"][0]
+        assert data["formulas"]["fuel"]["liters_total"] is not None
+        assert data["stop_count"] >= 6
 
         # stop_costs_eur is a standalone field (not folded into fuel_eur)
         assert data["stop_costs_eur"] >= 0.0
