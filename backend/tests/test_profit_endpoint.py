@@ -110,6 +110,7 @@ async def test_profit_returns_5_cost_components(client: AsyncClient) -> None:
         data = resp.json()
 
         required_fields = (
+            "session_id",
             "revenue_eur",
             "fuel_eur",
             "toll_eur",
@@ -122,17 +123,40 @@ async def test_profit_returns_5_cost_components(client: AsyncClient) -> None:
             "cost_per_km_eur",
             "revenue_per_ldm_eur",
             "stop_count",
+            "total_distance_km",
+            "days_on_road",
+            "total_liters",
+            "toll_is_estimated",
             "formulas",
             "legs",
+            "leg_costs",
             "offer_revenue",
         )
         for field in required_fields:
             assert field in data, f"missing field: {field}"
 
+        assert data["session_id"] == str(session_id)
         assert isinstance(data["legs"], list)
         assert len(data["legs"]) >= 1
         assert "leg_id" in data["legs"][0]
         assert "fuel_consumption" in data["legs"][0]
+
+        assert isinstance(data["leg_costs"], list)
+        assert len(data["leg_costs"]) >= 1
+        assert len(data["leg_costs"]) == len(data["legs"])
+        leg_cost = data["leg_costs"][0]
+        assert "leg_index" in leg_cost
+        assert "distance_km" in leg_cost
+        assert "duration_minutes" in leg_cost
+        assert "weight_kg_at_leg" in leg_cost
+        assert "load_ratio" in leg_cost
+        assert 0 <= leg_cost["load_ratio"] <= 1
+
+        assert data["total_distance_km"] > 0
+        assert data["days_on_road"] >= 1
+        assert data["total_liters"] > 0
+        assert data["toll_is_estimated"] is True
+
         assert data["formulas"]["fuel"]["liters_total"] is not None
         assert data["stop_count"] >= 6
 
@@ -155,6 +179,18 @@ async def test_profit_returns_5_cost_components(client: AsyncClient) -> None:
         assert data["net_profit_eur"] == pytest.approx(
             round(data["revenue_eur"] - data["total_cost_eur"], 2), abs=0.01
         )
+
+        # Invariant: revenue - (fuel+toll+stop+driver+maint) ≈ net_profit
+        expected_net = round(
+            data["revenue_eur"]
+            - data["fuel_eur"]
+            - data["toll_eur"]
+            - data["stop_costs_eur"]
+            - data["driver_eur"]
+            - data["maintenance_eur"],
+            2,
+        )
+        assert data["net_profit_eur"] == pytest.approx(expected_net, abs=0.01)
 
     finally:
         del fastapi_app.dependency_overrides[get_osrm_client]
@@ -327,3 +363,54 @@ async def test_profit_empty_session_returns_422(client: AsyncClient) -> None:
 
     finally:
         del fastapi_app.dependency_overrides[get_osrm_client]
+
+
+@pytest.mark.asyncio
+async def test_get_profit_alias_returns_same_as_post(client: AsyncClient) -> None:
+    """GET /profit alias returns the same data structure as POST /profit."""
+    from app.lib.osrm import get_osrm_client
+    from app.main import app as fastapi_app
+
+    mock_osrm = AsyncMock()
+    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+
+    try:
+        session_id = await _create_session(client)
+
+        await client.post(f"/api/v1/sessions/{session_id}/simulate?count=30")
+        ranked = await client.get(
+            f"/api/v1/sessions/{session_id}/ranked-offers?limit=2"
+        )
+        for o in ranked.json()["offers"][:2]:
+            await client.post(
+                f"/api/v1/sessions/{session_id}/offers/{o['offer_id']}"
+            )
+
+        post_resp = await client.post(f"/api/v1/sessions/{session_id}/profit")
+        assert post_resp.status_code == 200
+        post_data = post_resp.json()
+
+        get_resp = await client.get(f"/api/v1/sessions/{session_id}/profit")
+        assert get_resp.status_code == 200
+        get_data = get_resp.json()
+
+        assert get_data["session_id"] == post_data["session_id"]
+        assert get_data["revenue_eur"] == post_data["revenue_eur"]
+        assert get_data["net_profit_eur"] == pytest.approx(
+            post_data["net_profit_eur"], abs=0.01
+        )
+        assert len(get_data["leg_costs"]) == len(post_data["leg_costs"])
+        assert get_data["days_on_road"] == post_data["days_on_road"]
+        assert get_data["toll_is_estimated"] == post_data["toll_is_estimated"]
+
+    finally:
+        del fastapi_app.dependency_overrides[get_osrm_client]
+
+
+@pytest.mark.asyncio
+async def test_get_profit_session_not_found(client: AsyncClient) -> None:
+    """GET /profit returns 404 for missing session."""
+    missing = "00000000-0000-0000-0000-000000000099"
+    resp = await client.get(f"/api/v1/sessions/{missing}/profit")
+    assert resp.status_code == 404
