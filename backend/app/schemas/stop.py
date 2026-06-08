@@ -26,3 +26,4 @@ class StopRead(BaseModel):
     location: GeoPoint
     eta_minutes_from_start: int | None = None
     stop_cost_eur: Decimal | None = None
+    address_label: str | None = None

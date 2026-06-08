@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     OSRM_HOST: str = "http://osrm:5000"
     REDIS_URL: str = "redis://redis:6379/0"
+    NOMINATIM_USER_AGENT: str = "LoadMax/1.0 (contact@example.com)"
 
     FUEL_PRICE_EUR_PER_LITER: float = 1.75
     DRIVER_DAILY_ALLOWANCE_EUR: float = 49.0

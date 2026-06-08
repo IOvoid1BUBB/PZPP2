@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -27,6 +27,7 @@ from app.services.offer_scorer import OfferScorerService
 from app.services.profit_calculator import SessionProfitCalculator
 from app.services.route_map import RouteMapService
 from app.services.sessions import SessionService
+from app.services.stop_labels import resolve_and_persist_stop_label
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -113,12 +114,15 @@ async def get_driver_compliance(
 async def add_offer_to_session(
     session_id: UUID,
     offer_id: UUID,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     osrm: OSRMClient = Depends(get_osrm_client),
 ) -> SessionFullResponse:
     service = _service(db, osrm)
-    response = await service.add_offer(session_id, offer_id)
+    response, new_stop_ids = await service.add_offer(session_id, offer_id)
     await db.commit()
+    for stop_id in new_stop_ids:
+        background_tasks.add_task(resolve_and_persist_stop_label, stop_id)
     return response
 
 

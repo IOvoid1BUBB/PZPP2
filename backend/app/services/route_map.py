@@ -12,12 +12,15 @@ from sqlalchemy.orm import selectinload
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, ValidationAppError
 from app.lib.geo import geo_point_from_geometry, lat_lon_from_geometry
+from app.lib.geocoder import coordinate_fallback
 from app.lib.osrm import OSRMClient, get_osrm_client
+from app.lib.redis_client import get_redis
 from app.models import ConsolidationSession, RouteStop
 from app.schemas.offer import GeoPoint
 from app.schemas.route_map import RouteMapLeg, RouteMapResponse, RouteMapStop
 from app.services.fuel_calculator import calculate_multi_stop_fuel
 from app.services.profit_calculator import split_route_into_leg_geometries
+from app.services.stop_labels import ensure_stop_label
 
 
 def _linestring_to_leaflet_coords(line: LineString) -> list[list[float]]:
@@ -38,10 +41,9 @@ def _leg_fallback_coords(
     return [[lat0, lon0], [lat1, lon1]]
 
 
-def _address_label(stop: RouteStop) -> str:
-    point = geo_point_from_geometry(stop.location)
+def _format_address_label(stop: RouteStop, label: str) -> str:
     kind = "Odbiór" if stop.stop_type == "pickup" else "Dostawa"
-    return f"{kind} · {point.lat:.4f}°, {point.lon:.4f}°"
+    return f"{kind} · {label}"
 
 
 class RouteMapService:
@@ -117,10 +119,9 @@ class RouteMapService:
                 )
             )
 
-        stop_rows = [
-            self._stop_row(stop, is_current=(index == 0))
-            for index, stop in enumerate(stops)
-        ]
+        stop_rows: list[RouteMapStop] = []
+        for index, stop in enumerate(stops):
+            stop_rows.append(await self._stop_row(stop, is_current=(index == 0)))
 
         return RouteMapResponse(
             session_id=session.id,
@@ -130,11 +131,19 @@ class RouteMapService:
             vehicle_max_weight_kg=int(vehicle.max_weight_kg),
         )
 
-    @staticmethod
-    def _stop_row(stop: RouteStop, *, is_current: bool) -> RouteMapStop:
+    async def _stop_row(self, stop: RouteStop, *, is_current: bool) -> RouteMapStop:
         handling: int | None = None
         if stop.offer is not None and stop.offer.handling_time_minutes is not None:
             handling = int(stop.offer.handling_time_minutes)
+
+        if stop.address_label:
+            label = stop.address_label
+        else:
+            try:
+                label = await ensure_stop_label(self._db, stop, redis=get_redis())
+            except Exception:
+                lat, lon = lat_lon_from_geometry(stop.location)
+                label = coordinate_fallback(lat, lon)
 
         return RouteMapStop(
             id=stop.id,
@@ -146,7 +155,7 @@ class RouteMapService:
             stop_cost_eur=(
                 float(stop.stop_cost_eur) if stop.stop_cost_eur is not None else None
             ),
-            address_label=_address_label(stop),
+            address_label=_format_address_label(stop, label),
             handling_time_minutes=handling,
             is_current=is_current,
         )
