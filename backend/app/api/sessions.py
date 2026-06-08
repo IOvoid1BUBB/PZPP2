@@ -18,6 +18,7 @@ from app.schemas.session import (
     SessionCreate,
     SessionCreatedResponse,
     SessionFullResponse,
+    SessionOffersReplace,
     SessionRead,
     SessionStatusUpdate,
 )
@@ -122,6 +123,26 @@ async def add_offer_to_session(
 ) -> SessionFullResponse:
     service = _service(db, osrm)
     response, new_stop_ids = await service.add_offer(session_id, offer_id)
+    await db.commit()
+    for stop_id in new_stop_ids:
+        background_tasks.add_task(resolve_and_persist_stop_label, stop_id)
+    return response
+
+
+@router.put(
+    "/{session_id}/offers",
+    response_model=SessionFullResponse,
+    summary="Replace all offers assigned to a session",
+)
+async def replace_session_offers(
+    session_id: UUID,
+    payload: SessionOffersReplace,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    osrm: OSRMClient = Depends(get_osrm_client),
+) -> SessionFullResponse:
+    service = _service(db, osrm)
+    response, new_stop_ids = await service.replace_offers(session_id, payload.offer_ids)
     await db.commit()
     for stop_id in new_stop_ids:
         background_tasks.add_task(resolve_and_persist_stop_label, stop_id)
