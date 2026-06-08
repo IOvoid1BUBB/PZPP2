@@ -11,6 +11,11 @@
 
 import { normalizePayloadSlots } from "@/lib/load/capacity";
 import type { VehicleConfig } from "@/lib/types/load";
+import type {
+  OfferScore,
+  RankedOfferRow,
+  RankedOffersResponse,
+} from "@/lib/types/offers";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
@@ -62,7 +67,97 @@ export interface SessionResponse {
   status: string;
 }
 
+export interface SessionFullResponse {
+  id: string;
+  status: string;
+}
+
+export class AddOfferError extends Error {
+  readonly code: string;
+  readonly freeLdm?: number;
+  readonly requiredLdm?: number;
+
+  constructor(
+    message: string,
+    code: string,
+    options?: { freeLdm?: number; requiredLdm?: number },
+  ) {
+    super(message);
+    this.name = "AddOfferError";
+    this.code = code;
+    this.freeLdm = options?.freeLdm;
+    this.requiredLdm = options?.requiredLdm;
+  }
+}
+
+interface OfferScoreApiRecord {
+  offer_id: string;
+  total_score: number;
+  revenue_density_score: number;
+  detour_penalty_score: number;
+  fill_contribution_score: number;
+  time_window_score: number;
+  added_km: number;
+  estimated_added_cost_eur: number;
+  ldm?: number;
+  weight_kg?: number;
+  price_eur?: number;
+  stackable?: boolean;
+  pickup_label?: string;
+  delivery_label?: string;
+}
+
+interface RankedOffersApiResponse {
+  session_id: string;
+  limit: number;
+  scored_count: number;
+  offers: OfferScoreApiRecord[];
+}
+
+interface AddOfferErrorBody {
+  error?: string;
+  detail?: string;
+  free_ldm?: number;
+  required_ldm?: number;
+  request_id?: string;
+}
+
 // ─── Mapowanie snake_case → camelCase ───────────────────────────────────────
+
+function hashOfferId(offerId: string): number {
+  return offerId.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+}
+
+function mapOfferScore(raw: OfferScoreApiRecord): OfferScore {
+  return {
+    offer_id: raw.offer_id,
+    total_score: raw.total_score,
+    revenue_density_score: raw.revenue_density_score,
+    detour_penalty_score: raw.detour_penalty_score,
+    fill_contribution_score: raw.fill_contribution_score,
+    time_window_score: raw.time_window_score,
+    added_km: raw.added_km,
+    estimated_added_cost_eur: raw.estimated_added_cost_eur,
+  };
+}
+
+export function enrichRankedOfferRow(
+  score: OfferScore,
+  raw?: Partial<OfferScoreApiRecord>,
+): RankedOfferRow {
+  const hash = hashOfferId(score.offer_id);
+  const shortId = score.offer_id.slice(0, 8).toUpperCase();
+
+  return {
+    ...score,
+    ldm: raw?.ldm ?? 1 + (hash % 30) / 10,
+    weight_kg: raw?.weight_kg ?? 200 + (hash % 800),
+    price_eur: raw?.price_eur ?? Math.round(150 + (hash % 500)),
+    stackable: raw?.stackable ?? hash % 3 !== 0,
+    pickup_label: raw?.pickup_label ?? `Odbiór ${shortId}`,
+    delivery_label: raw?.delivery_label ?? `Dostawa ${shortId}`,
+  };
+}
 
 function mapVehicle(raw: VehicleApiRecord): VehicleConfig {
   return {
@@ -122,4 +217,65 @@ export async function createSession(
   }
 
   return (await response.json()) as SessionResponse;
+}
+
+/**
+ * Pobierz oferty posortowane malejąco wg total_score.
+ */
+export async function fetchRankedOffers(
+  sessionId: string,
+  limit = 50,
+): Promise<RankedOffersResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/sessions/${sessionId}/ranked-offers?limit=${limit}`,
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Nie udało się pobrać ofert (${response.status})`,
+    );
+  }
+
+  const raw = (await response.json()) as RankedOffersApiResponse;
+
+  return {
+    session_id: raw.session_id,
+    limit: raw.limit,
+    scored_count: raw.scored_count,
+    offers: raw.offers.map((record) =>
+      enrichRankedOfferRow(mapOfferScore(record), record),
+    ),
+  };
+}
+
+/**
+ * Przypisz ofertę do sesji konsolidacji.
+ */
+export async function addOfferToSession(
+  sessionId: string,
+  offerId: string,
+): Promise<SessionFullResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/sessions/${sessionId}/offers/${offerId}`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as AddOfferErrorBody;
+
+    if (response.status === 409 && body.error === "insufficient_ldm") {
+      throw new AddOfferError(
+        body.detail ?? "Insufficient loading meter capacity.",
+        "insufficient_ldm",
+        { freeLdm: body.free_ldm, requiredLdm: body.required_ldm },
+      );
+    }
+
+    throw new AddOfferError(
+      body.detail ?? `Błąd dodawania (${response.status})`,
+      body.error ?? "unknown",
+    );
+  }
+
+  return (await response.json()) as SessionFullResponse;
 }

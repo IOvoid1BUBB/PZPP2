@@ -312,6 +312,142 @@ select {
   font-weight: 500;
 }
 
+.offer-card--library {
+  margin-bottom: 8px;
+}
+
+.offer-card--loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.offer-card--loaded {
+  opacity: 0.55;
+}
+
+.offer-card__score-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.offer-card__total-score {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--offer-intense, var(--ui-text-primary));
+  flex-shrink: 0;
+}
+
+.offer-card__meta--compact {
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+}
+
+.offer-card__add {
+  margin-top: 8px;
+  width: 100%;
+  font-size: 0.78rem;
+  padding: 4px 8px;
+}
+
+.offer-card__badge--recommended {
+  background: rgba(29, 158, 117, 0.15);
+  color: #0f6b4f;
+}
+
+.offer-card__badge--discouraged {
+  background: rgba(232, 86, 74, 0.12);
+  color: #b91c1c;
+}
+
+.offer-card__badge--loading {
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+}
+
+.offer-card__badge--loaded {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.score-bar {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--ui-border);
+}
+
+.score-bar__segment {
+  display: block;
+  height: 100%;
+}
+
+.pallet-library__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.pallet-library__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.pallet-library__count {
+  font-size: 0.75rem;
+  color: var(--ui-text-muted);
+}
+
+.pallet-library__filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.pallet-library__filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--ui-text-secondary);
+}
+
+.pallet-library__filter input[type="range"] {
+  width: 100%;
+}
+
+.pallet-library__status {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ui-text-muted);
+}
+
+.pallet-library__status--error {
+  color: #b91c1c;
+}
+
+.pallet-library__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.pallet-library__list {
+  border-radius: 6px;
+}
+
 /* ── Vehicle header ── */
 
 .vehicle-header {

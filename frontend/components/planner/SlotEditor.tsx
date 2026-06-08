@@ -9,11 +9,17 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import { useClientHydrated } from "@/hooks/useClientHydrated";
 
-import { OfferSidebar } from "@/components/planner/OfferSidebar";
+import { PalletLibrary } from "@/components/planner/PalletLibrary";
 
 import { ProfitWaterfall } from "@/components/analytics/ProfitWaterfall";
 
@@ -44,6 +50,7 @@ import {
 } from "@/lib/load/capacity";
 
 import type { ContextMenuItem, PalletData } from "@/lib/types/load";
+import type { RankedOfferRow } from "@/lib/types/offers";
 
 const SHAKE_MS = 600;
 
@@ -116,6 +123,8 @@ export function SlotEditor() {
 
     conflictSlotIds,
 
+    sessionId,
+
     movePallet,
 
     removePallet,
@@ -132,6 +141,13 @@ export function SlotEditor() {
   const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
 
   const [draggingSlotId, setDraggingSlotId] = useState<string | null>(null);
+
+  const [draggingLibraryOffer, setDraggingLibraryOffer] =
+    useState<RankedOfferRow | null>(null);
+
+  const libraryAddRef = useRef<((offerId: string) => Promise<void>) | null>(
+    null,
+  );
 
   const [shakingSlotIds, setShakingSlotIds] = useState<Set<string>>(new Set());
 
@@ -230,18 +246,46 @@ export function SlotEditor() {
     },
   });
 
+  const loadedOfferIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const pallet of Object.values(slots)) {
+      if (pallet) {
+        ids.add(pallet.offerId);
+      }
+    }
+    return ids;
+  }, [slots]);
+
   const handleDragStart = (event: DragStartEvent) => {
+    const dragData = event.active.data.current;
+    if (dragData?.type === "library-offer") {
+      setDraggingLibraryOffer(dragData.offer as RankedOfferRow);
+      setDraggingSlotId(null);
+      return;
+    }
+
     setDraggingSlotId(String(event.active.id));
+    setDraggingLibraryOffer(null);
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
-    const fromSlot = String(event.active.id);
-
+    const dragData = event.active.data.current;
     const toSlot = event.over ? String(event.over.id) : null;
 
     setDraggingSlotId(null);
-
+    setDraggingLibraryOffer(null);
     setActiveSlotId(null);
+
+    if (dragData?.type === "library-offer") {
+      if (!toSlot || !libraryAddRef.current) {
+        return;
+      }
+
+      await libraryAddRef.current(String(dragData.offerId));
+      return;
+    }
+
+    const fromSlot = String(event.active.id);
 
     if (!toSlot || fromSlot === toSlot || !vehicle) {
       return;
@@ -337,7 +381,9 @@ export function SlotEditor() {
   const overlayPallet = draggingSlotId ? slots[draggingSlotId] : null;
   const overlayColors = overlayPallet
     ? getCompanyColorPair(overlayPallet.clientId || overlayPallet.offerId)
-    : null;
+    : draggingLibraryOffer
+      ? getCompanyColorPair(draggingLibraryOffer.offer_id)
+      : null;
 
   const displayVehicleName = vehicle.name.replace(
     "Bus 8m",
@@ -354,43 +400,58 @@ export function SlotEditor() {
 
   return (
     <section className="slot-editor">
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
-        <OfferSidebar slots={slots} />
-
-        <div className="flex min-w-0 flex-col gap-5">
-          <VehicleHeader
-            name={displayVehicleName}
-            driverName="Jan Kowalski"
-            itemsCount={loadedCount}
-            usedWeightKg={usedWeightKg}
-            maxWeightKg={vehicle.maxWeightKg}
-            usedLdm={usedLdm}
-            maxLdm={vehicle.maxLdm}
-            saving={saving}
-            onSave={() => void persistSlots(slots)}
-          />
-
-          {conflicts.length > 0 && (
-            <ul className="slot-editor__conflicts" aria-live="polite">
-              {conflicts.map((conflict) => (
-                <li
-                  key={`${conflict.type}-${conflict.affectedSlotIds.join("-")}`}
-                >
-                  {conflict.message}
-                </li>
-              ))}
-            </ul>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={(event) => void handleDragEnd(event)}
+        onDragOver={({ over }) =>
+          setActiveSlotId(over ? String(over.id) : null)
+        }
+      >
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
+          {sessionId ? (
+            <PalletLibrary
+              sessionId={sessionId}
+              loadedOfferIds={loadedOfferIds}
+              onRegisterAddOffer={(addOffer) => {
+                libraryAddRef.current = addOffer;
+              }}
+              onOfferAdded={() => void reload()}
+            />
+          ) : (
+            <aside className="offer-sidebar" aria-label="Biblioteka ofert">
+              <p className="pallet-library__status">
+                Wybierz pojazd, aby wczytać bibliotekę ofert.
+              </p>
+            </aside>
           )}
 
-          <div className="trailer-stage">
-            <DndContext
-              sensors={sensors}
-              onDragStart={handleDragStart}
-              onDragEnd={(event) => void handleDragEnd(event)}
-              onDragOver={({ over }) =>
-                setActiveSlotId(over ? String(over.id) : null)
-              }
-            >
+          <div className="flex min-w-0 flex-col gap-5">
+            <VehicleHeader
+              name={displayVehicleName}
+              driverName="Jan Kowalski"
+              itemsCount={loadedCount}
+              usedWeightKg={usedWeightKg}
+              maxWeightKg={vehicle.maxWeightKg}
+              usedLdm={usedLdm}
+              maxLdm={vehicle.maxLdm}
+              saving={saving}
+              onSave={() => void persistSlots(slots)}
+            />
+
+            {conflicts.length > 0 && (
+              <ul className="slot-editor__conflicts" aria-live="polite">
+                {conflicts.map((conflict) => (
+                  <li
+                    key={`${conflict.type}-${conflict.affectedSlotIds.join("-")}`}
+                  >
+                    {conflict.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="trailer-stage">
               <TrailerCanvas
                 vehicle={vehicle}
                 slots={slots}
@@ -399,34 +460,49 @@ export function SlotEditor() {
                 activeSlotId={activeSlotId}
                 bindSlotMenu={bindSlot}
               />
+            </div>
 
-              <DragOverlay dropAnimation={null}>
-                {overlayPallet && overlayColors ? (
-                  <div
-                    className="drag-overlay-card"
-                    style={
-                      {
-                        "--pallet-intense": overlayColors.intense,
-
-                        "--pallet-muted": overlayColors.muted,
-                      } as CSSProperties
-                    }
-                  >
-                    <strong>{overlayPallet.clientName}</strong>
-
-                    <span>
-                      {overlayPallet.ldm.toFixed(1)} LDM ·{" "}
-                      {overlayPallet.weightKg} kg
-                    </span>
-                  </div>
-                ) : null}
-              </DragOverlay>
-            </DndContext>
+            <ProfitWaterfall />
           </div>
-
-          <ProfitWaterfall />
         </div>
-      </div>
+
+        <DragOverlay dropAnimation={null}>
+          {overlayPallet && overlayColors ? (
+            <div
+              className="drag-overlay-card"
+              style={
+                {
+                  "--pallet-intense": overlayColors.intense,
+                  "--pallet-muted": overlayColors.muted,
+                } as CSSProperties
+              }
+            >
+              <strong>{overlayPallet.clientName}</strong>
+              <span>
+                {overlayPallet.ldm.toFixed(1)} LDM · {overlayPallet.weightKg} kg
+              </span>
+            </div>
+          ) : draggingLibraryOffer && overlayColors ? (
+            <div
+              className="drag-overlay-card drag-overlay-card--library"
+              style={
+                {
+                  "--pallet-intense": overlayColors.intense,
+                  "--pallet-muted": overlayColors.muted,
+                } as CSSProperties
+              }
+            >
+              <strong>
+                #{draggingLibraryOffer.offer_id.slice(0, 8).toUpperCase()}
+              </strong>
+              <span>
+                Score {draggingLibraryOffer.total_score.toFixed(2)} ·{" "}
+                {(draggingLibraryOffer.ldm ?? 0).toFixed(1)} LDM
+              </span>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       <ContextMenu
         open={Boolean(menuState)}
