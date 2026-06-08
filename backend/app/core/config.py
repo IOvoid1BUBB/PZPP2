@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     WEIGHT_FUEL_FACTOR: float = 0.30
     MAINTENANCE_EUR_PER_KM: float = 0.08
     MAX_STOPS_PER_ROUTE: int = 12
+    USE_SOLVER_MOCK: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",
