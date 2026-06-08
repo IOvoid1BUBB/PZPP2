@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
+from app.lib.osrm import OSRMClient, get_osrm_client
 from app.schemas.solver import SolverRequest, SolverRunResult
 from app.services.vrp_solver import VRPSolver
 
@@ -25,14 +26,33 @@ async def trigger_optimization(
     session_id: UUID,
     payload: SolverRequest,
     db: AsyncSession = Depends(get_db),
+    osrm: OSRMClient = Depends(get_osrm_client),
     settings: Settings = Depends(get_settings),
 ) -> SolverRunResult:
-    solver = VRPSolver(db, settings=settings)
+    solver = VRPSolver(db, osrm=osrm, settings=settings)
     result = await solver.solve(
         session_id=session_id,
         candidate_offer_ids=payload.candidate_offer_ids,
         max_stops_override=payload.max_stops,
         time_limit_seconds=payload.time_limit_seconds,
     )
+    await db.commit()
+    return result
+
+
+@router.delete(
+    "",
+    response_model=SolverRunResult,
+    status_code=status.HTTP_200_OK,
+    summary="Cancel the current optimization recommendation",
+)
+async def cancel_optimization(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    osrm: OSRMClient = Depends(get_osrm_client),
+    settings: Settings = Depends(get_settings),
+) -> SolverRunResult:
+    solver = VRPSolver(db, osrm=osrm, settings=settings)
+    result = await solver.cancel(session_id)
     await db.commit()
     return result
