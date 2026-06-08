@@ -14,6 +14,7 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import AppException, NotFoundError, ValidationAppError
 from app.lib.geo import geo_point_from_geometry, lat_lon_from_geometry
 from app.lib.osrm import OSRMClient, get_osrm_client
+from app.lib.redis_client import get_redis
 from app.models import ConsolidationSession, DriverProfile, MarketOffer, RouteStop, Vehicle
 from app.schemas.driver_profile import DriverProfileRead
 from app.schemas.session import (
@@ -29,6 +30,7 @@ from app.services.stop_cost_calculator import (
     StopCostRates,
     calculate_stop_cost,
 )
+from app.services.stop_labels import ensure_stop_label
 
 _ALLOWED_TRANSITIONS: dict[str, str] = {
     "draft": "optimizing",
@@ -94,7 +96,11 @@ class SessionService:
         session = await self.get(session_id)
         return await self._build_full_response(session)
 
-    async def add_offer(self, session_id: UUID, offer_id: UUID) -> SessionFullResponse:
+    async def add_offer(
+        self,
+        session_id: UUID,
+        offer_id: UUID,
+    ) -> tuple[SessionFullResponse, list[UUID]]:
         session = await self.get(session_id)
         self._ensure_draft(session)
         vehicle = await self._require_vehicle(session)
@@ -153,10 +159,12 @@ class SessionService:
         self._db.add(pickup_stop)
         self._db.add(delivery_stop)
         await self._db.flush()
+        new_stop_ids = [pickup_stop.id, delivery_stop.id]
 
         await self._recalculate_route_stops(session)
         await self._db.refresh(session)
-        return await self._build_full_response(session)
+        response = await self._build_full_response(session)
+        return response, new_stop_ids
 
     async def remove_offer(self, session_id: UUID, offer_id: UUID) -> SessionFullResponse:
         session = await self.get(session_id)
@@ -383,7 +391,11 @@ class SessionService:
                 if offer is not None:
                     offers.append(self._offer_to_schema(offer))
 
-        stop_responses = [self._stop_to_schema(stop) for stop in stops]
+        redis = get_redis()
+        stop_responses: list[StopResponse] = []
+        for stop in stops:
+            await ensure_stop_label(self._db, stop, redis=redis)
+            stop_responses.append(self._stop_to_schema(stop))
         total_distance_km = await self._route_distance_km(session, stops)
         metrics = self._compute_metrics(
             session,
@@ -483,4 +495,5 @@ class SessionService:
             stop_cost_eur=(
                 Decimal(str(stop.stop_cost_eur)) if stop.stop_cost_eur is not None else None
             ),
+            address_label=stop.address_label,
         )
