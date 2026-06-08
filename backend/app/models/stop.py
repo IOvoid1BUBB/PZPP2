@@ -62,6 +62,7 @@ class RouteStop(Base):
     )
     eta_minutes_from_start: Mapped[int | None] = mapped_column(Integer)
     stop_cost_eur: Mapped[float | None] = mapped_column(Numeric(8, 4))
+    address_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     session: Mapped[ConsolidationSession] = relationship(back_populates="route_stops")
     offer: Mapped[MarketOffer] = relationship(back_populates="route_stops")
