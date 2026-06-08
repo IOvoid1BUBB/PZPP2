@@ -19,6 +19,7 @@ from app.lib.osrm import MultiStopRouteResult, OSRMClient, get_osrm_client
 from app.models import ConsolidationSession, CostEvent, RouteStop
 from app.schemas.profit import (
     CostFormulaMeta,
+    LegCostBreakdown,
     LegFuelBreakdown,
     OfferRevenueRow,
     ProfitFormulas,
@@ -135,31 +136,43 @@ class SessionProfitCalculator:
         toll_breakdown = calculate_route_tolls(leg_geoms, vehicle.type)
         toll_eur = round(toll_breakdown.total_eur, 2)
 
-        # Step 4 — Stop costs (per stop, from driver profile rates)
+        # Step 4 — Stop costs (sum from persisted stop_cost_eur, recalculate if missing)
         stop_costs_acc = 0.0
+        needs_recalc = False
         for stop in stops:
-            handling = (
-                stop.offer.handling_time_minutes
-                if stop.offer is not None
-                and stop.offer.handling_time_minutes is not None
-                else self._settings.STOP_COST_MINUTES
-            )
-            breakdown = calculate_stop_cost(
-                handling,
-                vehicle.type,
-                rates=rates,
-                fuel_price_eur_per_liter=self._settings.FUEL_PRICE_EUR_PER_LITER,
-            )
-            stop_costs_acc += breakdown.total_eur
+            if stop.stop_cost_eur is not None:
+                stop_costs_acc += float(stop.stop_cost_eur)
+            else:
+                needs_recalc = True
+                break
+
+        if needs_recalc:
+            stop_costs_acc = 0.0
+            for stop in stops:
+                handling = (
+                    stop.offer.handling_time_minutes
+                    if stop.offer is not None
+                    and stop.offer.handling_time_minutes is not None
+                    else self._settings.STOP_COST_MINUTES
+                )
+                breakdown = calculate_stop_cost(
+                    handling,
+                    vehicle.type,
+                    rates=rates,
+                    fuel_price_eur_per_liter=self._settings.FUEL_PRICE_EUR_PER_LITER,
+                )
+                stop.stop_cost_eur = breakdown.total_eur
+                stop_costs_acc += breakdown.total_eur
+
         stop_costs_eur = round(stop_costs_acc, 2)
         stop_count = len(stops)
         per_stop_cost = (
             round(stop_costs_eur / stop_count, 2) if stop_count > 0 else 0.0
         )
 
-        # Step 5 — Driver (daily allowance based on driving hours)
+        # Step 5 — Driver (daily allowance: 1 day per 24 hours on road)
         total_duration_hours = sum(leg.duration_minutes for leg in route.legs) / 60.0
-        days_on_road = math.ceil(total_duration_hours / 9.0)
+        days_on_road = max(1, math.ceil(total_duration_hours / 24.0))
         driver_eur = round(days_on_road * self._settings.DRIVER_DAILY_ALLOWANCE_EUR, 2)
 
         # Step 6 — Maintenance
@@ -176,6 +189,20 @@ class SessionProfitCalculator:
             LegFuelBreakdown(
                 leg_id=leg_cost.leg_index + 1,
                 fuel_consumption=round(leg_cost.liters, 2),
+            )
+            for leg_cost in fuel_result.leg_costs
+        ]
+
+        leg_cost_rows = [
+            LegCostBreakdown(
+                leg_index=leg_cost.leg_index,
+                distance_km=round(leg_cost.distance_km, 3),
+                duration_minutes=route.legs[leg_cost.leg_index].duration_minutes,
+                weight_kg_at_leg=round(leg_cost.weight_kg_at_leg, 1),
+                load_ratio=round(leg_cost.load_ratio, 4),
+                consumption_l100km=round(leg_cost.consumption_l100km, 2),
+                liters=round(leg_cost.liters, 2),
+                cost_eur=round(leg_cost.cost_eur, 2),
             )
             for leg_cost in fuel_result.leg_costs
         ]
@@ -240,6 +267,7 @@ class SessionProfitCalculator:
         )
 
         return SessionProfitBreakdown(
+            session_id=session_id,
             revenue_eur=round(revenue, 2),
             fuel_eur=fuel_eur,
             toll_eur=toll_eur,
@@ -253,8 +281,13 @@ class SessionProfitCalculator:
             revenue_per_ldm_eur=revenue_per_ldm_eur,
             breakeven_fill_pct=breakeven_fill_pct,
             stop_count=stop_count,
+            total_distance_km=round(total_distance_km, 3),
+            days_on_road=days_on_road,
+            total_liters=round(fuel_result.total_liters, 2),
+            toll_is_estimated=True,
             formulas=formulas,
             legs=leg_rows,
+            leg_costs=leg_cost_rows,
             offer_revenue=offer_revenue_rows,
         )
 
