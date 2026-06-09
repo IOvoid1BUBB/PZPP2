@@ -23,3 +23,24 @@ class HealthResponse(BaseModel):
     status: str = Field(..., description="Service status, currently always 'ok'.")
     version: str = Field(..., description="Application semantic version.")
     request_id: str = Field(..., description="Per-request correlation id.")
+
+
+class DependencyStatus(BaseModel):
+    """Status of a single downstream dependency."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    ok: bool
+    detail: str | None = None
+
+
+class ReadinessResponse(BaseModel):
+    """Readiness payload with dependency checks."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: str = Field(..., description="'ok' when all required deps are healthy.")
+    version: str
+    request_id: str
+    checks: list[DependencyStatus]
