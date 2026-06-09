@@ -1,3 +1,5 @@
+"use client";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/shallow";
 
@@ -5,11 +7,16 @@ import { useClientHydrated } from "@/hooks/useClientHydrated";
 
 import {
   fetchDemoLayout,
+  fetchSessionLayout,
   moveDemoPallet,
   moveDemoToFirstFree,
+  moveSessionPallet,
+  moveSessionToFirstFree,
   removeDemoSlot,
+  removeSessionSlot,
   resetDemoLayout,
   saveDemoLayout,
+  saveSessionLayout,
   type PlannerLayoutState,
 } from "@/lib/api/plannerClient";
 import {
@@ -58,7 +65,7 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
 
   const applyLayout = useCallback((next: PlannerLayoutState) => {
     useLoadStore.getState().setLayout({
-      sessionId: next.sessionId,
+      sessionId: next.sessionId ?? useLoadStore.getState().sessionId,
       vehicle: next.vehicle,
       slots: next.slots,
     });
@@ -74,12 +81,15 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
   }, []);
 
   const reload = useCallback(async () => {
+    const activeSessionId = useLoadStore.getState().sessionId;
     const hadLayoutBeforeFetch = hasStoreLayout();
     setLoading(true);
     setError(null);
     try {
       const currentVehicleType = useLoadStore.getState().vehicle?.type ?? null;
-      const next = await fetchDemoLayout(currentVehicleType);
+      const next = activeSessionId
+        ? await fetchSessionLayout(activeSessionId)
+        : await fetchDemoLayout(currentVehicleType);
       if (!hadLayoutBeforeFetch && hasStoreLayout()) {
         return;
       }
@@ -99,6 +109,12 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
       setLoading(true);
       setError(null);
       try {
+        const activeSessionId = useLoadStore.getState().sessionId;
+        if (activeSessionId) {
+          const next = await fetchSessionLayout(activeSessionId);
+          applyLayout(next);
+          return;
+        }
         const next = await resetDemoLayout(vehicleType);
         applyLayout(next);
       } catch (err) {
@@ -134,7 +150,10 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
 
     void (async () => {
       try {
-        const next = await fetchDemoLayout(vehicle?.type ?? null);
+        const activeSessionId = useLoadStore.getState().sessionId;
+        const next = activeSessionId
+          ? await fetchSessionLayout(activeSessionId)
+          : await fetchDemoLayout(useLoadStore.getState().vehicle?.type ?? null);
         const current = useLoadStore.getState();
         if (!current.vehicle) {
           return;
@@ -160,10 +179,13 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
   );
 
   const persistSlots = useCallback(
-    async (slots: Record<string, PalletData | null>) => {
+    async (nextSlots: Record<string, PalletData | null>) => {
       setError(null);
       try {
-        const next = await saveDemoLayout(slots, currentVehicleType());
+        const activeSessionId = useLoadStore.getState().sessionId;
+        const next = activeSessionId
+          ? await saveSessionLayout(activeSessionId, nextSlots)
+          : await saveDemoLayout(nextSlots, currentVehicleType());
         applyLayout(next);
         return true;
       } catch (err) {
@@ -180,11 +202,10 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
     async (fromSlot: string, toSlot: string) => {
       setError(null);
       try {
-        const result = await moveDemoPallet(
-          fromSlot,
-          toSlot,
-          currentVehicleType(),
-        );
+        const activeSessionId = useLoadStore.getState().sessionId;
+        const result = activeSessionId
+          ? await moveSessionPallet(activeSessionId, fromSlot, toSlot)
+          : await moveDemoPallet(fromSlot, toSlot, currentVehicleType());
         applyLayout(result.layout);
         return { ok: result.ok, message: result.message };
       } catch (err) {
@@ -203,7 +224,10 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
     async (slotId: string) => {
       setError(null);
       try {
-        const next = await removeDemoSlot(slotId, currentVehicleType());
+        const activeSessionId = useLoadStore.getState().sessionId;
+        const next = activeSessionId
+          ? await removeSessionSlot(activeSessionId, slotId)
+          : await removeDemoSlot(slotId, currentVehicleType());
         applyLayout(next);
       } catch (err) {
         setError(
@@ -218,7 +242,10 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
     async (slotId: string) => {
       setError(null);
       try {
-        const result = await moveDemoToFirstFree(slotId, currentVehicleType());
+        const activeSessionId = useLoadStore.getState().sessionId;
+        const result = activeSessionId
+          ? await moveSessionToFirstFree(activeSessionId, slotId)
+          : await moveDemoToFirstFree(slotId, currentVehicleType());
         applyLayout(result.layout);
         return { ok: result.ok, message: result.message };
       } catch (err) {
