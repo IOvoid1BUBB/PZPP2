@@ -5,6 +5,7 @@ Requires PostgreSQL + PostGIS (pytest.mark.integration).
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock
 from uuid import UUID
 
@@ -66,6 +67,44 @@ def _clear_osrm_mock() -> None:
     fastapi_app.dependency_overrides.pop(get_osrm_client, None)
 
 
+async def _wait_for_optimize(
+    client: AsyncClient,
+    session_id: UUID,
+    *,
+    timeout_seconds: float = 30.0,
+) -> dict[str, object]:
+    """Poll GET /optimize/status until the background job finishes."""
+    deadline = asyncio.get_event_loop().time() + timeout_seconds
+    while asyncio.get_event_loop().time() < deadline:
+        status_resp = await client.get(
+            f"/api/v1/sessions/{session_id}/optimize/status",
+        )
+        assert status_resp.status_code == 200
+        payload = status_resp.json()
+        if payload["status"] != "RUNNING":
+            result = payload.get("result")
+            if result is not None:
+                return result
+            return payload
+        await asyncio.sleep(0.2)
+    raise AssertionError("optimize did not finish before timeout")
+
+
+async def _run_optimize(
+    client: AsyncClient,
+    session_id: UUID,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    """Start optimize (202) and wait for the terminal SolverRunResult."""
+    resp = await client.post(
+        f"/api/v1/sessions/{session_id}/optimize",
+        json=payload,
+    )
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "RUNNING"
+    return await _wait_for_optimize(client, session_id)
+
+
 async def _create_session(client: AsyncClient) -> UUID:
     vehicles = await client.get("/api/v1/vehicles")
     assert vehicles.status_code == 200
@@ -107,13 +146,11 @@ async def test_optimize_returns_result_fields(client: AsyncClient) -> None:
         assert ranked.status_code == 200
         offer_ids = [o["offer_id"] for o in ranked.json()["offers"][:10]]
 
-        resp = await client.post(
-            f"/api/v1/sessions/{session_id}/optimize",
-            json={"candidate_offer_ids": offer_ids},
+        data = await _run_optimize(
+            client,
+            session_id,
+            {"candidate_offer_ids": offer_ids},
         )
-        assert resp.status_code == 200
-
-        data = resp.json()
         assert "selected_offer_ids" in data
         assert "objective_value" in data
         assert "solver_status" in data
@@ -148,12 +185,12 @@ async def test_optimize_persists_solver_result(client: AsyncClient) -> None:
         )
         offer_ids = [o["offer_id"] for o in ranked.json()["offers"][:5]]
 
-        resp = await client.post(
-            f"/api/v1/sessions/{session_id}/optimize",
-            json={"candidate_offer_ids": offer_ids},
+        data = await _run_optimize(
+            client,
+            session_id,
+            {"candidate_offer_ids": offer_ids},
         )
-        assert resp.status_code == 200
-        solver_run_id = resp.json()["solver_run_id"]
+        solver_run_id = data["solver_run_id"]
 
         async with get_sessionmaker()() as db:
             sr = await db.get(SolverResult, UUID(solver_run_id))
@@ -178,12 +215,11 @@ async def test_optimize_infeasible_returns_200_empty(client: AsyncClient) -> Non
     )
     offer_ids = [o["offer_id"] for o in ranked.json()["offers"][:5]]
 
-    resp = await client.post(
-        f"/api/v1/sessions/{session_id}/optimize",
-        json={"candidate_offer_ids": offer_ids, "max_stops": 0},
+    data = await _run_optimize(
+        client,
+        session_id,
+        {"candidate_offer_ids": offer_ids, "max_stops": 0},
     )
-    assert resp.status_code == 200
-    data = resp.json()
     assert data["selected_offer_ids"] == []
     assert data["solver_status"] in ("INFEASIBLE", "OPTIMAL", "FEASIBLE", "UNKNOWN")
 
@@ -203,12 +239,11 @@ async def test_optimize_empty_candidates_infeasible(client: AsyncClient) -> None
     """Empty candidate list should result in an INFEASIBLE response."""
     session_id = await _create_session(client)
 
-    resp = await client.post(
-        f"/api/v1/sessions/{session_id}/optimize",
-        json={"candidate_offer_ids": []},
+    data = await _run_optimize(
+        client,
+        session_id,
+        {"candidate_offer_ids": []},
     )
-    assert resp.status_code == 200
-    data = resp.json()
     assert data["selected_offer_ids"] == []
     assert data["solver_status"] == "INFEASIBLE"
 
@@ -225,12 +260,11 @@ async def test_optimize_returns_stop_sequence(client: AsyncClient) -> None:
         )
         offer_ids = [o["offer_id"] for o in ranked.json()["offers"][:10]]
 
-        resp = await client.post(
-            f"/api/v1/sessions/{session_id}/optimize",
-            json={"candidate_offer_ids": offer_ids},
+        data = await _run_optimize(
+            client,
+            session_id,
+            {"candidate_offer_ids": offer_ids},
         )
-        assert resp.status_code == 200
-        data = resp.json()
         assert "stop_sequence" in data
         if data["selected_offer_ids"]:
             assert len(data["stop_sequence"]) == 2 * len(data["selected_offer_ids"])
@@ -255,12 +289,11 @@ async def test_optimize_updates_route_stops_count(client: AsyncClient) -> None:
         )
         offer_ids = [o["offer_id"] for o in ranked.json()["offers"][:10]]
 
-        resp = await client.post(
-            f"/api/v1/sessions/{session_id}/optimize",
-            json={"candidate_offer_ids": offer_ids},
+        data = await _run_optimize(
+            client,
+            session_id,
+            {"candidate_offer_ids": offer_ids},
         )
-        assert resp.status_code == 200
-        data = resp.json()
         selected = data["selected_offer_ids"]
         if not selected:
             pytest.skip("solver returned no selection")
@@ -294,12 +327,11 @@ async def test_optimize_mock_solver_three_offers(
         )
         offer_ids = [o["offer_id"] for o in ranked.json()["offers"][:10]]
 
-        resp = await client.post(
-            f"/api/v1/sessions/{session_id}/optimize",
-            json={"candidate_offer_ids": offer_ids},
+        data = await _run_optimize(
+            client,
+            session_id,
+            {"candidate_offer_ids": offer_ids},
         )
-        assert resp.status_code == 200
-        data = resp.json()
         assert data["solver_status"] == "OPTIMAL"
         assert data["is_optimal"] is True
         assert data["solve_time_ms"] == 42
@@ -332,12 +364,11 @@ async def test_optimize_current_offer_ids_for_diff(client: AsyncClient) -> None:
         )
         candidate_ids = [o["offer_id"] for o in all_ranked.json()["offers"][:10]]
 
-        resp = await client.post(
-            f"/api/v1/sessions/{session_id}/optimize",
-            json={"candidate_offer_ids": candidate_ids},
+        data = await _run_optimize(
+            client,
+            session_id,
+            {"candidate_offer_ids": candidate_ids},
         )
-        assert resp.status_code == 200
-        data = resp.json()
         assert data["current_offer_ids"] == before_ids
     finally:
         _clear_osrm_mock()
@@ -355,9 +386,10 @@ async def test_delete_optimize_cancelled(client: AsyncClient) -> None:
         )
         offer_ids = [o["offer_id"] for o in ranked.json()["offers"][:5]]
 
-        await client.post(
-            f"/api/v1/sessions/{session_id}/optimize",
-            json={"candidate_offer_ids": offer_ids},
+        await _run_optimize(
+            client,
+            session_id,
+            {"candidate_offer_ids": offer_ids},
         )
 
         resp = await client.delete(f"/api/v1/sessions/{session_id}/optimize")
@@ -365,5 +397,14 @@ async def test_delete_optimize_cancelled(client: AsyncClient) -> None:
         data = resp.json()
         assert data["solver_status"] == "CANCELLED"
         assert data["status"] == "CANCELLED"
+
+        status_resp = await client.get(
+            f"/api/v1/sessions/{session_id}/optimize/status",
+        )
+        assert status_resp.status_code == 200
+        status_data = status_resp.json()
+        assert status_data["status"] == "CANCELLED"
+        assert status_data["result"] is not None
+        assert status_data["result"]["solver_status"] == "CANCELLED"
     finally:
         _clear_osrm_mock()
