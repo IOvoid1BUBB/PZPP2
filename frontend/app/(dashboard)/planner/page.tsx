@@ -2,13 +2,17 @@
 
 import Link from "next/link";
 
+import { DriverHoursWarning } from "@/components/planner/DriverHoursWarning";
 import { SlotEditor } from "@/components/planner/SlotEditor";
+import { SolverPanel } from "@/components/planner/SolverPanel";
 import { VehicleSelector } from "@/components/planner/VehicleSelector";
 import { Button } from "@/components/ui/Button";
 import { useHydratedSessionId } from "@/hooks/useHydratedSessionId";
+import { usePlannerLayout } from "@/hooks/usePlannerLayout";
 
 export default function PlannerPage() {
   const sessionId = useHydratedSessionId();
+  const { reload } = usePlannerLayout();
 
   return (
     <section className="planning-lab">
@@ -24,7 +28,9 @@ export default function PlannerPage() {
           </p>
         )}
       </div>
+      <DriverHoursWarning />
       <VehicleSelector />
+      <SolverPanel sessionId={sessionId} onApplied={() => void reload()} />
       <SlotEditor />
     </section>
   );
