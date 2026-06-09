@@ -12,11 +12,13 @@ from app.core.database import get_db
 from app.lib.osrm import OSRMClient, get_osrm_client
 from app.schemas.offer import RankedOffersResponse, SimulateOffersResponse
 from app.schemas.profit import SessionProfitBreakdown
+from app.schemas.route_geometry import RouteGeometry
 from app.schemas.route_map import RouteMapResponse
 from app.schemas.session import (
     SessionCreate,
     SessionCreatedResponse,
     SessionFullResponse,
+    SessionOffersReplace,
     SessionRead,
     SessionStatusUpdate,
 )
@@ -25,6 +27,7 @@ from app.services.market_offers import bulk_insert_offers
 from app.services.market_simulator import generate_batch
 from app.services.offer_scorer import OfferScorerService
 from app.services.profit_calculator import SessionProfitCalculator
+from app.services.route_geometry import RouteGeometryService
 from app.services.route_map import RouteMapService
 from app.services.sessions import SessionService
 from app.services.stop_labels import resolve_and_persist_stop_label
@@ -126,6 +129,26 @@ async def add_offer_to_session(
     return response
 
 
+@router.put(
+    "/{session_id}/offers",
+    response_model=SessionFullResponse,
+    summary="Replace all offers assigned to a session",
+)
+async def replace_session_offers(
+    session_id: UUID,
+    payload: SessionOffersReplace,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    osrm: OSRMClient = Depends(get_osrm_client),
+) -> SessionFullResponse:
+    service = _service(db, osrm)
+    response, new_stop_ids = await service.replace_offers(session_id, payload.offer_ids)
+    await db.commit()
+    for stop_id in new_stop_ids:
+        background_tasks.add_task(resolve_and_persist_stop_label, stop_id)
+    return response
+
+
 @router.delete(
     "/{session_id}/offers/{offer_id}",
     response_model=SessionFullResponse,
@@ -189,6 +212,33 @@ async def get_session_route_map(
     return await service.get_route_map(session_id)
 
 
+@router.get(
+    "/{session_id}/route",
+    response_model=RouteGeometry,
+    summary="Full route GeoJSON geometry with per-leg load data for Leaflet heat-map",
+)
+async def get_session_route(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    osrm: OSRMClient = Depends(get_osrm_client),
+) -> RouteGeometry:
+    service = RouteGeometryService(db, osrm=osrm)
+    return await service.get_route_geometry(session_id)
+
+
+async def _profit_handler(
+    session_id: UUID,
+    db: AsyncSession,
+    osrm: OSRMClient,
+    settings: Settings,
+) -> SessionProfitBreakdown:
+    """Shared handler for profit calculation (used by both GET and POST)."""
+    calc = SessionProfitCalculator(db, osrm=osrm, settings=settings)
+    breakdown = await calc.calculate_session_profit(session_id)
+    await db.commit()
+    return breakdown
+
+
 @router.post(
     "/{session_id}/profit",
     response_model=SessionProfitBreakdown,
@@ -200,10 +250,21 @@ async def calculate_session_profit(
     osrm: OSRMClient = Depends(get_osrm_client),
     settings: Settings = Depends(get_settings),
 ) -> SessionProfitBreakdown:
-    calc = SessionProfitCalculator(db, osrm=osrm, settings=settings)
-    breakdown = await calc.calculate_session_profit(session_id)
-    await db.commit()
-    return breakdown
+    return await _profit_handler(session_id, db, osrm, settings)
+
+
+@router.get(
+    "/{session_id}/profit",
+    response_model=SessionProfitBreakdown,
+    summary="Retrieve 5-category cost breakdown and net profit for a session (idempotent alias)",
+)
+async def get_session_profit(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    osrm: OSRMClient = Depends(get_osrm_client),
+    settings: Settings = Depends(get_settings),
+) -> SessionProfitBreakdown:
+    return await _profit_handler(session_id, db, osrm, settings)
 
 
 @router.post(

@@ -17,6 +17,7 @@ function useNavItems() {
   return [
     { href: "/planner", label: "Planner" },
     { href: "/analytics", label: "Analytics" },
+    { href: "/fleet", label: "Flota" },
     { href: sessionPath, label: "Sesja" },
     { href: `${sessionPath}/map`, label: "Mapa trasy" },
   ];

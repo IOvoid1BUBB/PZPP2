@@ -27,7 +27,8 @@ Manual reference fixture (3 offers, 6 stops, 500 km route):
   Stop costs: 6 stops × 16.1875 EUR = 97.12 EUR
     (time=9.00 + idle_fuel=2.19 + admin=5.00 = 16.19 per stop)
 
-  Driver: ceil(6h/9h) = 1 day × 49 EUR = 49 EUR
+  Driver: ceil(6h/24h) = 1 day × 49 EUR = 49 EUR
+    (formula changed from /9 to /24 per spec)
 
   Maintenance: 500 km × 0.08 = 40 EUR
 
@@ -39,7 +40,7 @@ Manual reference fixture (3 offers, 6 stops, 500 km route):
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, field
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
@@ -87,8 +88,9 @@ class _Vehicle:
 
 @dataclass
 class _Offer:
-    price_eur: float
-    weight_kg: int
+    id: UUID = field(default_factory=uuid4)
+    price_eur: float = 0.0
+    weight_kg: int = 0
     ldm: float = 2.0
     handling_time_minutes: int = 30
     time_window_open: Any = None
@@ -122,19 +124,19 @@ _COORDS = [
     (52.41, 16.93),  # D3      POZ
 ]
 
-_OFFERS = [
-    _Offer(price_eur=800.0, weight_kg=500),
-    _Offer(price_eur=600.0, weight_kg=800),
-    _Offer(price_eur=400.0, weight_kg=600),
-]
+_OFFER_1 = _Offer(price_eur=800.0, weight_kg=500)
+_OFFER_2 = _Offer(price_eur=600.0, weight_kg=800)
+_OFFER_3 = _Offer(price_eur=400.0, weight_kg=600)
+
+_OFFERS = [_OFFER_1, _OFFER_2, _OFFER_3]
 
 _STOPS = [
-    _Stop("pickup",   _OFFERS[0], 0, _loc(*_COORDS[1])),
-    _Stop("delivery", _OFFERS[0], 1, _loc(*_COORDS[2])),
-    _Stop("pickup",   _OFFERS[1], 2, _loc(*_COORDS[3])),
-    _Stop("delivery", _OFFERS[1], 3, _loc(*_COORDS[4])),
-    _Stop("pickup",   _OFFERS[2], 4, _loc(*_COORDS[5])),
-    _Stop("delivery", _OFFERS[2], 5, _loc(*_COORDS[6])),
+    _Stop("pickup",   _OFFER_1, 0, _loc(*_COORDS[1])),
+    _Stop("delivery", _OFFER_1, 1, _loc(*_COORDS[2])),
+    _Stop("pickup",   _OFFER_2, 2, _loc(*_COORDS[3])),
+    _Stop("delivery", _OFFER_2, 3, _loc(*_COORDS[4])),
+    _Stop("pickup",   _OFFER_3, 4, _loc(*_COORDS[5])),
+    _Stop("delivery", _OFFER_3, 5, _loc(*_COORDS[6])),
 ]
 
 # Mock OSRM route — 6 legs × 83.333 km / 60 min
@@ -244,6 +246,9 @@ async def test_profit_3_offers_6_stops_within_tolerance() -> None:
     ):
         result = await calc.calculate_session_profit(SESSION_ID)
 
+    # session_id must be set
+    assert result.session_id == SESSION_ID
+
     # Revenue check
     assert result.revenue_eur == pytest.approx(1800.0, abs=0.01)
 
@@ -256,8 +261,9 @@ async def test_profit_3_offers_6_stops_within_tolerance() -> None:
     # Stop costs: 6 stops × ~16.19 EUR = ~97.12 EUR  (manual ≈ 97.12)
     assert 95.0 < result.stop_costs_eur < 99.0, f"stop_costs_eur={result.stop_costs_eur}"
 
-    # Driver: 1 day × 49 EUR
+    # Driver: ceil(6h/24h) = 1 day × 49 EUR (formula uses /24)
     assert result.driver_eur == pytest.approx(49.0, abs=0.01)
+    assert result.days_on_road == 1
 
     # Maintenance: 500 km × 0.08 = 40 EUR
     assert result.maintenance_eur == pytest.approx(40.0, abs=0.01)
@@ -271,6 +277,18 @@ async def test_profit_3_offers_6_stops_within_tolerance() -> None:
     assert result.legs[0].fuel_consumption > 0
     assert result.formulas.fuel.liters_total is not None
     assert len(result.offer_revenue) == 3
+
+    # New fields check
+    assert result.total_distance_km == pytest.approx(500.0, abs=0.01)
+    assert result.total_liters > 0
+    assert result.toll_is_estimated is True
+
+    # leg_costs must match leg count and have required fields
+    assert len(result.leg_costs) == 6
+    assert result.leg_costs[0].leg_index == 0
+    assert result.leg_costs[0].distance_km > 0
+    assert result.leg_costs[0].duration_minutes == 60
+    assert 0 <= result.leg_costs[0].load_ratio <= 1
 
     # stop_costs_eur must be a separate field, not included in fuel_eur
     assert result.stop_costs_eur > 0
@@ -500,3 +518,110 @@ async def test_profit_no_stops_raises_422() -> None:
 
         with pytest.raises(ValidationAppError):
             await calc.calculate_session_profit(SESSION_ID)
+
+
+@pytest.mark.asyncio
+async def test_profit_leg_costs_length_matches_osrm_legs() -> None:
+    """len(leg_costs) must equal len(route.legs)."""
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock()
+    mock_db.add = MagicMock()
+    mock_db.flush = AsyncMock()
+
+    mock_osrm = AsyncMock()
+    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+
+    calc = _build_calculator(mock_db, mock_osrm)
+
+    with (
+        patch.object(
+            SessionProfitCalculator,
+            "_load_session",
+            new=AsyncMock(return_value=_mock_session()),
+        ),
+        patch("app.services.toll_calculator.load_country_geometries", return_value={}),
+    ):
+        result = await calc.calculate_session_profit(SESSION_ID)
+
+    assert len(result.leg_costs) == len(_ROUTE.legs)
+    for i, leg_cost in enumerate(result.leg_costs):
+        assert leg_cost.leg_index == i
+        assert leg_cost.duration_minutes == _ROUTE.legs[i].duration_minutes
+
+
+@pytest.mark.asyncio
+async def test_profit_stop_costs_from_persisted_stop_cost_eur() -> None:
+    """stop_costs_eur sums persisted stop.stop_cost_eur values."""
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock()
+    mock_db.add = MagicMock()
+    mock_db.flush = AsyncMock()
+
+    mock_osrm = AsyncMock()
+    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+
+    mock_session = _mock_session()
+    persisted_cost = 25.0
+    for stop in mock_session.route_stops:
+        stop.stop_cost_eur = persisted_cost
+
+    calc = _build_calculator(mock_db, mock_osrm)
+
+    with (
+        patch.object(
+            SessionProfitCalculator,
+            "_load_session",
+            new=AsyncMock(return_value=mock_session),
+        ),
+        patch("app.services.toll_calculator.load_country_geometries", return_value={}),
+    ):
+        result = await calc.calculate_session_profit(SESSION_ID)
+
+    expected_stop_costs = len(mock_session.route_stops) * persisted_cost
+    assert result.stop_costs_eur == pytest.approx(expected_stop_costs, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_profit_days_on_road_formula_24h() -> None:
+    """days_on_road uses ceil(hours/24), not ceil(hours/9)."""
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock()
+    mock_db.add = MagicMock()
+    mock_db.flush = AsyncMock()
+
+    long_route = MultiStopRouteResult(
+        total_distance_km=500.0,
+        total_duration_minutes=60 * 48,
+        legs=[
+            RouteLeg(distance_km=500.0, duration_minutes=60 * 48, from_index=0, to_index=1),
+        ],
+        geometry_geojson={
+            "type": "LineString",
+            "coordinates": [[20.0, 52.0], [21.0, 53.0]],
+        },
+    )
+
+    simple_stops = [
+        _Stop("pickup", _OFFERS[0], 0, _loc(51.0, 20.0)),
+        _Stop("delivery", _OFFERS[0], 1, _loc(50.0, 19.0)),
+    ]
+    mock_session = _mock_session()
+    mock_session.route_stops = simple_stops
+
+    mock_osrm = AsyncMock()
+    mock_osrm.get_route_multi = AsyncMock(return_value=long_route)
+
+    calc = _build_calculator(mock_db, mock_osrm)
+
+    with (
+        patch.object(
+            SessionProfitCalculator,
+            "_load_session",
+            new=AsyncMock(return_value=mock_session),
+        ),
+        patch("app.services.toll_calculator.load_country_geometries", return_value={}),
+    ):
+        result = await calc.calculate_session_profit(SESSION_ID)
+
+    assert result.days_on_road == 2
+    assert result.driver_eur == pytest.approx(2 * 49.0, abs=0.01)

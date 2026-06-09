@@ -16,6 +16,7 @@ import {
   AddOfferError,
   addOfferToSession,
   fetchRankedOffers,
+  simulateMarketOffers,
   type SessionFullResponse,
 } from "@/lib/api/sessionClient";
 import { getCompanyColorPair } from "@/lib/colors/companyColors";
@@ -267,6 +268,8 @@ export function PalletLibrary({
   const [offers, setOffers] = useState<RankedOfferRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [simulating, setSimulating] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
   const [loadingOfferId, setLoadingOfferId] = useState<string | null>(null);
   const [localLoadedIds, setLocalLoadedIds] = useState<Set<string>>(new Set());
 
@@ -378,7 +381,27 @@ export function PalletLibrary({
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [sessionId, refreshToken]);
+
+  const handleSimulate = useCallback(async () => {
+    setSimulating(true);
+    try {
+      const result = await simulateMarketOffers(sessionId, 200);
+      showToast({
+        type: "success",
+        message: `Wygenerowano ${result.inserted} ofert (pominięto ${result.skipped}).`,
+      });
+      setRefreshToken((token) => token + 1);
+    } catch (err) {
+      showToast({
+        type: "error",
+        message:
+          err instanceof Error ? err.message : "Nie udało się wygenerować ofert.",
+      });
+    } finally {
+      setSimulating(false);
+    }
+  }, [sessionId, showToast]);
 
   const renderRow = (offer: RankedOfferRow) => (
     <DraggableOfferRow
@@ -398,6 +421,17 @@ export function PalletLibrary({
           {filteredOffers.length} / {offers.length}
         </span>
       </header>
+
+      {offers.length === 0 && !loading ? (
+        <button
+          type="button"
+          className="button button--secondary mb-3 w-full"
+          disabled={simulating}
+          onClick={() => void handleSimulate()}
+        >
+          {simulating ? "Generowanie…" : "Generuj oferty rynkowe"}
+        </button>
+      ) : null}
 
       <div className="pallet-library__filters">
         <label className="pallet-library__filter">

@@ -19,19 +19,22 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.api import build_api_router
 from app.core.config import Settings, get_settings
+from app.core.database import get_engine
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging
 from app.core.middleware import AccessLogMiddleware, RequestIDMiddleware
 from app.lib.osrm import shutdown_osrm_client
-from app.lib.redis_client import shutdown_redis
-from app.schemas.common import HealthResponse
+from app.lib.redis_client import get_redis, shutdown_redis
+from app.schemas.common import DependencyStatus, HealthResponse, ReadinessResponse
 
 _logger = logging.getLogger("app")
 
@@ -117,6 +120,60 @@ def _register_routes(app: FastAPI, settings: Settings) -> None:
             status="ok",
             version=settings.APP_VERSION,
             request_id=getattr(request.state, "request_id", ""),
+        )
+
+    @app.get(
+        "/health/ready",
+        response_model=ReadinessResponse,
+        tags=["health"],
+        summary="Readiness probe (database, Redis, OSRM)",
+    )
+    async def readiness(request: Request) -> ReadinessResponse:
+        checks: list[DependencyStatus] = []
+
+        try:
+            async with get_engine().connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            checks.append(DependencyStatus(name="database", ok=True))
+        except Exception as exc:  # noqa: BLE001 — surface dependency state
+            checks.append(DependencyStatus(name="database", ok=False, detail=str(exc)))
+
+        try:
+            redis = get_redis()
+            pong = await redis.ping()
+            checks.append(
+                DependencyStatus(
+                    name="redis",
+                    ok=bool(pong),
+                    detail=None if pong else "ping failed",
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001
+            checks.append(DependencyStatus(name="redis", ok=False, detail=str(exc)))
+
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                response = await client.get(
+                    f"{settings.OSRM_HOST.rstrip('/')}/route/v1/driving/21.01,52.22;21.02,52.23",
+                    params={"overview": "false"},
+                )
+            osrm_ok = response.status_code == 200
+            checks.append(
+                DependencyStatus(
+                    name="osrm",
+                    ok=osrm_ok,
+                    detail=None if osrm_ok else f"HTTP {response.status_code}",
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001
+            checks.append(DependencyStatus(name="osrm", ok=False, detail=str(exc)))
+
+        required_ok = all(check.ok for check in checks if check.name in {"database", "redis"})
+        return ReadinessResponse(
+            status="ok" if required_ok else "degraded",
+            version=settings.APP_VERSION,
+            request_id=getattr(request.state, "request_id", ""),
+            checks=checks,
         )
 
     app.include_router(build_api_router())

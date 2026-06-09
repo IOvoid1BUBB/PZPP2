@@ -72,6 +72,57 @@ export interface SessionFullResponse {
   status: string;
 }
 
+export interface DriverProfileRecord {
+  id: string;
+  code: string;
+  name: string;
+  hourly_cost_eur: number;
+  idle_fuel_l_per_hour: number;
+  stop_admin_fee_eur: number;
+}
+
+export interface SessionDetailResponse {
+  id: string;
+  status: "draft" | "optimizing" | "confirmed" | "dispatched";
+  created_at: string;
+  vehicle: {
+    id: string;
+    name: string;
+    type: string;
+  };
+  driver_profile: DriverProfileRecord;
+  offers: Array<{ id: string; price_eur: number; ldm: number; weight_kg: number }>;
+  stops: Array<{ id: string; stop_type: string; sequence_order: number }>;
+  metrics: {
+    used_ldm: number;
+    fill_pct: number;
+    used_weight_kg: number;
+    weight_pct: number;
+    total_distance_km: number;
+    estimated_net_profit_eur: number | null;
+    stop_count: number;
+    client_count: number;
+    stop_costs_eur: number;
+  };
+}
+
+export interface SimulateOffersResult {
+  requested: number;
+  inserted: number;
+  skipped: number;
+}
+
+export interface SolverRunResult {
+  session_id: string;
+  solver_run_id: string;
+  selected_offer_ids: string[];
+  objective_value: number;
+  solver_status: string;
+  is_optimal: boolean;
+  solve_time_ms: number;
+  current_offer_ids: string[];
+}
+
 export class AddOfferError extends Error {
   readonly code: string;
   readonly freeLdm?: number;
@@ -278,4 +329,89 @@ export async function addOfferToSession(
   }
 
   return (await response.json()) as SessionFullResponse;
+}
+
+export async function fetchDriverProfiles(): Promise<DriverProfileRecord[]> {
+  const response = await fetch(`${API_BASE}/api/v1/driver-profiles`);
+  if (!response.ok) {
+    throw new Error(`Nie udało się pobrać profili kierowców (${response.status})`);
+  }
+  return (await response.json()) as DriverProfileRecord[];
+}
+
+export async function fetchSessionDetail(sessionId: string): Promise<SessionDetailResponse> {
+  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}`);
+  if (!response.ok) {
+    throw new Error(`Nie udało się pobrać sesji (${response.status})`);
+  }
+  return (await response.json()) as SessionDetailResponse;
+}
+
+export async function simulateMarketOffers(
+  sessionId: string,
+  count = 200,
+): Promise<SimulateOffersResult> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/sessions/${sessionId}/simulate?count=${count}`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw new Error(`Nie udało się wygenerować ofert (${response.status})`);
+  }
+  return (await response.json()) as SimulateOffersResult;
+}
+
+export async function runSessionOptimize(
+  sessionId: string,
+  timeLimitSeconds = 10,
+): Promise<SolverRunResult> {
+  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/optimize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ candidate_offer_ids: [], time_limit_seconds: timeLimitSeconds }),
+  });
+  if (!response.ok) {
+    throw new Error(`Optymalizacja nie powiodła się (${response.status})`);
+  }
+  return (await response.json()) as SolverRunResult;
+}
+
+export async function cancelSessionOptimize(sessionId: string): Promise<SolverRunResult> {
+  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/optimize`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Anulowanie optymalizacji nie powiodło się (${response.status})`);
+  }
+  return (await response.json()) as SolverRunResult;
+}
+
+export async function replaceSessionOffers(
+  sessionId: string,
+  offerIds: string[],
+): Promise<SessionDetailResponse> {
+  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/offers`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ offer_ids: offerIds }),
+  });
+  if (!response.ok) {
+    throw new Error(`Nie udało się zaktualizować ofert (${response.status})`);
+  }
+  return (await response.json()) as SessionDetailResponse;
+}
+
+export async function updateSessionStatus(
+  sessionId: string,
+  status: SessionDetailResponse["status"],
+): Promise<SessionDetailResponse> {
+  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) {
+    throw new Error(`Nie udało się zmienić statusu sesji (${response.status})`);
+  }
+  return (await response.json()) as SessionDetailResponse;
 }

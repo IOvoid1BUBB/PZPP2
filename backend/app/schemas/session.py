@@ -57,6 +57,14 @@ class SessionStatusUpdate(BaseModel):
     status: SessionStatus
 
 
+class SessionOffersReplace(BaseModel):
+    """Replace the full set of offers assigned to a session."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    offer_ids: list[UUID] = Field(min_length=1)
+
+
 class SessionMetrics(BaseModel):
     """Aggregated capacity and profitability metrics for a session."""
 

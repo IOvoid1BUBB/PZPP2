@@ -7,6 +7,21 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class LegCostBreakdown(BaseModel):
+    """Full per-leg cost breakdown for analytics (Pydantic mirror of LegFuelCost dataclass)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    leg_index: int = Field(..., ge=0, description="0-based leg index")
+    distance_km: float = Field(..., ge=0)
+    duration_minutes: int = Field(..., ge=0)
+    weight_kg_at_leg: float = Field(..., ge=0)
+    load_ratio: float = Field(..., ge=0, le=1)
+    consumption_l100km: float = Field(..., ge=0)
+    liters: float = Field(..., ge=0)
+    cost_eur: float = Field(..., ge=0)
+
+
 class CostFormulaMeta(BaseModel):
     """Inputs displayed in frontend tooltips — no derived business logic on FE."""
 
@@ -57,6 +72,7 @@ class SessionProfitBreakdown(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    session_id: UUID
     revenue_eur: float
     fuel_eur: float
     toll_eur: float
@@ -70,6 +86,13 @@ class SessionProfitBreakdown(BaseModel):
     revenue_per_ldm_eur: float
     breakeven_fill_pct: float | None
     stop_count: int = Field(..., ge=0)
+    total_distance_km: float = Field(..., ge=0)
+    days_on_road: int = Field(..., ge=1)
+    total_liters: float = Field(..., ge=0)
+    toll_is_estimated: bool = Field(
+        ..., description="True when toll is calculated via proportional geometry split"
+    )
     formulas: ProfitFormulas
     legs: list[LegFuelBreakdown]
+    leg_costs: list[LegCostBreakdown]
     offer_revenue: list[OfferRevenueRow]
