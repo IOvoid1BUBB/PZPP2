@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -15,26 +16,28 @@ os.environ.setdefault(
 )
 
 
+@pytest.fixture(autouse=True)
+def _clear_job_store() -> None:
+    from app.services.solver_job import SolverJobStore
+
+    SolverJobStore.clear_all_for_tests()
+    yield
+    SolverJobStore.clear_all_for_tests()
+
+
 @pytest.mark.asyncio
 async def test_solver_post_and_delete_routes(monkeypatch: pytest.MonkeyPatch) -> None:
-    """POST and DELETE /optimize delegate to VRPSolver and commit."""
+    """POST starts background job; DELETE /optimize delegates to VRPSolver.cancel."""
     from app.core.database import get_db
     from app.lib.osrm import get_osrm_client
+    from app.lib.redis_client import get_redis
     from app.main import app
-    from app.schemas.solver import SolverRunResult
+    from app.schemas.solver import SolverRunResult, SolverStatusResponse
+    from app.services.solver_job import SolverJobStore
 
     session_id = uuid4()
     run_id = uuid4()
 
-    solve_result = SolverRunResult(
-        session_id=session_id,
-        solver_run_id=run_id,
-        selected_offer_ids=[],
-        objective_value=0.0,
-        solver_status="OPTIMAL",
-        is_optimal=True,
-        solve_time_ms=42,
-    )
     cancel_result = SolverRunResult(
         session_id=session_id,
         solver_run_id=run_id,
@@ -46,12 +49,24 @@ async def test_solver_post_and_delete_routes(monkeypatch: pytest.MonkeyPatch) ->
     )
 
     mock_solver = MagicMock()
-    mock_solver.solve = AsyncMock(return_value=solve_result)
+    mock_solver.get_status = AsyncMock(
+        return_value=SolverStatusResponse(status="IDLE", elapsed_ms=0),
+    )
     mock_solver.cancel = AsyncMock(return_value=cancel_result)
 
     mock_db = AsyncMock()
     mock_db.commit = AsyncMock()
 
+    async def fake_run_solver_job(
+        sid: object,
+        payload: object,
+        *,
+        settings: object,
+        redis: object,
+    ) -> None:
+        await SolverJobStore.finish(redis, sid, status="OPTIMAL")  # type: ignore[arg-type]
+
+    monkeypatch.setattr("app.api.solver.run_solver_job", fake_run_solver_job)
     monkeypatch.setattr(
         "app.api.solver.VRPSolver",
         lambda db, osrm=None, settings=None: mock_solver,
@@ -59,6 +74,7 @@ async def test_solver_post_and_delete_routes(monkeypatch: pytest.MonkeyPatch) ->
 
     app.dependency_overrides[get_db] = lambda: mock_db
     app.dependency_overrides[get_osrm_client] = lambda: AsyncMock()
+    app.dependency_overrides[get_redis] = lambda: AsyncMock()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -66,11 +82,13 @@ async def test_solver_post_and_delete_routes(monkeypatch: pytest.MonkeyPatch) ->
             f"/api/v1/sessions/{session_id}/optimize",
             json={"candidate_offer_ids": []},
         )
-        assert post_resp.status_code == 200
-        assert post_resp.json()["solver_status"] == "OPTIMAL"
-        mock_db.commit.assert_awaited()
+        assert post_resp.status_code == 202
+        assert post_resp.json()["status"] == "RUNNING"
+        for _ in range(50):
+            if not await SolverJobStore.is_running(AsyncMock(), session_id):
+                break
+            await asyncio.sleep(0.01)
 
-        mock_db.commit.reset_mock()
         delete_resp = await client.delete(f"/api/v1/sessions/{session_id}/optimize")
         assert delete_resp.status_code == 200
         assert delete_resp.json()["solver_status"] == "CANCELLED"

@@ -8,6 +8,15 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 SolverRunStatus = Literal["OPTIMAL", "FEASIBLE", "INFEASIBLE", "UNKNOWN", "CANCELLED"]
+SolverJobStatus = Literal[
+    "IDLE",
+    "RUNNING",
+    "OPTIMAL",
+    "FEASIBLE",
+    "INFEASIBLE",
+    "UNKNOWN",
+    "CANCELLED",
+]
 
 
 class SolverRequest(BaseModel):
@@ -51,6 +60,17 @@ class SolverRunResult(BaseModel):
     def status(self) -> SolverRunStatus:
         """Alias for ``solver_status`` (spec compatibility)."""
         return self.solver_status
+
+
+class SolverStatusResponse(BaseModel):
+    """Lightweight polling payload for ``GET /optimize/status``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: SolverJobStatus
+    elapsed_ms: int = Field(ge=0)
+    best_objective: float | None = None
+    result: SolverRunResult | None = None
 
 
 # Keep the old response alias for backwards compatibility with any existing imports.
