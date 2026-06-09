@@ -14,6 +14,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useEffect,
   type CSSProperties,
 } from "react";
 
@@ -37,6 +38,9 @@ import { Drawer } from "@/components/ui/Drawer";
 import { useToast } from "@/components/ui/Toast";
 
 import { usePlannerLayout } from "@/hooks/usePlannerLayout";
+import { useProfitBreakdown } from "@/hooks/useProfitBreakdown";
+
+import { fetchSessionDetail, updateSessionStatus } from "@/lib/api/sessionClient";
 
 import { getCompanyColorPair } from "@/lib/colors/companyColors";
 import {
@@ -160,6 +164,38 @@ export function SlotEditor() {
   } | null>(null);
 
   const [saving, setSaving] = useState(false);
+  const [driverName, setDriverName] = useState("—");
+  const [sessionStatus, setSessionStatus] = useState<string>("draft");
+  const { data: profitData } = useProfitBreakdown(sessionId);
+
+  useEffect(() => {
+    if (!sessionId) {
+      setDriverName("—");
+      setSessionStatus("draft");
+      return;
+    }
+
+    let cancelled = false;
+    void fetchSessionDetail(sessionId)
+      .then((detail) => {
+        if (cancelled) {
+          return;
+        }
+        setDriverName(detail.driver_profile.name);
+        setSessionStatus(detail.status);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDriverName("—");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  const isReadOnly = sessionStatus === "confirmed" || sessionStatus === "dispatched";
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -353,6 +389,49 @@ export function SlotEditor() {
     }
   };
 
+  const loadedCount = useMemo(
+    () => Object.values(slots).filter((pallet) => pallet !== null).length,
+    [slots],
+  );
+
+  const handleSendToDriver = useCallback(async () => {
+    if (!sessionId) {
+      showToast({ type: "error", message: "Brak aktywnej sesji." });
+      return;
+    }
+    if (loadedCount === 0) {
+      showToast({ type: "error", message: "Dodaj co najmniej jedną ofertę przed wysłaniem." });
+      return;
+    }
+    if (conflicts.length > 0) {
+      showToast({ type: "error", message: "Usuń konflikty layoutu przed wysłaniem." });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const saved = await persistSlots(slots);
+      if (!saved) {
+        return;
+      }
+
+      if (sessionStatus === "draft") {
+        await updateSessionStatus(sessionId, "optimizing");
+      }
+      const confirmed = await updateSessionStatus(sessionId, "confirmed");
+      setSessionStatus(confirmed.status);
+      showToast({ type: "success", message: "Sesja potwierdzona i wysłana do kierowcy." });
+    } catch (err) {
+      showToast({
+        type: "error",
+        message:
+          err instanceof Error ? err.message : "Nie udało się potwierdzić sesji.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [conflicts.length, loadedCount, persistSlots, sessionId, sessionStatus, showToast, slots]);
+
   if (!hydrated || loading) {
     return <p className="planner-empty">Wczytywanie layoutu…</p>;
   }
@@ -390,10 +469,6 @@ export function SlotEditor() {
     "Renault master (8EP)",
   );
 
-  const loadedCount = Object.values(slots).filter(
-    (pallet) => pallet !== null,
-  ).length;
-
   const usedWeightKg = getUsedWeight(slots);
 
   const usedLdm = getUsedLdm(slots);
@@ -429,14 +504,15 @@ export function SlotEditor() {
           <div className="flex min-w-0 flex-col gap-5">
             <VehicleHeader
               name={displayVehicleName}
-              driverName="Jan Kowalski"
+              driverName={driverName}
               itemsCount={loadedCount}
               usedWeightKg={usedWeightKg}
               maxWeightKg={vehicle.maxWeightKg}
               usedLdm={usedLdm}
               maxLdm={vehicle.maxLdm}
+              profitEur={Math.round(profitData.netProfitEur)}
               saving={saving}
-              onSave={() => void persistSlots(slots)}
+              onSave={isReadOnly ? undefined : () => void handleSendToDriver()}
             />
 
             {conflicts.length > 0 && (

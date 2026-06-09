@@ -26,13 +26,13 @@ function formatPercent(value: number): string {
 
 export function VehicleHeader({
   name,
-  driverName = "Jan Kowalski",
+  driverName = "—",
   itemsCount,
   usedWeightKg,
   maxWeightKg,
   usedLdm,
   maxLdm,
-  profitEur = 430,
+  profitEur,
   saving,
   onSave,
 }: VehicleHeaderProps) {
@@ -46,7 +46,10 @@ export function VehicleHeader({
       label: "Weight",
       value: `${Math.round(usedWeightKg)} / ${maxWeightKg}kg`,
     },
-    { label: "Profit", value: `${profitEur} EUR` },
+    {
+      label: "Profit",
+      value: profitEur != null ? `${profitEur} EUR` : "—",
+    },
   ];
 
   return (
@@ -82,7 +85,7 @@ export function VehicleHeader({
         type="button"
         className="button button--primary vehicle-header__send"
         onClick={onSave}
-        disabled={saving}
+        disabled={saving || !onSave}
       >
         {saving ? "Wysyłanie…" : "Send to driver"}
         <span aria-hidden="true" className="vehicle-header__send-arrow">
