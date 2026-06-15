@@ -97,8 +97,10 @@ class DashboardService:
             market_offers_count=market_offers_count,
         )
 
+        eur_to_pln = self._settings.EUR_TO_PLN
         return DashboardResponse(
             today_net_profit_eur=round(profit_total, 2),
+            today_net_profit_pln=round(profit_total * eur_to_pln, 2),
             avg_lfill_pct=avg_lfill_pct,
             empty_runs_pct=empty_runs_pct,
             active_sessions=active_sessions,
