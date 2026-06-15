@@ -14,7 +14,8 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 
 import { DriverHoursWarning } from "@/components/planner/DriverHoursWarning";
 import { SlotEditor } from "@/components/planner/SlotEditor";
@@ -28,6 +29,7 @@ import { useHydratedSessionId } from "@/hooks/useHydratedSessionId";
 import { usePlannerLayout } from "@/hooks/usePlannerLayout";
 import { updateSessionStatus } from "@/lib/api/sessionClient";
 import { usePlannerActionStore } from "@/lib/stores/plannerActionStore";
+import { useSessionStore } from "@/lib/stores/sessionStore";
 
 // Leaflet loaded only client-side
 const RouteMapClient = dynamic(
@@ -43,6 +45,20 @@ const RouteMapClient = dynamic(
 );
 
 export default function PlannerPage() {
+  return (
+    <Suspense
+      fallback={
+        <p className="text-sm text-ui-secondary">Wczytywanie plannera…</p>
+      }
+    >
+      <PlannerPageInner />
+    </Suspense>
+  );
+}
+
+function PlannerPageInner() {
+  const searchParams = useSearchParams();
+  const setSessionId = useSessionStore((state) => state.setSessionId);
   const sessionId = useHydratedSessionId();
   const { reload } = usePlannerLayout();
   const { showToast } = useToast();
@@ -53,6 +69,13 @@ export default function PlannerPage() {
   const [briefingOpen, setBriefingOpen] = useState(false);
   const [dispatching, setDispatching] = useState(false);
   const [mapKey, setMapKey] = useState(0);
+
+  useEffect(() => {
+    const querySessionId = searchParams.get("session");
+    if (querySessionId) {
+      setSessionId(querySessionId);
+    }
+  }, [searchParams, setSessionId]);
 
   // Wire AppShell header "Send to driver" button
   useEffect(() => {
