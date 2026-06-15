@@ -10,9 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/Card";
 import { DriverRouteBriefing } from "@/components/driver/DriverRouteBriefing";
 import {
-  DEMO_ROUTE_MAP,
   fetchSessionRouteMap,
-  RouteMapFetchError,
 } from "@/lib/api/mapClient";
 import { getCompanyColorHex } from "@/lib/colors/companyColors";
 import {
@@ -176,7 +174,6 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
   const [data, setData] = useState<RouteMapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isDemoFallback, setIsDemoFallback] = useState(false);
   const [simulating, setSimulating] = useState(false);
 
   const mapRef = useRef<L.Map | null>(null);
@@ -197,20 +194,11 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
         const routeMap = await fetchSessionRouteMap(sessionId);
         if (!cancelled) {
           setData(routeMap);
-          setIsDemoFallback(false);
         }
       } catch (err) {
         if (cancelled) {
           return;
         }
-        if (err instanceof RouteMapFetchError && err.status === 422) {
-          setData({ ...DEMO_ROUTE_MAP, sessionId });
-          setIsDemoFallback(true);
-          setError(null);
-          return;
-        }
-        setData({ ...DEMO_ROUTE_MAP, sessionId });
-        setIsDemoFallback(true);
         setError(
           err instanceof Error
             ? err.message
@@ -239,22 +227,25 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const routeData = data ?? DEMO_ROUTE_MAP;
+  const routeData = data;
   const maxWeightKg = useMemo(
-    () => getMaxLegWeightKg(routeData.legs),
-    [routeData.legs],
+    () => (routeData ? getMaxLegWeightKg(routeData.legs) : 0),
+    [routeData],
   );
 
   const mapCenter = useMemo((): [number, number] => {
-    if (routeData.stops.length > 0) {
+    if (routeData && routeData.stops.length > 0) {
       const first = routeData.stops[0];
       return [first.location.lat, first.location.lon];
     }
-    return [routeData.origin.lat, routeData.origin.lon];
+    if (routeData) {
+      return [routeData.origin.lat, routeData.origin.lon];
+    }
+    return [52.22, 21.01]; // Warszawa jako domyślny środek
   }, [routeData]);
 
   const mapBounds = useMemo(
-    () => boundsFromData(routeData),
+    () => (routeData ? boundsFromData(routeData) : ([[52.22, 21.01]] as L.LatLngBoundsExpression)),
     [routeData],
   );
 
@@ -266,7 +257,7 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
 
   const runSimulation = useCallback(async () => {
     const map = mapRef.current;
-    if (!map || routeData.stops.length === 0) {
+    if (!map || !routeData || routeData.stops.length === 0) {
       return;
     }
 
@@ -286,7 +277,7 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
     } finally {
       setSimulating(false);
     }
-  }, [routeData.stops]);
+  }, [routeData]);
 
   if (loading) {
     return (
@@ -298,21 +289,30 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
     );
   }
 
+  if (error || !routeData) {
+    return (
+      <Card className="grid min-h-[420px] place-items-center p-8">
+        <div className="text-center">
+          <p className="text-sm font-medium text-[var(--ui-error,#dc2626)]">
+            {error ?? "Brak danych trasy"}
+          </p>
+          <p className="mt-2 text-xs text-[var(--ui-text-secondary)]">
+            Dodaj oferty do sesji i uruchom optymalizację, aby zobaczyć mapę trasy.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <div className="grid min-h-[calc(100vh-10rem)] gap-4 lg:grid-cols-[2fr_1fr]">
       <Card className="flex min-h-[480px] flex-col overflow-hidden p-0">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--ui-border)] px-4 py-3">
           <div>
             <CardTitle>Mapa trasy</CardTitle>
-            {isDemoFallback ? (
-              <CardDescription>
-                Dane demonstracyjne — dodaj oferty i zatrzymania do sesji.
-              </CardDescription>
-            ) : (
-              <CardDescription>
-                Odcinki wg obciążenia (OSRM + waga z kalkulatora paliwa).
-              </CardDescription>
-            )}
+            <CardDescription>
+              Odcinki wg obciążenia (OSRM truck + waga z kalkulatora paliwa).
+            </CardDescription>
           </div>
           <Button
             variant="secondary"
@@ -323,11 +323,9 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
           </Button>
         </div>
 
-        {!isDemoFallback ? (
-          <div className="border-b border-[var(--ui-border)] px-4 py-3">
-            <DriverRouteBriefing sessionId={sessionId} variant="compact" />
-          </div>
-        ) : null}
+        <div className="border-b border-[var(--ui-border)] px-4 py-3">
+          <DriverRouteBriefing sessionId={sessionId} variant="compact" />
+        </div>
 
         {error ? (
           <p className="px-4 py-2 text-sm text-[var(--ui-error)]">{error}</p>
