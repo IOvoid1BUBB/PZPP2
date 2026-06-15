@@ -17,6 +17,7 @@ import type {
   SolverResult,
   UUID,
 } from "@/lib/types/solver";
+import type {
   OfferScore,
   RankedOfferRow,
   RankedOffersResponse,
@@ -357,6 +358,8 @@ export async function bulkUpdateSessionOffers(
   if (!response.ok) {
     throw new Error(`Aktualizacja ofert sesji nie powiodła się (${response.status})`);
   }
+}
+
 /**
  * Pobierz oferty posortowane malejąco wg total_score.
  */

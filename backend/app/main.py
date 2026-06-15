@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -28,6 +29,9 @@ from app.services.market_offers import bulk_insert_offers
 from app.services.market_simulator import generate_batch
 
 _logger = logging.getLogger("app")
+
+_ROUTING_HEALTH_CACHE_TTL_SECONDS = 60.0
+_routing_health_cache: tuple[float, bool, str | None] | None = None
 
 
 _OFFER_REFRESH_INTERVAL_SECONDS = 5 * 60  # co 5 minut
@@ -126,7 +130,9 @@ def _register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         request_id = getattr(request.state, "request_id", "")
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=getattr(
+                status, "HTTP_422_UNPROCESSABLE_CONTENT", status.HTTP_422_UNPROCESSABLE_ENTITY
+            ),
             content={
                 "error": "validation_error",
                 "detail": exc.errors(),
@@ -189,31 +195,44 @@ def _register_routes(app: FastAPI, settings: Settings) -> None:
                 ),
             )
         else:
-            try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    response = await client.post(
-                        f"{settings.ORS_BASE_URL.rstrip('/')}"
-                        f"/v2/directions/{settings.ORS_PROFILE}/geojson",
-                        headers={"Authorization": settings.ORS_API_KEY},
-                        json={
-                            "coordinates": [[21.01, 52.22], [19.46, 51.75]],
-                            "geometry": True,
-                        },
-                    )
-                routing_ok = response.status_code == 200
-                checks.append(
-                    DependencyStatus(
-                        name="routing",
-                        ok=routing_ok,
-                        detail=(
-                            None
-                            if routing_ok
-                            else f"HTTP {response.status_code} (profil: {settings.ORS_PROFILE})"
-                        ),
-                    ),
-                )
-            except Exception as exc:  # noqa: BLE001
-                checks.append(DependencyStatus(name="routing", ok=False, detail=str(exc)))
+            global _routing_health_cache
+            now = time.monotonic()
+            if (
+                _routing_health_cache is not None
+                and now - _routing_health_cache[0] < _ROUTING_HEALTH_CACHE_TTL_SECONDS
+            ):
+                _, routing_ok, routing_detail = _routing_health_cache
+            else:
+                routing_ok = True
+                routing_detail: str | None = None
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        response = await client.post(
+                            f"{settings.ORS_BASE_URL.rstrip('/')}"
+                            f"/v2/directions/{settings.ORS_PROFILE}/geojson",
+                            headers={"Authorization": settings.ORS_API_KEY},
+                            json={
+                                "coordinates": [[21.01, 52.22], [19.46, 51.75]],
+                                "geometry": True,
+                            },
+                        )
+                    routing_ok = response.status_code == 200
+                    if not routing_ok:
+                        routing_detail = (
+                            f"HTTP {response.status_code} (profil: {settings.ORS_PROFILE})"
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    routing_ok = False
+                    routing_detail = str(exc)
+                _routing_health_cache = (now, routing_ok, routing_detail)
+
+            checks.append(
+                DependencyStatus(
+                    name="routing",
+                    ok=routing_ok,
+                    detail=routing_detail,
+                ),
+            )
 
         required_ok = all(
             check.ok for check in checks if check.name in {"database", "redis", "routing"}

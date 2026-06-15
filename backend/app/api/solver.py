@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
@@ -19,7 +20,17 @@ from app.services.solver_job import SolverJobStore
 from app.services.solver_runner import run_solver_job
 from app.services.vrp_solver import VRPSolver
 
+_logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/sessions/{session_id}/optimize", tags=["solver"])
+
+
+def _log_task_exception(task: asyncio.Task[object]) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        _logger.error("background solver task failed", exc_info=exc)
 
 
 @router.get(
@@ -46,15 +57,6 @@ async def get_optimization_status(
 async def trigger_optimization(
     session_id: UUID,
     payload: SolverRequest,
-) -> SolverResponse:
-    # NOTE: hands off to services.optimization in a follow-up task.
-    return SolverResponse(
-        session_id=session_id,
-        solver_run_id=uuid4(),
-        status="ok",
-        selected_offer_ids=payload.candidate_offer_ids,
-        is_optimal=True,
-    )
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
     settings: Settings = Depends(get_settings),
@@ -66,7 +68,7 @@ async def trigger_optimization(
         raise ConflictError("Optimization is already running for this session.")
 
     await SolverJobStore.start(redis, session_id)
-    asyncio.create_task(
+    task = asyncio.create_task(
         run_solver_job(
             session_id,
             payload,
@@ -74,17 +76,12 @@ async def trigger_optimization(
             redis=redis,
         ),
     )
+    task.add_done_callback(_log_task_exception)
     return SolverStatusResponse(status="RUNNING", elapsed_ms=0)
 
 
 @router.delete(
     "",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_model=None,
-    summary="Cancel an in-flight VRP optimization (stub)",
-)
-async def cancel_optimization(session_id: UUID) -> None:
-    _ = session_id
     response_model=SolverRunResult,
     status_code=status.HTTP_200_OK,
     summary="Cancel the current optimization recommendation",

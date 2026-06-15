@@ -192,7 +192,10 @@ class VRPSolver:
         # Full vehicle capacity — replace semantics
         free_ldm = float(vehicle.max_ldm)
         free_weight_kg = int(vehicle.max_weight_kg)
-        max_offer_slots = vehicle.max_stops // 2
+        max_offer_slots = min(
+            vehicle.max_stops // 2,
+            self._settings.MAX_STOPS_PER_ROUTE // 2,
+        )
         if max_stops_override is not None:
             max_offer_slots = min(max_offer_slots, max_stops_override // 2)
         max_offer_slots = max(0, max_offer_slots)
@@ -200,7 +203,7 @@ class VRPSolver:
         if not candidate_offer_ids:
             ranked = await OfferScorerService(self._db, routing=self._routing).rank_offers(
                 session_id,
-                limit=vehicle.max_stops // 2,
+                limit=max_offer_slots,
             )
             candidate_offer_ids = [o.offer_id for o in ranked.offers]
             if not candidate_offer_ids:

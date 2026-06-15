@@ -26,7 +26,7 @@ Ten dokument jest dla całego zespołu: opisuje **minimalny zestaw narzędzi**, 
 - `backend/app/api/` — endpointy REST.
 - `backend/app/services/` — logika biznesowa, kalkulatory, solver.
 - `backend/app/lib/ors.py` — klient ORS (directions + matrix, cache Redis).
-- `backend/app/services/routing` — modele i factory (`routing.py`).
+- `backend/app/lib/routing.py` — protokół `RoutingProvider` i singleton klienta ORS.
 
 ---
 
@@ -53,12 +53,26 @@ Po starcie:
 | Zmienna | Opis |
 |---------|------|
 | `DATABASE_URL` | Połączenie async do Postgres (domyślnie `db:5432` w Compose) |
-| `REDIS_URL` | Redis (`redis:6379/0`) |
+| `REDIS_URL` | Redis (`redis:6379/0` w Compose; `localhost:6379/0` przy backendzie na hoście) |
 | `ORS_API_KEY` | **Wymagane** — klucz z openrouteservice.org |
 | `ORS_BASE_URL` | Domyślnie `https://api.openrouteservice.org` |
 | `ORS_PROFILE` | Domyślnie `driving-hgv` (HGV) |
+| `USE_SOLVER_MOCK` | `true` — greedy mock solver (CI); `false` — OR-Tools CP-SAT |
 
 Pozostałe (`FUEL_PRICE_EUR_PER_LITER`, `MAX_STOPS_PER_ROUTE`, …) — patrz `.env.example`.
+
+`MAX_STOPS_PER_ROUTE` ogranicza liczbę przystanków w solverze wraz z `vehicle.max_stops` (bierze minimum).
+
+---
+
+## Optymalizacja sesji (async)
+
+1. `POST /api/v1/sessions/{id}/optimize` → **202** `{ status: "RUNNING", result: null }`
+2. Solver działa w tle (Redis job store + `solver_runner`)
+3. `GET /api/v1/sessions/{id}/optimize/status` — poll co ~300 ms aż `status` ≠ `RUNNING` i `result` jest ustawione
+4. `result` zawiera `SolverRunResult` (oferty, `objective_value`, `solver_status`)
+
+Frontend (`sessionClient.runSessionOptimize`) obsługuje polling automatycznie.
 
 ---
 
@@ -70,7 +84,7 @@ Tryb zaawansowany: Python na hoście + Postgres i Redis z Compose:
 cd backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 export DATABASE_URL=postgresql+asyncpg://loadmax:loadmax@localhost:5432/loadmax
 export REDIS_URL=redis://localhost:6379/0
 export ORS_API_KEY=your_key_here
@@ -84,10 +98,13 @@ uvicorn app.main:app --reload --port 8000
 
 ```bash
 cd backend
+pip install -r requirements-dev.txt
+export DATABASE_URL=postgresql+asyncpg://loadmax:loadmax@localhost:5432/loadmax
+export ORS_API_KEY=test-key
 pytest -q
 ```
 
-Testy routingu mockują HTTP (respx) — nie wymagają prawdziwego klucza ORS w CI, ale `ORS_API_KEY` jest ustawiane w `test_ors.py` / conftest.
+Testy routingu mockują HTTP (respx) — nie wymagają prawdziwego klucza ORS w CI. Testy integracyjne (`@pytest.mark.integration`) są pomijane, gdy Postgres nie odpowiada.
 
 ---
 
@@ -121,11 +138,11 @@ docker compose down
 **API unhealthy / readiness `routing: false`**  
 Brak lub niepoprawny `ORS_API_KEY`. Ustaw klucz w `.env` i zrestartuj: `docker compose up -d api`.
 
-**503 na `/health/ready`**  
-Sprawdź db, redis i routing — wszystkie trzy są wymagane.
+**`/health/ready` zwraca 200 z `status: degraded`**  
+Sprawdź `checks` w odpowiedzi — db, redis lub routing mogą być niedostępne. Endpoint zwraca **200** (nie 503), aby load balancer mógł odczytać szczegóły.
 
 **Limit ORS przekroczony**  
-Plan Standard ma dzienne limity; cache Redis ogranicza powtórzenia. Rozważ upgrade planu lub mniejszą liczbę testów na produkcji.
+Plan Standard ma dzienne limity; cache Redis ogranicza powtórzenia. Readiness cache'uje wynik checku routingu na 60 s.
 
 ---
 

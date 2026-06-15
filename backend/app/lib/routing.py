@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Optional, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
-from redis.asyncio import Redis
 
 
 class RouteLeg(BaseModel):
@@ -79,25 +78,6 @@ def get_routing_provider() -> RoutingProvider:
             profile=settings.ORS_PROFILE,
             redis=get_redis(),
         )
-    return _provider
-
-
-def init_routing_provider(
-    api_key: str,
-    base_url: str,
-    profile: str,
-    redis: Redis,
-) -> RoutingProvider:
-    """Explicitly create and register the singleton routing client."""
-    from app.lib.ors import ORSRoutingClient
-
-    global _provider
-    _provider = ORSRoutingClient(
-        api_key=api_key,
-        base_url=base_url,
-        profile=profile,
-        redis=redis,
-    )
     return _provider
 
 

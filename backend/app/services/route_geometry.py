@@ -67,11 +67,23 @@ class RouteGeometryService:
         route = build.route
 
         leg_geometries: list[LegGeometry] = []
+        leg_counts = (
+            len(build.fuel_result.leg_costs),
+            len(build.leg_geoms),
+            len(route.legs),
+        )
+        if len(set(leg_counts)) != 1:
+            _logger.warning(
+                "route geometry leg segment count mismatch: costs=%d geoms=%d route_legs=%d",
+                *leg_counts,
+                extra={"event": "route_geom:leg:mismatch", "session_id": str(session_id)},
+            )
+        leg_count = min(leg_counts)
         for leg_cost, geom, route_leg in zip(
-            build.fuel_result.leg_costs,
-            build.leg_geoms,
-            route.legs,
-            strict=False,
+            build.fuel_result.leg_costs[:leg_count],
+            build.leg_geoms[:leg_count],
+            route.legs[:leg_count],
+            strict=True,
         ):
             from_stop_id = self._map_stop_id(stops, route_leg.from_index)
             to_stop_id = self._map_stop_id(stops, route_leg.to_index)
