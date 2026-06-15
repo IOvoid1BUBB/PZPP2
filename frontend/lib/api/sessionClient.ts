@@ -175,10 +175,6 @@ interface AddOfferErrorBody {
 
 // ─── Mapowanie snake_case → camelCase ───────────────────────────────────────
 
-function hashOfferId(offerId: string): number {
-  return offerId.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
-}
-
 function mapOfferScore(raw: OfferScoreApiRecord): OfferScore {
   return {
     offer_id: raw.offer_id,
@@ -196,17 +192,16 @@ export function enrichRankedOfferRow(
   score: OfferScore,
   raw?: Partial<OfferScoreApiRecord>,
 ): RankedOfferRow {
-  const hash = hashOfferId(score.offer_id);
-  const shortId = score.offer_id.slice(0, 8).toUpperCase();
-
+  // Backend musi zwracać pełne pola (ldm, weight_kg, price_eur, stackable, labels).
+  // Jeśli brakuje pól — oferta jest niekompletna; zostawiamy undefined, UI pokaże "—".
   return {
     ...score,
-    ldm: raw?.ldm ?? 1 + (hash % 30) / 10,
-    weight_kg: raw?.weight_kg ?? 200 + (hash % 800),
-    price_eur: raw?.price_eur ?? Math.round(150 + (hash % 500)),
-    stackable: raw?.stackable ?? hash % 3 !== 0,
-    pickup_label: raw?.pickup_label ?? `Odbiór ${shortId}`,
-    delivery_label: raw?.delivery_label ?? `Dostawa ${shortId}`,
+    ldm: raw?.ldm,
+    weight_kg: raw?.weight_kg,
+    price_eur: raw?.price_eur,
+    stackable: raw?.stackable,
+    pickup_label: raw?.pickup_label,
+    delivery_label: raw?.delivery_label,
   };
 }
 
