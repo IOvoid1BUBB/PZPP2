@@ -23,6 +23,7 @@ export interface LoadStore {
   slots: Record<string, PalletData | null>;
   vehicle: VehicleConfig | null;
   sessionId: string | null;
+  sessionOfferIds: string[];
   assignPallet: (slotId: string, pallet: PalletData) => void;
   removePallet: (slotId: string) => void;
   swapSlots: (slotA: string, slotB: string) => void;
@@ -30,11 +31,15 @@ export interface LoadStore {
   autoArrange: () => void;
   setVehicle: (vehicle: VehicleConfig) => void;
   setSessionId: (sessionId: string | null) => void;
+  setSessionOfferIds: (offerIds: string[]) => void;
+  applyBulkOffers: (offerIds: string[]) => void;
   setSlots: (slots: Record<string, PalletData | null>) => void;
   setLayout: (layout: PersistedLoadStore) => void;
 }
 
-type PersistedLoadStore = Pick<LoadStore, "slots" | "vehicle" | "sessionId">;
+type PersistedLoadStore = Pick<LoadStore, "slots" | "vehicle" | "sessionId"> & {
+  sessionOfferIds?: string[];
+};
 
 interface SlotMeta {
   id: string;
@@ -267,6 +272,7 @@ export const useLoadStore = create<LoadStore>()(
       slots: {},
       vehicle: null,
       sessionId: null,
+      sessionOfferIds: [],
       assignPallet: (slotId, pallet) =>
         set((state) => ({
           slots: {
@@ -361,6 +367,23 @@ export const useLoadStore = create<LoadStore>()(
           };
         }),
       setSessionId: (sessionId) => set({ sessionId }),
+      setSessionOfferIds: (offerIds) => set({ sessionOfferIds: [...offerIds] }),
+      applyBulkOffers: (offerIds) =>
+        set((state) => {
+          const nextIds = [...offerIds];
+          const allowed = new Set(nextIds);
+          const nextSlots = Object.fromEntries(
+            Object.entries(state.slots).map(([slotId, pallet]) => [
+              slotId,
+              pallet && allowed.has(pallet.offerId) ? pallet : null,
+            ]),
+          ) as Record<string, PalletData | null>;
+
+          return {
+            sessionOfferIds: nextIds,
+            slots: nextSlots,
+          };
+        }),
       setSlots: (slots) =>
         set(() => ({
           slots: normalizeSlots(slots),
@@ -370,6 +393,7 @@ export const useLoadStore = create<LoadStore>()(
           slots: normalizeSlots(layout.slots),
           vehicle: layout.vehicle ? normalizeVehicle(layout.vehicle) : null,
           sessionId: layout.sessionId,
+          sessionOfferIds: layout.sessionOfferIds ?? [],
         })),
     }),
     {
@@ -379,6 +403,7 @@ export const useLoadStore = create<LoadStore>()(
         slots: state.slots,
         vehicle: state.vehicle,
         sessionId: state.sessionId,
+        sessionOfferIds: state.sessionOfferIds,
       }),
     },
   ),

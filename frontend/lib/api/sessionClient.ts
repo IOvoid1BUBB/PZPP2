@@ -12,6 +12,10 @@
 import { normalizePayloadSlots } from "@/lib/load/capacity";
 import type { VehicleConfig } from "@/lib/types/load";
 import type {
+  BulkSessionOffersPayload,
+  SolverResult,
+  UUID,
+} from "@/lib/types/solver";
   OfferScore,
   RankedOfferRow,
   RankedOffersResponse,
@@ -265,6 +269,84 @@ export async function createSession(
   return (await response.json()) as SessionResponse;
 }
 
+// ─── Solver / offers bulk ─────────────────────────────────────────────────────
+
+interface SolverApiResponse {
+  session_id: string;
+  solver_run_id: string;
+  status: SolverResult["status"];
+  objective_value?: number | null;
+  solve_time_ms?: number | null;
+  selected_offer_ids: string[];
+  is_optimal?: boolean;
+}
+
+function mapSolverResponse(raw: SolverApiResponse): SolverResult {
+  return {
+    sessionId: raw.session_id,
+    solverRunId: raw.solver_run_id,
+    status: raw.status,
+    selectedOfferIds: raw.selected_offer_ids,
+    isOptimal: raw.is_optimal ?? raw.status === "ok",
+    objectiveValue: raw.objective_value ?? null,
+    solveTimeMs: raw.solve_time_ms ?? null,
+  };
+}
+
+function optimizeUrl(sessionId: string): string {
+  return `${API_BASE}/api/v1/sessions/${sessionId}/optimize`;
+}
+
+/**
+ * Uruchom optymalizator VRP dla sesji (POST /optimize).
+ */
+export async function runSolverOptimize(
+  sessionId: string,
+  candidateOfferIds: UUID[],
+  signal?: AbortSignal,
+): Promise<SolverResult> {
+  const response = await fetch(optimizeUrl(sessionId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal,
+    body: JSON.stringify({ candidate_offer_ids: candidateOfferIds }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Optymalizacja nie powiodła się (${response.status})`);
+  }
+
+  const raw = (await response.json()) as SolverApiResponse;
+  return mapSolverResponse(raw);
+}
+
+/**
+ * Anuluj bieżące żądanie optymalizacji (DELETE /optimize).
+ */
+export async function cancelSolverOptimize(sessionId: string): Promise<void> {
+  const response = await fetch(optimizeUrl(sessionId), { method: "DELETE" });
+  if (!response.ok && response.status !== 204) {
+    throw new Error(`Anulowanie optymalizacji nie powiodło się (${response.status})`);
+  }
+}
+
+/**
+ * Zastąp listę ofert w sesji (PUT /offers, bulk).
+ */
+export async function bulkUpdateSessionOffers(
+  sessionId: string,
+  offerIds: UUID[],
+): Promise<void> {
+  const body: BulkSessionOffersPayload = { offer_ids: offerIds };
+  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/offers`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Aktualizacja ofert sesji nie powiodła się (${response.status})`);
+  }
 /**
  * Pobierz oferty posortowane malejąco wg total_score.
  */

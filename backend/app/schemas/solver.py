@@ -48,6 +48,7 @@ class SolverRunResult(BaseModel):
     session_id: UUID
     solver_run_id: UUID
     selected_offer_ids: list[UUID] = Field(default_factory=list)
+    is_optimal: bool = True
     objective_value: float
     solver_status: SolverRunStatus
     is_optimal: bool
