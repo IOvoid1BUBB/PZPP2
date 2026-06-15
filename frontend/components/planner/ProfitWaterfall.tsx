@@ -204,7 +204,7 @@ export function ProfitWaterfall({ data: dataOverride }: ProfitWaterfallProps = {
   );
 
   const clientSlices = useMemo(
-    () => buildClientPieData(clientSummary, slots, data, isDark),
+    () => buildClientPieData(clientSummary, slots, data ?? undefined, isDark),
     [clientSummary, slots, data, isDark],
   );
 

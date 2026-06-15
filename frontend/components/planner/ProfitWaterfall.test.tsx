@@ -34,10 +34,12 @@ vi.mock("recharts", async () => {
     children?: React.ReactNode;
   };
 
-  const passthrough =
-    () =>
-    ({ children }: { children?: React.ReactNode }) =>
-      <>{children}</>;
+  const Passthrough = ({ children }: { children?: React.ReactNode }) => (
+    <>{children}</>
+  );
+  Passthrough.displayName = "RechartsPassthrough";
+
+  const passthrough = () => Passthrough;
 
   return {
     ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
