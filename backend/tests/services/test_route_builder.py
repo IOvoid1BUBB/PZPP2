@@ -19,7 +19,7 @@ from geoalchemy2.shape import from_shape
 from shapely.geometry import LineString, Point
 
 from app.core.exceptions import ValidationAppError
-from app.lib.osrm import MultiStopRouteResult, RouteLeg
+from app.lib.routing import MultiStopRouteResult, RouteLeg
 from app.services.route_builder import build_session_route
 
 
@@ -95,16 +95,16 @@ def _settings() -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_build_session_route_single_osrm_call() -> None:
+async def test_build_session_route_single_routing_call() -> None:
     """Exactly one get_route_multi call is made per build."""
-    osrm = AsyncMock()
-    osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    routing = AsyncMock()
+    routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     build = await build_session_route(
-        _mock_session(), osrm=osrm, settings=_settings()
+        _mock_session(), routing=routing, settings=_settings()
     )
 
-    osrm.get_route_multi.assert_awaited_once()
+    routing.get_route_multi.assert_awaited_once()
     assert len(build.route.legs) == 2
     assert len(build.fuel_result.leg_costs) == 2
 
@@ -112,11 +112,11 @@ async def test_build_session_route_single_osrm_call() -> None:
 @pytest.mark.asyncio
 async def test_build_session_route_splits_geometry_into_legs() -> None:
     """Per-leg geometries are non-empty LineStrings (curve, not a 2-point line)."""
-    osrm = AsyncMock()
-    osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    routing = AsyncMock()
+    routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     build = await build_session_route(
-        _mock_session(), osrm=osrm, settings=_settings()
+        _mock_session(), routing=routing, settings=_settings()
     )
 
     assert len(build.leg_geoms) == 2
@@ -128,11 +128,11 @@ async def test_build_session_route_splits_geometry_into_legs() -> None:
 @pytest.mark.asyncio
 async def test_build_session_route_waypoints_origin_first() -> None:
     """Waypoint 0 is the origin; subsequent waypoints follow stop order."""
-    osrm = AsyncMock()
-    osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    routing = AsyncMock()
+    routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     build = await build_session_route(
-        _mock_session(), osrm=osrm, settings=_settings()
+        _mock_session(), routing=routing, settings=_settings()
     )
 
     assert build.waypoints_lat_lon[0] == _COORDS[0]
@@ -141,29 +141,29 @@ async def test_build_session_route_waypoints_origin_first() -> None:
 
 @pytest.mark.asyncio
 async def test_build_session_route_no_vehicle_raises() -> None:
-    osrm = AsyncMock()
+    routing = AsyncMock()
     session = _mock_session()
     session.vehicle = None
 
     with pytest.raises(ValidationAppError):
-        await build_session_route(session, osrm=osrm, settings=_settings())
+        await build_session_route(session, routing=routing, settings=_settings())
 
 
 @pytest.mark.asyncio
 async def test_build_session_route_no_stops_raises() -> None:
-    osrm = AsyncMock()
+    routing = AsyncMock()
     session = _mock_session()
     session.route_stops = []
 
     with pytest.raises(ValidationAppError):
-        await build_session_route(session, osrm=osrm, settings=_settings())
+        await build_session_route(session, routing=routing, settings=_settings())
 
 
 @pytest.mark.asyncio
 async def test_build_session_route_no_origin_raises() -> None:
-    osrm = AsyncMock()
+    routing = AsyncMock()
     session = _mock_session()
     session.origin_lat = None
 
     with pytest.raises(ValidationAppError):
-        await build_session_route(session, osrm=osrm, settings=_settings())
+        await build_session_route(session, routing=routing, settings=_settings())
