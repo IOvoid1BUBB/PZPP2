@@ -31,6 +31,7 @@ from app.services.profit_calculator import SessionProfitCalculator
 from app.services.route_geometry import RouteGeometryService
 from app.services.route_map import RouteMapService
 from app.services.sessions import SessionService
+from app.services.session_list_filters import parse_session_list_date
 from app.services.stop_labels import resolve_and_persist_stop_label
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -43,13 +44,15 @@ def _service(db: AsyncSession, routing: RoutingProvider) -> SessionService:
 @router.get("", response_model=list[SessionRead], summary="List consolidation sessions")
 async def list_sessions(
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     status: str | None = Query(None),
-    date: date | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    date: str | None = Query(None, description="ISO date (YYYY-MM-DD) or today"),
 ) -> list[SessionRead]:
-    service = SessionService(db)
-    sessions = await service.list_all(limit=limit, offset=offset, status=status, date=date)
+    service = SessionService(db, settings=settings)
+    parsed_date = parse_session_list_date(date, tz_name=settings.APP_TIMEZONE)
+    sessions = await service.list_all(limit=limit, offset=offset, status=status, date=parsed_date)
     return [SessionRead.model_validate(s) for s in sessions]
 
 
