@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from app.lib.geo import haversine_km
-from app.lib.osrm import DistanceMatrix
+from app.lib.routing import DistanceMatrix
 from app.models.stop import RouteStop
 from app.services.sequence_optimizer import (
     SequenceOptimizerService,
