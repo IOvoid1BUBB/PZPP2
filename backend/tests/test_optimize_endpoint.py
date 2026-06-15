@@ -12,7 +12,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from app.lib.osrm import DistanceMatrix, MultiStopRouteResult, RouteLeg
+from app.lib.routing import DistanceMatrix, MultiStopRouteResult, RouteLeg
 
 pytestmark = pytest.mark.integration
 
@@ -49,22 +49,22 @@ def _make_matrix(locations: list[tuple[float, float]]) -> DistanceMatrix:
     return DistanceMatrix(distances_km=distances_km, durations_minutes=durations_minutes, n=n)
 
 
-def _install_osrm_mock() -> AsyncMock:
-    from app.lib.osrm import get_osrm_client
+def _install_routing_mock() -> AsyncMock:
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    mock_osrm.get_distance_matrix = AsyncMock(side_effect=_make_matrix)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
-    return mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    mock_routing.get_distance_matrix = AsyncMock(side_effect=_make_matrix)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
+    return mock_routing
 
 
-def _clear_osrm_mock() -> None:
-    from app.lib.osrm import get_osrm_client
+def _clear_routing_mock() -> None:
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    fastapi_app.dependency_overrides.pop(get_osrm_client, None)
+    fastapi_app.dependency_overrides.pop(get_routing_provider, None)
 
 
 async def _wait_for_optimize(
@@ -135,7 +135,7 @@ async def _create_session(client: AsyncClient) -> UUID:
 @pytest.mark.asyncio
 async def test_optimize_returns_result_fields(client: AsyncClient) -> None:
     """POST /optimize returns all required SolverRunResult fields."""
-    _install_osrm_mock()
+    _install_routing_mock()
     try:
         session_id = await _create_session(client)
 
@@ -166,7 +166,7 @@ async def test_optimize_returns_result_fields(client: AsyncClient) -> None:
         obj = data["objective_value"]
         assert obj == round(obj, 2)
     finally:
-        _clear_osrm_mock()
+        _clear_routing_mock()
 
 
 @pytest.mark.asyncio
@@ -175,7 +175,7 @@ async def test_optimize_persists_solver_result(client: AsyncClient) -> None:
     from app.core.database import get_sessionmaker
     from app.models import ConsolidationSession, SolverResult
 
-    _install_osrm_mock()
+    _install_routing_mock()
     try:
         session_id = await _create_session(client)
 
@@ -201,7 +201,7 @@ async def test_optimize_persists_solver_result(client: AsyncClient) -> None:
             assert sess is not None
             assert str(sess.solver_run_id) == solver_run_id
     finally:
-        _clear_osrm_mock()
+        _clear_routing_mock()
 
 
 @pytest.mark.asyncio
@@ -251,7 +251,7 @@ async def test_optimize_empty_candidates_infeasible(client: AsyncClient) -> None
 @pytest.mark.asyncio
 async def test_optimize_returns_stop_sequence(client: AsyncClient) -> None:
     """Successful optimize returns stop_sequence with required fields."""
-    _install_osrm_mock()
+    _install_routing_mock()
     try:
         session_id = await _create_session(client)
         await client.post(f"/api/v1/sessions/{session_id}/simulate?count=30")
@@ -274,13 +274,13 @@ async def test_optimize_returns_stop_sequence(client: AsyncClient) -> None:
                 assert entry["stop_type"] in ("pickup", "delivery")
                 assert "sequence_order" in entry
     finally:
-        _clear_osrm_mock()
+        _clear_routing_mock()
 
 
 @pytest.mark.asyncio
 async def test_optimize_updates_route_stops_count(client: AsyncClient) -> None:
     """After successful optimize, session has 2 stops per selected offer."""
-    _install_osrm_mock()
+    _install_routing_mock()
     try:
         session_id = await _create_session(client)
         await client.post(f"/api/v1/sessions/{session_id}/simulate?count=30")
@@ -304,7 +304,7 @@ async def test_optimize_updates_route_stops_count(client: AsyncClient) -> None:
         offer_types = {(s["offer_id"], s["stop_type"]) for s in stops}
         assert len(offer_types) == len(stops)
     finally:
-        _clear_osrm_mock()
+        _clear_routing_mock()
 
 
 @pytest.mark.asyncio
@@ -318,7 +318,7 @@ async def test_optimize_mock_solver_three_offers(
     get_settings.cache_clear()
     monkeypatch.setenv("USE_SOLVER_MOCK", "true")
 
-    _install_osrm_mock()
+    _install_routing_mock()
     try:
         session_id = await _create_session(client)
         await client.post(f"/api/v1/sessions/{session_id}/simulate?count=30")
@@ -338,14 +338,14 @@ async def test_optimize_mock_solver_three_offers(
         assert len(data["selected_offer_ids"]) == 3
         assert data["selected_offer_ids"] == offer_ids[:3]
     finally:
-        _clear_osrm_mock()
+        _clear_routing_mock()
         get_settings.cache_clear()
 
 
 @pytest.mark.asyncio
 async def test_optimize_current_offer_ids_for_diff(client: AsyncClient) -> None:
     """current_offer_ids reflects session offers before apply."""
-    _install_osrm_mock()
+    _install_routing_mock()
     try:
         session_id = await _create_session(client)
         await client.post(f"/api/v1/sessions/{session_id}/simulate?count=30")
@@ -371,13 +371,13 @@ async def test_optimize_current_offer_ids_for_diff(client: AsyncClient) -> None:
         )
         assert data["current_offer_ids"] == before_ids
     finally:
-        _clear_osrm_mock()
+        _clear_routing_mock()
 
 
 @pytest.mark.asyncio
 async def test_delete_optimize_cancelled(client: AsyncClient) -> None:
     """DELETE /optimize marks the latest run as CANCELLED."""
-    _install_osrm_mock()
+    _install_routing_mock()
     try:
         session_id = await _create_session(client)
         await client.post(f"/api/v1/sessions/{session_id}/simulate?count=30")
@@ -407,4 +407,4 @@ async def test_delete_optimize_cancelled(client: AsyncClient) -> None:
         assert status_data["result"] is not None
         assert status_data["result"]["solver_status"] == "CANCELLED"
     finally:
-        _clear_osrm_mock()
+        _clear_routing_mock()
