@@ -16,6 +16,9 @@ interface RouteMapLegApi {
   leg_id: number;
   weight_kg_at_leg: number;
   geometry_coords: number[][];
+  distance_km?: number;
+  duration_minutes?: number;
+  load_ratio?: number;
 }
 
 interface RouteMapStopApi {
@@ -37,6 +40,8 @@ interface RouteMapResponseApi {
   legs: RouteMapLegApi[];
   stops: RouteMapStopApi[];
   vehicle_max_weight_kg: number;
+  total_distance_km?: number;
+  total_duration_minutes?: number;
 }
 
 export class RouteMapFetchError extends Error {
@@ -87,9 +92,14 @@ export function mapRouteMapResponse(raw: RouteMapResponseApi): RouteMapData {
       geometryCoords: leg.geometry_coords.map(
         (pair) => [pair[0], pair[1]] as [number, number],
       ),
+      distanceKm: leg.distance_km ?? 0,
+      durationMinutes: leg.duration_minutes ?? 0,
+      loadRatio: leg.load_ratio ?? 0,
     })),
     stops,
     vehicleMaxWeightKg: raw.vehicle_max_weight_kg,
+    totalDistanceKm: raw.total_distance_km ?? 0,
+    totalDurationMinutes: raw.total_duration_minutes ?? 0,
     fromApi: true,
   };
 }
@@ -110,37 +120,59 @@ export const DEMO_ROUTE_MAP: RouteMapData = {
   sessionId: "demo",
   origin: { lat: 52.22, lon: 21.01 },
   vehicleMaxWeightKg: 24000,
+  totalDistanceKm: 96.4,
+  totalDurationMinutes: 142,
   fromApi: false,
   legs: [
     {
       legId: 1,
       weightKgAtLeg: 3800,
+      distanceKm: 18.2,
+      durationMinutes: 28,
+      loadRatio: 0.16,
       geometryCoords: [
         [52.22, 21.01],
+        [52.21, 20.95],
+        [52.2, 20.9],
         [52.18, 20.85],
       ],
     },
     {
       legId: 2,
       weightKgAtLeg: 9200,
+      distanceKm: 14.7,
+      durationMinutes: 24,
+      loadRatio: 0.38,
       geometryCoords: [
         [52.18, 20.85],
+        [52.16, 20.8],
+        [52.14, 20.76],
         [52.12, 20.72],
       ],
     },
     {
       legId: 3,
       weightKgAtLeg: 18500,
+      distanceKm: 41.1,
+      durationMinutes: 58,
+      loadRatio: 0.77,
       geometryCoords: [
         [52.12, 20.72],
+        [52.06, 20.66],
+        [51.99, 20.6],
         [51.95, 20.55],
       ],
     },
     {
       legId: 4,
       weightKgAtLeg: 11200,
+      distanceKm: 22.4,
+      durationMinutes: 32,
+      loadRatio: 0.47,
       geometryCoords: [
         [51.95, 20.55],
+        [51.92, 20.5],
+        [51.9, 20.45],
         [51.88, 20.4],
       ],
     },
