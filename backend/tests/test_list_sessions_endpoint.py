@@ -93,3 +93,18 @@ async def test_list_sessions_filter_by_status_and_date(client: AsyncClient) -> N
     ids_b = {row["id"] for row in response_b.json()}
     assert str(session_b) in ids_b
     assert str(session_a) not in ids_b
+
+
+@pytest.mark.asyncio
+async def test_list_sessions_date_today_literal(client: AsyncClient) -> None:
+    session_id = await _create_session(client)
+    await _set_session_fields(
+        session_id,
+        created_at=datetime.now(UTC),
+        status="dispatched",
+    )
+
+    response = await client.get("/api/v1/sessions?status=dispatched&date=today")
+    assert response.status_code == 200
+    ids = {row["id"] for row in response.json()}
+    assert str(session_id) in ids
