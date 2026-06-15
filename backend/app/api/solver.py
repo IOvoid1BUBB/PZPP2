@@ -70,12 +70,6 @@ async def trigger_optimization(
 
 @router.delete(
     "",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_model=None,
-    summary="Cancel an in-flight VRP optimization (stub)",
-)
-async def cancel_optimization(session_id: UUID) -> None:
-    _ = session_id
     response_model=SolverRunResult,
     status_code=status.HTTP_200_OK,
     summary="Cancel the current optimization recommendation",
