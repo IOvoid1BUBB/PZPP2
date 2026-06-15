@@ -78,6 +78,7 @@ async def test_dashboard_endpoint_delegates_to_service(monkeypatch: pytest.Monke
 
     expected = DashboardResponse(
         today_net_profit_eur=100.0,
+        today_net_profit_pln=432.0,
         avg_lfill_pct=50.0,
         empty_runs_pct=25.0,
         active_sessions=[],
@@ -124,6 +125,7 @@ async def test_dashboard_service_builds_kpis_and_notifications() -> None:
     response = await DashboardService(mock_db, settings=settings).get_dashboard()
 
     assert response.today_net_profit_eur == 120.0
+    assert response.today_net_profit_pln == round(120.0 * settings.EUR_TO_PLN, 2)
     assert response.avg_lfill_pct == 20.0
     assert response.empty_runs_pct == 50.0
     assert len(response.active_sessions) == 2
@@ -151,5 +153,6 @@ async def test_dashboard_service_empty_today() -> None:
     response = await DashboardService(mock_db, settings=settings).get_dashboard()
 
     assert response.today_net_profit_eur == 0.0
+    assert response.today_net_profit_pln == 0.0
     assert response.empty_runs_pct == 0.0
     assert response.notifications[0].id == "empty-state"
