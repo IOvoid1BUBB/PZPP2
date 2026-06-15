@@ -39,3 +39,5 @@ Serwisy: **frontend**, **api** (backend), **postgres** (PostGIS), **redis**. Rou
 ## Solvery i optymalizacja
 
 Planowane jest użycie **OR-Tools** do solverów **VRP** / **TSP** / przypisań wielopojazdowych, z **kosztami krawędzi** wyliczanymi w backendzie (na podstawie macierzy z ORS i reguł biznesowych). ORS pozostaje **czystym** dostawcą metryk sieciowych.
+
+Optymalizacja ofert w sesji jest **asynchroniczna**: `POST …/optimize` (202) + polling `GET …/optimize/status` aż solver zwróci wynik.
