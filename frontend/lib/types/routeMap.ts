@@ -10,6 +10,10 @@ export interface RouteMapLeg {
   weightKgAtLeg: number;
   /** Leaflet Polyline positions: [lat, lon][] */
   geometryCoords: [number, number][];
+  distanceKm: number;
+  durationMinutes: number;
+  /** cargo weight on leg / vehicle max weight (0..1), from backend fuel model */
+  loadRatio: number;
 }
 
 export interface RouteStop {
@@ -33,5 +37,7 @@ export interface RouteMapData {
   legs: RouteMapLeg[];
   stops: RouteStop[];
   vehicleMaxWeightKg: number;
+  totalDistanceKm: number;
+  totalDurationMinutes: number;
   fromApi: boolean;
 }
