@@ -1,40 +1,41 @@
-# Kontekst projektu (architektura i zależności)
+# LoadMax — kontekst architektoniczny
 
-## Cel
+Dokument dla zespołu: **co robi która warstwa**, jakie są granice odpowiedzialności i jakie technologie są założone w repozytorium.
 
-Aplikacja wspiera **planowanie tras**, **optymalizację transportu** i **kalkulację kosztów** w kontekście **logistyki i TMS dla Europy**. Backend (**FastAPI**, Python) realizuje całą **logikę biznesową** oraz obliczenia; frontend odpowiada za **prezentację** i interakcje. Architektura jest **lekka i wysokowydajna**: routing jest wydzielony do osobnego procesu, a warstwa API skupia się na agregacji, cache i regułach domenowych.
+---
 
-## Routing — lokalny OSRM
+## Routing — OpenRouteService API
 
-- **OSRM** działa jako **osobny serwis w Dockerze** (sieć wewnętrzna Compose), bez zależności od zewnętrznego **OpenRouteService** jako głównego dostawcy routingu.
-- **Odpowiedzialność OSRM:** geometria trasy, **macierz** odległości/czasów, **ETA**, najkrótsza / najszybsza ścieżka w grafie drogowym OSM.
-- **Poza zakresem OSRM:** logika biznesowa, **koszty transportu**, **spalanie**, **myto**, **czas pracy kierowcy**, **tachograf UE** — to wyłącznie **backend**.
+- **OpenRouteService (ORS)** działa jako **hostowany serwis HTTP** (`https://api.openrouteservice.org`), wywoływany z backendu.
+- **Odpowiedzialność ORS:** geometria trasy, **macierz** odległości/czasów, **ETA**, najkrótsza / najszybsza ścieżka w grafie drogowym OSM (profil `driving-hgv`).
+- **Poza zakresem ORS:** logika biznesowa, **koszty transportu**, **spalanie**, **myto**, **czas pracy kierowcy**, **tachograf UE** — to wyłącznie **backend**.
 
-Dane: **Europe-wide routing** opiera się na **extractach OSM** (np. Europa z Geofabrika lub mniejszy region na development); preprocessing (`extract` → `partition` → `customize`) przygotowuje pliki serwowane przez `osrm-routed`.
+Autoryzacja: nagłówek `Authorization: <ORS_API_KEY>`. Klucz w `.env` — patrz CONTRIBUTING.md.
 
-## Backend FastAPI — odpowiedzialności
+---
 
-- Integracja z **OSRM** (table / route / match — zgodnie z implementacją).
-- **Kalkulacja:** spalania (w tym czynniki zależne od masy), **myto** (gdy wprowadzono warstwę danych), **czasu pracy kierowcy**, **kosztów transportu** (paliwo, postoje, diety, utrzymanie itd.).
-- **Ograniczenia** zgodne z przepisami (**tachograf UE**) nakładane na wynik planowania, nie na silnik routingu.
-- **Cache Redis:** odpowiedzi **macierzy** i **tras** z OSRM oraz ewentualnie zagregowane wyniki zapytań API — mniejsze obciążenie OSRM i krótszy czas odpowiedzi.
+## Backend (FastAPI)
+
+- Integracja z **ORS** (`/v2/directions/{profile}/geojson`, `/v2/matrix/{profile}`).
+- Kalkulatory: paliwo, myto, koszt przystanków, zgodność kierowcy (UE 561/2006).
+- Solver VRP (OR-Tools / CP-SAT) na macierzach z ORS + regułach biznesowych.
+- **Cache Redis:** odpowiedzi **macierzy** i **tras** z ORS (`ors:matrix:`, `ors:route:`) oraz zagregowane wyniki zapytań API — mniejsze obciążenie ORS i krótszy czas odpowiedzi.
+
+---
 
 ## Frontend
 
-- **React** lub **Next.js** z **Leaflet** / **React Leaflet**: mapa, markery, polyline, statystyki z API.
-- Frontend **nie** wykonuje optymalizacji, **nie** liczy kosztów operacyjnych ani ciężkich symulacji — tylko wywołuje API i wizualizuje wynik.
+- **Leaflet** / React — mapa, markery, polyline tras z API.
+- **Nie** woła routingu bezpośrednio — tylko endpointy backendu (`/route-map`, `/route`, itd.).
 
-## Monorepo
+---
 
-- `backend/` — Python, FastAPI, moduły domenowe (w rozwoju: `services/routing`, `services/optimization`, `services/costs`, `services/drivers`).
-- `frontend/` — aplikacja kliencka.
+## Docker Compose (dev stack)
 
-## Infrastruktura (Docker Compose — docelowy zestaw)
+Serwisy: **frontend**, **api** (backend), **postgres** (PostGIS), **redis**. Routing jest **zewnętrzny** (ORS API); wymagany `ORS_API_KEY` w `.env`.
 
-Serwisy: **frontend**, **backend**, **osrm**, **postgres** (PostGIS), **redis**. Routing jest **lokalny**; brak wymogu konta u zewnętrznego dostawcy ORS dla podstawowego dev stacku.
+---
 
-## Przyszła integracja OR-Tools
+## Solvery i optymalizacja
 
-Planowane jest użycie **OR-Tools** do solverów **VRP** / **TSP** / przypisań wielopojazdowych, z **kosztami krawędzi** wyliczanymi w backendzie (na podstawie macierzy z OSRM i reguł biznesowych). OSRM pozostaje **czystym** dostawcą metryk sieciowych.
-
-Pytania infrastrukturalne można kierować do roli **DevOps** w materiałach zespołu; zmiany w tym pliku — przez merge request z krótkim uzasadnieniem.
+Planowane jest użycie **OR-Tools** do solverów **VRP** / **TSP** / przypisań wielopojazdowych, z **kosztami krawędzi** wyliczanymi w backendzie (na podstawie macierzy z ORS i reguł biznesowych). ORS pozostaje **czystym** dostawcą metryk sieciowych.
