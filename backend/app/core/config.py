@@ -27,6 +27,7 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str
     OSRM_HOST: str = "http://osrm:5000"
+    OSRM_PROFILE: str = "truck"  # Profil routingu OSRM: "truck" (HGV) lub "driving" (osobowy).
     REDIS_URL: str = "redis://redis:6379/0"
     NOMINATIM_USER_AGENT: str = "LoadMax/1.0 (contact@example.com)"
 

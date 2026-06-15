@@ -89,6 +89,9 @@ class OSRMClient:
         self._http = httpx.AsyncClient(base_url=self._base_url, timeout=30.0)
         self._redis = redis
         self._logger = _logger
+        # Profil OSRM: "truck" (HGV, truck.lua) lub "driving" (car.lua).
+        # Pobieramy przy inicjalizacji — singleton żyje przez cały czas procesu.
+        self._profile: str = get_settings().OSRM_PROFILE
 
     # -- public API --------------------------------------------------------
 
@@ -105,7 +108,7 @@ class OSRMClient:
         """
         # OSRM expects lon,lat — the caller sends lat,lon
         coords = ";".join(f"{lon},{lat}" for lat, lon in waypoints)
-        url = f"/route/v1/driving/{coords}?geometries=geojson&overview=full&steps=false"
+        url = f"/route/v1/{self._profile}/{coords}?geometries=geojson&overview=full&steps=false"
         data = await self._request_with_retry(url)
         return self._parse_route(data)
 
@@ -136,7 +139,7 @@ class OSRMClient:
             )
 
         coords = ";".join(f"{lon},{lat}" for lat, lon in locations)
-        url = f"/table/v1/driving/{coords}?annotations=distance,duration"
+        url = f"/table/v1/{self._profile}/{coords}?annotations=distance,duration"
         data = await self._request_with_retry(url)
         result = self._parse_matrix(data)
 
