@@ -12,6 +12,9 @@ export interface ResolvedSessionLocation {
   status: string;
   /** Czy sesja ma naruszenie compliance / błąd optymalizacji. */
   hasIssue?: boolean;
+  currentLocation?: string;
+  destination?: string;
+  lfilPct?: number;
 }
 
 export interface DashboardMarker {
