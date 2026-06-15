@@ -358,6 +358,8 @@ export async function bulkUpdateSessionOffers(
   if (!response.ok) {
     throw new Error(`Aktualizacja ofert sesji nie powiodła się (${response.status})`);
   }
+}
+
 /**
  * Pobierz oferty posortowane malejąco wg total_score.
  */
@@ -547,6 +549,24 @@ export async function replaceSessionOffers(
   });
   if (!response.ok) {
     throw new Error(`Nie udało się zaktualizować ofert (${response.status})`);
+  }
+  return (await response.json()) as SessionDetailResponse;
+}
+
+/**
+ * Usuń ofertę z sesji (DELETE /sessions/{id}/offers/{offerId}).
+ * Ładunek wraca na listę dostępnych ofert w bibliotece plannera.
+ */
+export async function removeOfferFromSession(
+  sessionId: string,
+  offerId: string,
+): Promise<SessionDetailResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/sessions/${sessionId}/offers/${offerId}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    throw new Error(`Nie udało się usunąć oferty z sesji (${response.status})`);
   }
   return (await response.json()) as SessionDetailResponse;
 }
