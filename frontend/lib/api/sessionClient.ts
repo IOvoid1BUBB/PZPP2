@@ -16,6 +16,10 @@ import type {
   SolverResult,
   UUID,
 } from "@/lib/types/solver";
+  OfferScore,
+  RankedOfferRow,
+  RankedOffersResponse,
+} from "@/lib/types/offers";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
@@ -67,7 +71,143 @@ export interface SessionResponse {
   status: string;
 }
 
+export interface SessionFullResponse {
+  id: string;
+  status: string;
+}
+
+export interface DriverProfileRecord {
+  id: string;
+  code: string;
+  name: string;
+  hourly_cost_eur: number;
+  idle_fuel_l_per_hour: number;
+  stop_admin_fee_eur: number;
+}
+
+export interface SessionDetailResponse {
+  id: string;
+  status: "draft" | "optimizing" | "confirmed" | "dispatched";
+  created_at: string;
+  vehicle: {
+    id: string;
+    name: string;
+    type: string;
+  };
+  driver_profile: DriverProfileRecord;
+  offers: Array<{ id: string; price_eur: number; ldm: number; weight_kg: number }>;
+  stops: Array<{ id: string; stop_type: string; sequence_order: number }>;
+  metrics: {
+    used_ldm: number;
+    fill_pct: number;
+    used_weight_kg: number;
+    weight_pct: number;
+    total_distance_km: number;
+    estimated_net_profit_eur: number | null;
+    stop_count: number;
+    client_count: number;
+    stop_costs_eur: number;
+  };
+}
+
+export interface SimulateOffersResult {
+  requested: number;
+  inserted: number;
+  skipped: number;
+}
+
+export interface SolverRunResult {
+  session_id: string;
+  solver_run_id: string;
+  selected_offer_ids: string[];
+  objective_value: number;
+  solver_status: string;
+  is_optimal: boolean;
+  solve_time_ms: number;
+  current_offer_ids: string[];
+}
+
+export class AddOfferError extends Error {
+  readonly code: string;
+  readonly freeLdm?: number;
+  readonly requiredLdm?: number;
+
+  constructor(
+    message: string,
+    code: string,
+    options?: { freeLdm?: number; requiredLdm?: number },
+  ) {
+    super(message);
+    this.name = "AddOfferError";
+    this.code = code;
+    this.freeLdm = options?.freeLdm;
+    this.requiredLdm = options?.requiredLdm;
+  }
+}
+
+interface OfferScoreApiRecord {
+  offer_id: string;
+  total_score: number;
+  revenue_density_score: number;
+  detour_penalty_score: number;
+  fill_contribution_score: number;
+  time_window_score: number;
+  added_km: number;
+  estimated_added_cost_eur: number;
+  ldm?: number;
+  weight_kg?: number;
+  price_eur?: number;
+  stackable?: boolean;
+  pickup_label?: string;
+  delivery_label?: string;
+}
+
+interface RankedOffersApiResponse {
+  session_id: string;
+  limit: number;
+  scored_count: number;
+  offers: OfferScoreApiRecord[];
+}
+
+interface AddOfferErrorBody {
+  error?: string;
+  detail?: string;
+  free_ldm?: number;
+  required_ldm?: number;
+  request_id?: string;
+}
+
 // ─── Mapowanie snake_case → camelCase ───────────────────────────────────────
+
+function mapOfferScore(raw: OfferScoreApiRecord): OfferScore {
+  return {
+    offer_id: raw.offer_id,
+    total_score: raw.total_score,
+    revenue_density_score: raw.revenue_density_score,
+    detour_penalty_score: raw.detour_penalty_score,
+    fill_contribution_score: raw.fill_contribution_score,
+    time_window_score: raw.time_window_score,
+    added_km: raw.added_km,
+    estimated_added_cost_eur: raw.estimated_added_cost_eur,
+  };
+}
+
+export function enrichRankedOfferRow(
+  score: OfferScore,
+  raw?: Partial<OfferScoreApiRecord>,
+): RankedOfferRow {
+  // Backend musi zwracać pełne pola (ldm, weight_kg, price_eur, stackable, labels).
+  // Jeśli brakuje pól — oferta jest niekompletna; zostawiamy undefined, UI pokaże "—".
+  return {
+    ...score,
+    ldm: raw?.ldm,
+    weight_kg: raw?.weight_kg,
+    price_eur: raw?.price_eur,
+    stackable: raw?.stackable,
+    pickup_label: raw?.pickup_label,
+    delivery_label: raw?.delivery_label,
+  };
+}
 
 function mapVehicle(raw: VehicleApiRecord): VehicleConfig {
   return {
@@ -207,4 +347,148 @@ export async function bulkUpdateSessionOffers(
   if (!response.ok) {
     throw new Error(`Aktualizacja ofert sesji nie powiodła się (${response.status})`);
   }
+/**
+ * Pobierz oferty posortowane malejąco wg total_score.
+ */
+export async function fetchRankedOffers(
+  sessionId: string,
+  limit = 50,
+): Promise<RankedOffersResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/sessions/${sessionId}/ranked-offers?limit=${limit}`,
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Nie udało się pobrać ofert (${response.status})`,
+    );
+  }
+
+  const raw = (await response.json()) as RankedOffersApiResponse;
+
+  return {
+    session_id: raw.session_id,
+    limit: raw.limit,
+    scored_count: raw.scored_count,
+    offers: raw.offers.map((record) =>
+      enrichRankedOfferRow(mapOfferScore(record), record),
+    ),
+  };
+}
+
+/**
+ * Przypisz ofertę do sesji konsolidacji.
+ */
+export async function addOfferToSession(
+  sessionId: string,
+  offerId: string,
+): Promise<SessionFullResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/sessions/${sessionId}/offers/${offerId}`,
+    { method: "POST" },
+  );
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as AddOfferErrorBody;
+
+    if (response.status === 409 && body.error === "insufficient_ldm") {
+      throw new AddOfferError(
+        body.detail ?? "Insufficient loading meter capacity.",
+        "insufficient_ldm",
+        { freeLdm: body.free_ldm, requiredLdm: body.required_ldm },
+      );
+    }
+
+    throw new AddOfferError(
+      body.detail ?? `Błąd dodawania (${response.status})`,
+      body.error ?? "unknown",
+    );
+  }
+
+  return (await response.json()) as SessionFullResponse;
+}
+
+export async function fetchDriverProfiles(): Promise<DriverProfileRecord[]> {
+  const response = await fetch(`${API_BASE}/api/v1/driver-profiles`);
+  if (!response.ok) {
+    throw new Error(`Nie udało się pobrać profili kierowców (${response.status})`);
+  }
+  return (await response.json()) as DriverProfileRecord[];
+}
+
+export async function fetchSessionDetail(sessionId: string): Promise<SessionDetailResponse> {
+  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}`);
+  if (!response.ok) {
+    throw new Error(`Nie udało się pobrać sesji (${response.status})`);
+  }
+  return (await response.json()) as SessionDetailResponse;
+}
+
+export async function simulateMarketOffers(
+  sessionId: string,
+  count = 200,
+): Promise<SimulateOffersResult> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/sessions/${sessionId}/simulate?count=${count}`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw new Error(`Nie udało się wygenerować ofert (${response.status})`);
+  }
+  return (await response.json()) as SimulateOffersResult;
+}
+
+export async function runSessionOptimize(
+  sessionId: string,
+  timeLimitSeconds = 10,
+): Promise<SolverRunResult> {
+  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/optimize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ candidate_offer_ids: [], time_limit_seconds: timeLimitSeconds }),
+  });
+  if (!response.ok) {
+    throw new Error(`Optymalizacja nie powiodła się (${response.status})`);
+  }
+  return (await response.json()) as SolverRunResult;
+}
+
+export async function cancelSessionOptimize(sessionId: string): Promise<SolverRunResult> {
+  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/optimize`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Anulowanie optymalizacji nie powiodło się (${response.status})`);
+  }
+  return (await response.json()) as SolverRunResult;
+}
+
+export async function replaceSessionOffers(
+  sessionId: string,
+  offerIds: string[],
+): Promise<SessionDetailResponse> {
+  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/offers`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ offer_ids: offerIds }),
+  });
+  if (!response.ok) {
+    throw new Error(`Nie udało się zaktualizować ofert (${response.status})`);
+  }
+  return (await response.json()) as SessionDetailResponse;
+}
+
+export async function updateSessionStatus(
+  sessionId: string,
+  status: SessionDetailResponse["status"],
+): Promise<SessionDetailResponse> {
+  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) {
+    throw new Error(`Nie udało się zmienić statusu sesji (${response.status})`);
+  }
+  return (await response.json()) as SessionDetailResponse;
 }

@@ -1,5 +1,7 @@
 # Środowisko (Environment)
 .env
+.env.local
+frontend/.env.local
 .venv/
 venv/
 env/
@@ -36,3 +38,12 @@ Thumbs.db
 # Frontend (Next.js)
 frontend/node_modules/
 frontend/.next/
+frontend/.tmp/
+frontend/.lighthouse-dev.json
+frontend/.tmp/lighthouse.*/
+
+# Pliki OSRM (lokalne dane map)
+*.osrm*
+*.pbf
+
+*docker-compose.override.yml

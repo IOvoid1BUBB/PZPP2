@@ -1,3 +1,10 @@
+"use client";
+
+import { useState } from "react";
+
+import { DriverRouteBriefing } from "@/components/driver/DriverRouteBriefing";
+import { Drawer } from "@/components/ui/Drawer";
+
 interface VehicleMetric {
   label: string;
   value: string;
@@ -15,6 +22,8 @@ interface VehicleHeaderProps {
   profitEur?: number;
   saving?: boolean;
   onSave?: () => void;
+  /** When set, exposes a "Plan dla kierowcy" action with a shareable briefing. */
+  sessionId?: string;
 }
 
 function formatPercent(value: number): string {
@@ -26,17 +35,19 @@ function formatPercent(value: number): string {
 
 export function VehicleHeader({
   name,
-  driverName = "Jan Kowalski",
+  driverName = "—",
   itemsCount,
   usedWeightKg,
   maxWeightKg,
   usedLdm,
   maxLdm,
-  profitEur = 430,
+  profitEur,
   saving,
   onSave,
+  sessionId,
 }: VehicleHeaderProps) {
   const lfilPercent = maxLdm > 0 ? (usedLdm / maxLdm) * 100 : 0;
+  const [briefingOpen, setBriefingOpen] = useState(false);
 
   const metrics: VehicleMetric[] = [
     { label: "Vehicle", value: name },
@@ -46,7 +57,10 @@ export function VehicleHeader({
       label: "Weight",
       value: `${Math.round(usedWeightKg)} / ${maxWeightKg}kg`,
     },
-    { label: "Profit", value: `${profitEur} EUR` },
+    {
+      label: "Profit",
+      value: profitEur != null ? `${profitEur} EUR` : "—",
+    },
   ];
 
   return (
@@ -78,17 +92,39 @@ export function VehicleHeader({
           </div>
         </div>
       </div>
-      <button
-        type="button"
-        className="button button--primary vehicle-header__send"
-        onClick={onSave}
-        disabled={saving}
-      >
-        {saving ? "Wysyłanie…" : "Send to driver"}
-        <span aria-hidden="true" className="vehicle-header__send-arrow">
-          ›
-        </span>
-      </button>
+      <div className="flex items-center gap-2">
+        {sessionId ? (
+          <button
+            type="button"
+            className="button button--primary vehicle-header__send"
+            onClick={() => setBriefingOpen(true)}
+            aria-label="Otwórz plan trasy dla kierowcy"
+          >
+            Plan dla kierowcy
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="button button--primary vehicle-header__send"
+          onClick={onSave}
+          disabled={saving || !onSave}
+        >
+          {saving ? "Wysyłanie…" : "Send to driver"}
+          <span aria-hidden="true" className="vehicle-header__send-arrow">
+            ›
+          </span>
+        </button>
+      </div>
+
+      {sessionId ? (
+        <Drawer
+          open={briefingOpen}
+          title="Plan trasy dla kierowcy"
+          onClose={() => setBriefingOpen(false)}
+        >
+          <DriverRouteBriefing sessionId={sessionId} variant="full" />
+        </Drawer>
+      ) : null}
     </header>
   );
 }

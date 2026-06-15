@@ -15,7 +15,13 @@ from app.schemas.session import (
     SessionRead,
     SessionStatusUpdate,
 )
-from app.schemas.solver import SolverRequest, SolverResponse
+from app.schemas.profit import SessionProfitBreakdown
+from app.schemas.solver import (
+    SolverRequest,
+    SolverResponse,
+    SolverRunResult,
+    SolverStatusResponse,
+)
 from app.schemas.stop import StopRead
 from app.schemas.vehicle import VehicleRead
 
@@ -27,10 +33,13 @@ __all__ = [
     "SessionCreatedResponse",
     "SessionFullResponse",
     "SessionMetrics",
+    "SessionProfitBreakdown",
     "SessionRead",
     "SessionStatusUpdate",
     "SolverRequest",
     "SolverResponse",
+    "SolverRunResult",
+    "SolverStatusResponse",
     "StopRead",
     "VehicleRead",
 ]

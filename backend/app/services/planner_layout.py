@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import NotFoundError, ValidationAppError
-from app.models import ConsolidationSession, Vehicle
+from app.models import ConsolidationSession, MarketOffer, Vehicle
+from app.models.stop import RouteStop
 from app.schemas.planner import (
     LoadLayoutResponse,
     LoadLayoutUpdate,
@@ -65,7 +66,7 @@ def _normalize_payload_slots(raw: dict[str, Any]) -> dict[str, PayloadSlotConfig
                 widthCm=float(entry.get("width_cm", entry.get("widthCm", 80))),
                 depthCm=float(entry.get("depth_cm", entry.get("depthCm", 120))),
             )
-        return slots
+        return _repair_overlapping_slots(slots)
 
     for slot_id, entry in raw.items():
         if not isinstance(entry, dict):
@@ -79,7 +80,44 @@ def _normalize_payload_slots(raw: dict[str, Any]) -> dict[str, PayloadSlotConfig
             widthCm=float(entry.get("width_cm", entry.get("widthCm", 80))),
             depthCm=float(entry.get("depth_cm", entry.get("depthCm", 120))),
         )
-    return slots
+    return _repair_overlapping_slots(slots)
+
+
+def _repair_overlapping_slots(
+    slots: dict[str, PayloadSlotConfig],
+) -> dict[str, PayloadSlotConfig]:
+    """Shift right-column longitudinal slots whose x-range overlaps a wider left-column slot.
+
+    E.g. a left slot at x=0, w=120 extends to x=120; a right slot at x=80, w=80
+    overlaps in [80,120).  Move it to x=120 so the footprints merely touch.
+    """
+    fixed = dict(slots)
+    patched = False
+
+    for slot_id, cfg in slots.items():
+        w = cfg.width_cm
+        d = cfg.depth_cm
+        if cfg.x_offset_cm == 0 or w >= 100:
+            continue
+
+        y_start = cfg.y_offset_cm
+        y_end = y_start + d
+
+        for other in slots.values():
+            if other.x_offset_cm != 0:
+                continue
+            ow = other.width_cm
+            if ow <= cfg.x_offset_cm:
+                continue
+            oy_start = other.y_offset_cm
+            oy_end = oy_start + other.depth_cm
+
+            if y_start < oy_end and y_end > oy_start and cfg.x_offset_cm < ow:
+                fixed[slot_id] = cfg.model_copy(update={"x_offset_cm": ow})
+                patched = True
+                break
+
+    return fixed if patched else slots
 
 
 def vehicle_to_planner(vehicle: Vehicle) -> PlannerVehicle:
@@ -175,7 +213,7 @@ def build_demo_slots(payload_slots: dict[str, PayloadSlotConfig]) -> dict[str, P
             "client_id": "c1",
             "client_name": "IKEA",
             "color_index": 0,
-            "ldm": 0.8,
+            "ldm": 0.4,
             "weight_kg": 420,
             "stackable": True,
             "time_window": None,
@@ -186,7 +224,7 @@ def build_demo_slots(payload_slots: dict[str, PayloadSlotConfig]) -> dict[str, P
             "client_id": "c2",
             "client_name": "Amazon",
             "color_index": 1,
-            "ldm": 0.8,
+            "ldm": 0.4,
             "weight_kg": 680,
             "stackable": False,
             "time_window": None,
@@ -197,7 +235,7 @@ def build_demo_slots(payload_slots: dict[str, PayloadSlotConfig]) -> dict[str, P
             "client_id": "c3",
             "client_name": "Gamma",
             "color_index": 2,
-            "ldm": 0.8,
+            "ldm": 0.4,
             "weight_kg": 910,
             "stackable": True,
             "time_window": None,
@@ -208,7 +246,7 @@ def build_demo_slots(payload_slots: dict[str, PayloadSlotConfig]) -> dict[str, P
             "client_id": "c4",
             "client_name": "Delta",
             "color_index": 3,
-            "ldm": 0.8,
+            "ldm": 0.4,
             "weight_kg": 540,
             "stackable": True,
             "time_window": {
@@ -285,6 +323,72 @@ def _demo_slot_ids(payload_slots: dict[str, PayloadSlotConfig]) -> list[str]:
         chosen.append(slot_id)
 
     return chosen[:4]
+
+
+def build_layout_from_offers(
+    payload_slots: dict[str, PayloadSlotConfig],
+    offers: list[Any],
+    color_map: dict[str, str] | None = None,
+) -> dict[str, PalletData | None]:
+    """Rozmieść oferty sesji na slotach pacy — jedna oferta = kolejne wolne sloty.
+
+    Każda oferta zajmuje ceil(ldm / ldm_per_slot) slotów. Sloty wybierane są
+    w kolejności iteracji (tj. od frontu pacy). Nadmiar ofert które nie zmieszczą
+    się na pace jest ignorowany (solver nie powinien takich dobierać).
+    """
+    import math
+
+    slots = empty_slots(payload_slots)
+    slot_ids = list(payload_slots)
+    slot_idx = 0
+    color_idx = 0
+
+    for offer in offers:
+        offer_id = str(offer.get("id") or offer.get("offer_id", ""))
+        ldm = float(offer.get("ldm", 0))
+        weight_kg = int(offer.get("weight_kg", 0))
+        stackable = bool(offer.get("stackable", True))
+        pickup_label = offer.get("pickup_label") or offer.get("address_label") or ""
+        client_color = (
+            (color_map or {}).get(offer_id)
+            or CLIENT_COLORS[color_idx % len(CLIENT_COLORS)]
+        )
+
+        # Liczba slotów = ceil(ldm / ldm_per_slot); minimum 1
+        first_slot_id = slot_ids[slot_idx] if slot_idx < len(slot_ids) else None
+        if first_slot_id is None:
+            break
+        ldm_per_slot = payload_slots[first_slot_id].ldm_per_slot or 0.4
+        n_slots = max(1, math.ceil(ldm / ldm_per_slot)) if ldm_per_slot > 0 else 1
+
+        for i in range(n_slots):
+            if slot_idx >= len(slot_ids):
+                break
+            sid = slot_ids[slot_idx]
+            cfg = payload_slots[sid]
+            slot_idx += 1
+
+            pallet = PalletData(
+                id=f"p-{offer_id[:8]}-{i}",
+                offerId=offer_id,
+                clientId=offer_id,
+                clientName=pickup_label or f"Oferta {offer_id[:8]}",
+                clientColor=client_color,
+                ldm=round(ldm_per_slot, 2),
+                weightKg=max(1, weight_kg // n_slots),
+                dims=PalletDims(
+                    wMm=int(cfg.width_cm * 10),
+                    dMm=int(cfg.depth_cm * 10),
+                    hMm=1600,
+                ),
+                stackable=stackable,
+                timeWindow=None,
+            )
+            slots[sid] = pallet
+
+        color_idx += 1
+
+    return slots
 
 
 def get_used_ldm(slots: dict[str, PalletData | None]) -> float:
@@ -622,6 +726,17 @@ def _validate_layout_slots(
             raise ValidationAppError(msg)
 
 
+def _is_legacy_demo_layout(stored: dict[str, Any]) -> bool:
+    """Zwraca True gdy layout zawiera stare hardcoded demo-palety (offerId o1/o2/o4/o5)."""
+    demo_offer_ids = {"o1", "o2", "o4", "o5"}
+    for value in stored.values():
+        if isinstance(value, dict):
+            offer_id = value.get("offerId") or value.get("offer_id", "")
+            if offer_id in demo_offer_ids:
+                return True
+    return False
+
+
 def build_layout_response(
     vehicle: PlannerVehicle,
     slots: dict[str, PalletData | None],
@@ -702,10 +817,17 @@ class PlannerLayoutService:
 
         planner_vehicle = vehicle_to_planner(session.vehicle)
         stored = session.load_layout if isinstance(session.load_layout, dict) else None
+
+        # Wykryj stary demo-layout (zawierający hardcoded offerId "o1"/"o2")
+        # i zastąp go prawdziwymi danymi.
+        if stored is not None and _is_legacy_demo_layout(stored):
+            stored = None
+            session.load_layout = None
+
         slots = slots_from_storage(stored, planner_vehicle.payload_slots)
 
         if stored is None:
-            slots = build_demo_slots(planner_vehicle.payload_slots)
+            slots = await self._build_initial_slots_from_session(session, planner_vehicle)
             session.load_layout = slots_to_storage(slots)
             await self._db.flush()
 
@@ -849,4 +971,53 @@ class PlannerLayoutService:
         if session is None:
             raise NotFoundError(f"Session {session_id} not found.")
         return session
+
+    async def _build_initial_slots_from_session(
+        self,
+        session: ConsolidationSession,
+        planner_vehicle: PlannerVehicle,
+    ) -> dict[str, PalletData | None]:
+        """Zbuduj layout z ofert przypisanych do sesji (przez route_stops).
+
+        Jeśli sesja nie ma ofert — zwraca puste sloty (nie demo).
+        Wywołuje ``build_layout_from_offers`` która rozmieszcza po kolei od frontu pacy.
+        """
+        from decimal import Decimal  # noqa: F401  # kept for future use
+        # Pobierz unikalne offer_id z pickup stops (unikamy duplikatów delivery)
+        stmt = (
+            select(RouteStop.offer_id)
+            .where(
+                RouteStop.session_id == session.id,
+                RouteStop.stop_type == "pickup",
+            )
+            .order_by(RouteStop.sequence_order)
+        )
+        result = await self._db.execute(stmt)
+        offer_ids = [row[0] for row in result.all()]
+
+        if not offer_ids:
+            return empty_slots(planner_vehicle.payload_slots)
+
+        # Pobierz dane ofert w kolejności sekwencji
+        offers_result = await self._db.execute(
+            select(MarketOffer).where(MarketOffer.id.in_(offer_ids))
+        )
+        offers_by_id = {o.id: o for o in offers_result.scalars().all()}
+
+        # Buduj listę dicts w kolejności przystanków
+        offer_dicts: list[dict] = []
+        for oid in offer_ids:
+            offer = offers_by_id.get(oid)
+            if offer is None:
+                continue
+            offer_dicts.append({
+                "id": str(offer.id),
+                "ldm": float(offer.ldm),
+                "weight_kg": int(offer.weight_kg),
+                "price_eur": float(offer.price_eur),
+                "stackable": bool(offer.stackable),
+                "pickup_label": f"Oferta {str(offer.id)[:8]}",
+            })
+
+        return build_layout_from_offers(planner_vehicle.payload_slots, offer_dicts)
 

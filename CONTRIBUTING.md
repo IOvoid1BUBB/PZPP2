@@ -74,20 +74,75 @@ Wszystkie kolejne komendy zakładają, że jesteś w **katalogu głównym repozy
 
 ## Preprocessing danych OpenStreetMap dla OSRM
 
-1. Pobierz plik **`.osm.pbf`** — dla Europy np. [Geofabrik Europe](https://download.geofabrik.de/europe.html) (duży plik; na dev często wybiera się jeden kraj).
-2. W katalogu z plikiem `.osm.pbf` uruchom narzędzia OSRM (lokalnie lub jednorazowo w kontenerze `osrm/osrm-backend`), np. dla profilu samochodowego:
+LoadMax wymaga profilu **truck.lua** (HGV) — trasy respektują zakazy wjazdu dla pojazdów ciężarowych, ograniczenia wysokości/masy i inne tagi OSM specyficzne dla HGV.
 
-   ```bash
-   docker run --rm -t -v "${PWD}:/data" ghcr.io/project-osrm/osrm-backend osrm-extract -p /opt/car.lua /data/europe-latest.osm.pbf
-   docker run --rm -t -v "${PWD}:/data" ghcr.io/project-osrm/osrm-backend osrm-partition /data/europe-latest.osrm
-   docker run --rm -t -v "${PWD}:/data" ghcr.io/project-osrm/osrm-backend osrm-customize /data/europe-latest.osrm
-   ```
+> **Ważne:** Domyślny obraz OSRM używa `car.lua`. Musisz wykonać extract z `-p /opt/truck.lua`.
 
-   Dla mniejszego regionu podstaw nazwę pliku (np. `poland-latest.osm.pbf` → `poland-latest.osrm`).
+### Wybór regionu PBF
 
-3. Upewnij się, że wolumen Dockera (lub bind mount) wskazuje na katalog z wygenerowanymi plikami `*.osrm*` i że serwis `osrm` w `docker-compose.yml` uruchamia `osrm-routed` z poprawną ścieżką bazową (np. `/data/europe-latest`).
+| Środowisko | PBF | Rozmiar (przybliżony) | RAM do extract |
+|---|---|---|---|
+| **Dev** | `poland-latest.osm.pbf` | ~800 MB | ~4 GB RAM |
+| **Staging** | `germany-latest.osm.pbf` lub DACH | ~4 GB | ~16 GB RAM |
+| **Produkcja** | `europe-latest.osm.pbf` | ~30 GB | ~64 GB RAM |
 
-Szczegóły profili (`car` vs `truck`) i wersji obrazów — w dokumentacji [Project OSRM](https://github.com/Project-OSRM/osrm-backend/wiki/Running-OSRM).
+Pliki PBF: [Geofabrik](https://download.geofabrik.de/europe.html)
+
+### Komendy (przykład: Poland dev)
+
+```bash
+cd PZPP2/osrm-data
+
+# 1. Pobierz PBF dla Polski
+wget -O poland-latest.osm.pbf https://download.geofabrik.de/europe/poland-latest.osm.pbf
+
+# 2. Extract z profilem truck.lua (HGV)
+docker run --rm -t -v "${PWD}:/data" ghcr.io/project-osrm/osrm-backend \
+  osrm-extract -p /opt/truck.lua /data/poland-latest.osm.pbf
+
+# 3. Partition i customize (MLD algorithm)
+docker run --rm -t -v "${PWD}:/data" ghcr.io/project-osrm/osrm-backend \
+  osrm-partition /data/poland-latest.osrm
+
+docker run --rm -t -v "${PWD}:/data" ghcr.io/project-osrm/osrm-backend \
+  osrm-customize /data/poland-latest.osrm
+
+# 4. Ustaw w .env:
+# OSRM_FILE=poland-latest
+# OSRM_PROFILE=truck
+```
+
+Po wykonaniu kroków wyżej uruchom stack normalnie: `docker compose --profile osrm up -d`.
+
+Healthcheck OSRM weryfikuje trasę Warszawa→Łódź (pokrytą przez `poland-latest`).
+
+### Weryfikacja profilu truck
+
+```bash
+# Port 5001 wystawiony na hosta
+curl -s "http://localhost:5001/route/v1/truck/21.01,52.22;19.46,51.75?overview=false" | python3 -m json.tool | grep '"code"'
+# Oczekiwany wynik: "code": "Ok"
+```
+
+---
+
+## Model LDM (ładowne metry bieżące)
+
+```
+1 paleta EUR (80×100 cm) = 1 slot = 0.4 LDM  ← PALLET_LDM (stała domenowa)
+
+Oferty: ldm ∈ {k × 0.4 | k ∈ ℕ, k ≥ 1}
+Pojazd Master L2 (8 slotów): max_ldm = 8 × 0.4 = 3.2 LDM = 8 palet
+Pojazd Master L3 (9 slotów): max_ldm = 9 × 0.4 = 3.6 LDM = 9 palet
+Pojazd Master L4 (10 slotów): max_ldm = 10 × 0.4 = 4.0 LDM = 10 palet
+```
+
+Ta konwencja zapewnia, że:
+- Każda oferta (k × 0.4 LDM) = k całych palet = k slotów wizualnych.
+- Planner nie generuje konfliktów LDM wynikających z ułamkowych wartości.
+- Seed vehicles i market simulator są spójne z tym modelem.
+
+---
 
 ---
 

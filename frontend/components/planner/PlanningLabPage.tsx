@@ -5,8 +5,8 @@ import { VehicleSelector } from "@/components/planner/VehicleSelector";
 export function PlanningLabPage() {
   return (
     <AppShell>
-      <div className="planning-lab">
-        <h1 className="planning-lab__title">Planning lab</h1>
+      <div>
+        <h1 className="mb-5 text-3xl font-bold tracking-tight">Planning lab</h1>
         <VehicleSelector />
         <SlotEditor />
       </div>

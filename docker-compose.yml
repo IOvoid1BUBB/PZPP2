@@ -1,4 +1,5 @@
-# Dev stack: PostGIS, Redis, FastAPI API (routing via zewnętrzne OpenRouteService API).
+# Dev stack: PostGIS, Redis, FastAPI API, Next.js frontend.
+# OSRM: opcjonalny profil `osrm` — wymaga przygotowanych plików *.osrm w ./osrm-data/
 services:
   db:
     image: postgis/postgis:16-3.4-alpine
@@ -21,6 +22,35 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  osrm:
+    profiles: ["osrm"]
+    image: ghcr.io/project-osrm/osrm-backend
+    # Użyj pliku *.osrm zbudowanego z truck.lua dla HGV.
+    # Dev: poland-latest.osrm — prod: europe-latest.osrm
+    # Zmień OSRM_FILE w .env lub tu jeśli zmieniasz region.
+    command: osrm-routed --algorithm mld /data/${OSRM_FILE:-poland-latest}.osrm
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./osrm-data:/data:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/5000; printf 'GET /route/v1/driving/21.01,52.22;19.46,51.75?overview=false HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; grep -q '\"code\":\"Ok\"' <&3",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   api:
     build:
@@ -33,9 +63,12 @@ services:
       - ./backend/tests:/app/tests
       - ./backend/data:/app/data
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://loadmax:loadmax@db:5432/loadmax}
-      ORS_API_KEY: ${ORS_API_KEY:-}
+      OSRM_HOST: ${OSRM_HOST:-http://host.docker.internal:5001}
+      OSRM_PROFILE: ${OSRM_PROFILE:-driving}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       FUEL_PRICE_EUR_PER_LITER: ${FUEL_PRICE_EUR_PER_LITER:-1.75}
       DRIVER_DAILY_ALLOWANCE_EUR: ${DRIVER_DAILY_ALLOWANCE_EUR:-49.0}
@@ -47,7 +80,28 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        BACKEND_URL: ${BACKEND_URL:-http://api:8000}
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_URL: http://api:8000
+      NEXT_PUBLIC_API_BASE: ""
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:

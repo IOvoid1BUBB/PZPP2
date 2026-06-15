@@ -96,7 +96,7 @@ def client(mock_redis: AsyncMock) -> OSRMClient:
 @respx.mock
 async def test_get_route_multi_returns_correct_legs(client: OSRMClient) -> None:
     """Mock OSRM /route for WAW→KTW→KRK (3 waypoints)."""
-    respx.get(f"{OSRM_BASE}/route/v1/driving/21.01,52.22;18.67,50.29;19.94,50.06").mock(
+    respx.get(f"{OSRM_BASE}/route/v1/truck/21.01,52.22;18.67,50.29;19.94,50.06").mock(
         return_value=httpx.Response(200, json=ROUTE_RESPONSE)
     )
 
@@ -115,7 +115,7 @@ async def test_get_route_multi_returns_correct_legs(client: OSRMClient) -> None:
 async def test_get_route_multi_retry_on_connect_error(client: OSRMClient) -> None:
     """httpx.ConnectError on first 2 attempts, success on 3rd."""
     route = respx.get(
-        f"{OSRM_BASE}/route/v1/driving/21.01,52.22;18.67,50.29;19.94,50.06"
+        f"{OSRM_BASE}/route/v1/truck/21.01,52.22;18.67,50.29;19.94,50.06"
     )
     route.side_effect = [
         httpx.ConnectError("conn refused"),
@@ -134,7 +134,7 @@ async def test_get_route_multi_retry_on_connect_error(client: OSRMClient) -> Non
 async def test_get_route_multi_raises_after_3_failures(client: OSRMClient) -> None:
     """All 3 attempts fail → OSRMUnavailableError."""
     route = respx.get(
-        f"{OSRM_BASE}/route/v1/driving/21.01,52.22;18.67,50.29;19.94,50.06"
+        f"{OSRM_BASE}/route/v1/truck/21.01,52.22;18.67,50.29;19.94,50.06"
     )
     route.side_effect = [
         httpx.ConnectError("fail"),
@@ -160,7 +160,7 @@ async def test_get_distance_matrix_5x5_diagonal_zero(
 ) -> None:
     """5x5 matrix with correct dimensions and zero diagonal."""
     coords = ";".join(f"{lon},{lat}" for lat, lon in [(i, i) for i in range(5)])
-    respx.get(f"{OSRM_BASE}/table/v1/driving/{coords}").mock(
+    respx.get(f"{OSRM_BASE}/table/v1/truck/{coords}").mock(
         return_value=httpx.Response(200, json=TABLE_5X5_RESPONSE)
     )
 
@@ -182,7 +182,7 @@ async def test_distance_matrix_cache_hit(
     locations = [(i * 0.1, i * 0.1) for i in range(5)]
     coords = ";".join(f"{lon},{lat}" for lat, lon in locations)
 
-    table_route = respx.get(f"{OSRM_BASE}/table/v1/driving/{coords}").mock(
+    table_route = respx.get(f"{OSRM_BASE}/table/v1/truck/{coords}").mock(
         return_value=httpx.Response(200, json=TABLE_5X5_RESPONSE)
     )
 
@@ -209,7 +209,7 @@ async def test_distance_matrix_cache_miss_then_set(
     locations = [(i * 0.1, i * 0.1) for i in range(5)]
     coords = ";".join(f"{lon},{lat}" for lat, lon in locations)
 
-    respx.get(f"{OSRM_BASE}/table/v1/driving/{coords}").mock(
+    respx.get(f"{OSRM_BASE}/table/v1/truck/{coords}").mock(
         return_value=httpx.Response(200, json=TABLE_5X5_RESPONSE)
     )
 
@@ -240,7 +240,7 @@ async def test_matrix_not_cached_for_large_input(
         "durations": [[float(abs(i - j) * 60) for j in range(n)] for i in range(n)],
     }
 
-    table_route = respx.get(f"{OSRM_BASE}/table/v1/driving/{coords}").mock(
+    table_route = respx.get(f"{OSRM_BASE}/table/v1/truck/{coords}").mock(
         return_value=httpx.Response(200, json=large_response)
     )
 
@@ -304,7 +304,7 @@ def test_hash_deterministic_and_order_independent() -> None:
 async def test_non_200_raises_immediately(client: OSRMClient) -> None:
     """Non-200 HTTP status raises OSRMUnavailableError without retry."""
     route = respx.get(
-        f"{OSRM_BASE}/route/v1/driving/21.01,52.22;18.67,50.29;19.94,50.06"
+        f"{OSRM_BASE}/route/v1/truck/21.01,52.22;18.67,50.29;19.94,50.06"
     ).mock(return_value=httpx.Response(500, json={"code": "Error"}))
 
     with pytest.raises(OSRMUnavailableError, match="HTTP 500"):
@@ -317,7 +317,7 @@ async def test_non_200_raises_immediately(client: OSRMClient) -> None:
 async def test_osrm_error_code_raises_immediately(client: OSRMClient) -> None:
     """OSRM returns 200 but code != 'Ok' → immediate error."""
     route = respx.get(
-        f"{OSRM_BASE}/route/v1/driving/21.01,52.22;18.67,50.29;19.94,50.06"
+        f"{OSRM_BASE}/route/v1/truck/21.01,52.22;18.67,50.29;19.94,50.06"
     ).mock(
         return_value=httpx.Response(
             200,

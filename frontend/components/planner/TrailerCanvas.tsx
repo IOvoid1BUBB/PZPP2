@@ -11,29 +11,19 @@ import {
 
 import { DraggablePallet } from "@/components/planner/DraggablePallet";
 import { DroppableSlot } from "@/components/planner/DroppableSlot";
+import { getCompanyColorPair } from "@/lib/colors/companyColors";
 import { useClientSummary } from "@/lib/stores/loadStore";
-import type { PalletData, PayloadSlotConfig, VehicleConfig } from "@/lib/types/load";
+import type {
+  PalletData,
+  PayloadSlotConfig,
+  VehicleConfig,
+} from "@/lib/types/load";
 
 /** Cargo bed runs left → right; cab on the left. */
 const SCALE = 0.88;
 const TRAILER_PADDING = 10;
 /** Equal inset on every slot so strokes do not merge — same proportion for all. */
 const SLOT_STROKE_INSET_PX = 1;
-
-const CLIENT_COLORS = [
-  "#4E9AF1",
-  "#E8564A",
-  "#45C97A",
-  "#F5A623",
-  "#9B59B6",
-  "#1ABC9C",
-  "#E67E22",
-  "#3498DB",
-  "#E91E63",
-  "#00BCD4",
-  "#8BC34A",
-  "#FF5722",
-] as const;
 
 const OCCUPIED_FILL_OPACITY = 0.55;
 
@@ -66,7 +56,10 @@ interface CanvasLayout extends BedLayout {
   canvasH: number;
 }
 
-function cabWidthPx(vehicleType: VehicleConfig["type"], bedHeightPx: number): number {
+function cabWidthPx(
+  vehicleType: VehicleConfig["type"],
+  bedHeightPx: number,
+): number {
   const ratio = vehicleType === "man_solo" ? 0.34 : 0.42;
   return Math.round(bedHeightPx * ratio);
 }
@@ -109,7 +102,7 @@ function MasterOutlineHorizontal({ cabX, bedX, bedY, bedW, bedH }: BedLayout) {
     <path
       d={path}
       fill="none"
-      stroke="var(--color-border-strong)"
+      stroke="var(--ui-border-strong)"
       strokeWidth={1.5}
       vectorEffect="non-scaling-stroke"
     />
@@ -140,7 +133,7 @@ function ManOutlineHorizontal({ cabX, bedX, bedY, bedW, bedH }: BedLayout) {
     <path
       d={path}
       fill="none"
-      stroke="var(--color-border-strong)"
+      stroke="var(--ui-border-strong)"
       strokeWidth={1.5}
       vectorEffect="non-scaling-stroke"
     />
@@ -155,10 +148,7 @@ const VEHICLE_OUTLINES: Record<VehicleConfig["type"], FC<BedLayout>> = {
 };
 
 export function getClientColor(offerId: string): string {
-  const hash = offerId
-    .split("")
-    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return CLIENT_COLORS[hash % CLIENT_COLORS.length];
+  return getCompanyColorPair(offerId).intense;
 }
 
 function truncateLabel(name: string, max = 8): string {
@@ -301,8 +291,8 @@ export function TrailerCanvas({
   const validSlotEntries = useMemo(
     () =>
       Object.entries(vehicle.payloadSlots)
-        .filter(
-          (entry): entry is [string, PayloadSlotConfig] => isValidSlotConfig(entry[1]),
+        .filter((entry): entry is [string, PayloadSlotConfig] =>
+          isValidSlotConfig(entry[1]),
         )
         .sort(([, a], [, b]) => slotSortKey(a) - slotSortKey(b)),
     [vehicle.payloadSlots],
@@ -353,7 +343,7 @@ export function TrailerCanvas({
             y={bedY}
             width={bedW}
             height={bedH}
-            fill="var(--color-trailer-bed)"
+            fill="var(--ui-trailer-bed)"
             opacity={0.1}
             rx={2}
           />
@@ -376,8 +366,8 @@ export function TrailerCanvas({
                     y={rect.y}
                     width={rect.width}
                     height={rect.height}
-                    fill="var(--color-surface-raised)"
-                    stroke="var(--color-border)"
+                    fill="var(--ui-surface-raised)"
+                    stroke="var(--ui-border)"
                     strokeWidth={1}
                     strokeDasharray="4 2"
                     rx={3}
@@ -385,7 +375,8 @@ export function TrailerCanvas({
                 );
               }
 
-              const fill = pallet.clientColor || getClientColor(pallet.offerId);
+              const colorKey = pallet.clientId || pallet.offerId;
+              const companyColors = getCompanyColorPair(colorKey);
               const conflictClass = isConflict
                 ? "trailer-slot--conflict-pulse"
                 : undefined;
@@ -399,9 +390,11 @@ export function TrailerCanvas({
                     y={rect.y}
                     width={rect.width}
                     height={rect.height}
-                    fill={fill}
+                    fill={companyColors.muted}
                     fillOpacity={OCCUPIED_FILL_OPACITY}
-                    stroke={isConflict ? "var(--color-warning)" : "var(--color-border-strong)"}
+                    stroke={
+                      isConflict ? "var(--ui-warning)" : companyColors.intense
+                    }
                     strokeWidth={isConflict ? 2 : 1}
                     strokeDasharray={!pallet.stackable ? "3 2" : undefined}
                     rx={3}
@@ -412,8 +405,12 @@ export function TrailerCanvas({
                     y={rect.y + rect.height / 2}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill="var(--color-text-primary)"
-                    fontSize={Math.min(13, rect.width * 0.2, rect.height * 0.35)}
+                    fill={companyColors.intense}
+                    fontSize={Math.min(
+                      13,
+                      rect.width * 0.2,
+                      rect.height * 0.35,
+                    )}
                     fontWeight={600}
                     pointerEvents="none"
                   >
@@ -427,7 +424,11 @@ export function TrailerCanvas({
 
         <div className="trailer-canvas trailer-dnd-overlay">
           {validSlotEntries.map(([slotId, config]) => {
-            const rect = slotCanvasRect(layout, slotBoundsFromConfig(config), 0);
+            const rect = slotCanvasRect(
+              layout,
+              slotBoundsFromConfig(config),
+              0,
+            );
             const pallet = slots[slotId] ?? null;
             const isConflict = conflictSlotIds.has(slotId);
             const menuProps = bindSlotMenu(slotId);
@@ -469,16 +470,24 @@ export function TrailerCanvas({
 
       {clientSummary.length > 0 ? (
         <div className="trailer-legend">
-          {clientSummary.map((client) => (
-            <div key={client.offerId} className="trailer-legend__item">
-              <span
-                className="trailer-legend__swatch"
-                style={{ backgroundColor: getClientColor(client.offerId) }}
-              />
-              <span>{client.name}</span>
-              <span className="text-secondary">{client.ldm.toFixed(1)} LDM</span>
-            </div>
-          ))}
+          {clientSummary.map((client) => {
+            const pair = getCompanyColorPair(client.offerId);
+            return (
+              <div key={client.offerId} className="trailer-legend__item">
+                <span
+                  className="trailer-legend__swatch"
+                  style={{
+                    backgroundColor: pair.muted,
+                    borderColor: pair.intense,
+                  }}
+                />
+                <span>{client.name}</span>
+                <span className="text-secondary">
+                  {client.ldm.toFixed(1)} LDM
+                </span>
+              </div>
+            );
+          })}
         </div>
       ) : null}
 
