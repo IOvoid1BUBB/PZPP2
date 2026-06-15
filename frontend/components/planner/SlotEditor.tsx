@@ -22,7 +22,7 @@ import { useClientHydrated } from "@/hooks/useClientHydrated";
 
 import { PalletLibrary } from "@/components/planner/PalletLibrary";
 
-import { ProfitWaterfall } from "@/components/analytics/ProfitWaterfall";
+import { ProfitWaterfall } from "@/components/planner/ProfitWaterfall";
 
 import {
   ContextMenu,

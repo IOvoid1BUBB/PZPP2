@@ -825,11 +825,26 @@ select {
 }
 
 .profit-waterfall__chart {
+  min-height: 220px;
+}
+
+.profit-waterfall--empty {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-around;
-  gap: 8px;
   min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.profit-waterfall__empty-text {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ui-text-primary);
+}
+
+.profit-waterfall__empty-text--error {
+  color: var(--ui-error, #dc2626);
 }
 
 .profit-waterfall__column {
