@@ -41,7 +41,16 @@ FLEET_TYPES: tuple[VehicleType, ...] = (
     "man_solo",
 )
 
-LDM_PER_SLOT = 0.8
+# ---------------------------------------------------------------------------
+# ADR: Model LDM dla palet europejskich
+# ---------------------------------------------------------------------------
+# 1 paleta EUR = 1 slot = 0.4 LDM
+# (standard operacyjny projektu: slot na pace ≈ 80×100 cm = 0.4 m bieżącego)
+#
+# Oferty generowane jako k × 0.4 LDM (k ≥ 1) — zawsze całkowita liczba palet.
+# ---------------------------------------------------------------------------
+PALLET_LDM = 0.4          # 1 paleta EUR = 1 slot = 0.4 LDM
+LDM_PER_SLOT = PALLET_LDM  # 0.4 — jeden slot = jedna paleta
 PALLET_DEPTH_CM = 80
 SOLO_ROW_PITCH_CM = 80
 SOLO_COL_PITCH_CM = 120

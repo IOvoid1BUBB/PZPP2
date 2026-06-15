@@ -31,7 +31,10 @@ services:
   osrm:
     profiles: ["osrm"]
     image: ghcr.io/project-osrm/osrm-backend
-    command: osrm-routed --algorithm mld /data/luxembourg-latest.osrm
+    # Użyj pliku *.osrm zbudowanego z truck.lua dla HGV.
+    # Dev: poland-latest.osrm — prod: europe-latest.osrm
+    # Zmień OSRM_FILE w .env lub tu jeśli zmieniasz region.
+    command: osrm-routed --algorithm mld /data/${OSRM_FILE:-poland-latest}.osrm
     ports:
       - "5001:5000"
     volumes:
@@ -40,9 +43,9 @@ services:
       test:
         [
           "CMD",
-          "wget",
-          "-qO-",
-          "http://127.0.0.1:5000/route/v1/driving/21.01,52.22;21.02,52.23?overview=false",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/5000; printf 'GET /route/v1/driving/21.01,52.22;19.46,51.75?overview=false HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; grep -q '\"code\":\"Ok\"' <&3",
         ]
       interval: 30s
       timeout: 10s
@@ -65,6 +68,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://loadmax:loadmax@db:5432/loadmax}
       OSRM_HOST: ${OSRM_HOST:-http://host.docker.internal:5001}
+      OSRM_PROFILE: ${OSRM_PROFILE:-driving}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       FUEL_PRICE_EUR_PER_LITER: ${FUEL_PRICE_EUR_PER_LITER:-1.75}
       DRIVER_DAILY_ALLOWANCE_EUR: ${DRIVER_DAILY_ALLOWANCE_EUR:-49.0}
@@ -88,6 +92,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        BACKEND_URL: ${BACKEND_URL:-http://api:8000}
     ports:
       - "3000:3000"
     environment:

@@ -510,9 +510,10 @@ export function SlotEditor() {
               maxWeightKg={vehicle.maxWeightKg}
               usedLdm={usedLdm}
               maxLdm={vehicle.maxLdm}
-              profitEur={Math.round(profitData.netProfitEur)}
+              profitEur={profitData ? Math.round(profitData.netProfitEur) : undefined}
               saving={saving}
               onSave={isReadOnly ? undefined : () => void handleSendToDriver()}
+              sessionId={sessionId ?? undefined}
             />
 
             {conflicts.length > 0 && (

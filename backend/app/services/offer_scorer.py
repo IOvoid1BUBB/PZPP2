@@ -236,6 +236,11 @@ async def score_offer(
         )
 
         total = compute_total_score(revenue_score, detour_score, fill_score, tw_score)
+
+        # Buduj label z adresu lub koordynatów
+        pickup_label = f"{pickup_lat:.4f}°N, {pickup_lon:.4f}°E"
+        delivery_label = f"{delivery[0]:.4f}°N, {delivery[1]:.4f}°E"
+
         return OfferScore(
             offer_id=offer.id,
             total_score=total,
@@ -245,6 +250,12 @@ async def score_offer(
             time_window_score=tw_score,
             added_km=added_km,
             estimated_added_cost_eur=round(added_km * COST_PER_KM_EUR, 4),
+            ldm=offer.ldm,
+            weight_kg=int(offer.weight_kg),
+            price_eur=offer.price_eur,
+            stackable=bool(offer.stackable),
+            pickup_label=pickup_label,
+            delivery_label=delivery_label,
         )
     except Exception as exc:
         _logger.exception(
@@ -260,6 +271,10 @@ async def score_offer(
             time_window_score=0.0,
             added_km=0.0,
             estimated_added_cost_eur=0.0,
+            ldm=offer.ldm,
+            weight_kg=int(offer.weight_kg),
+            price_eur=offer.price_eur,
+            stackable=bool(offer.stackable),
         )
 
 

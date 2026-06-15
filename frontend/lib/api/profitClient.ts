@@ -203,25 +203,3 @@ export function resolveLegRows(data: ProfitBreakdownData): LegFuelRow[] {
 
   return rows;
 }
-
-/** Demo fallback when session has no route stops yet (planning-lab layout only). */
-export const DEMO_PROFIT_BREAKDOWN: ProfitBreakdownData = {
-  revenueEur: 1260,
-  fuelEur: 380,
-  tollEur: 210,
-  stopCostsEur: 90,
-  driverEur: 150,
-  maintenanceEur: 45,
-  netProfitEur: 385,
-  stopCount: 3,
-  formulas: {
-    fuel: { litersTotal: 95.0, fuelPrice: 4.0 },
-    toll: { distanceKm: 420 },
-    stops: { stopCount: 3, perStopCost: 30 },
-    driver: { daysOnRoad: 2, dailyAllowance: 75 },
-    maintenance: { distanceKm: 420, maintRate: 0.12 },
-  },
-  legs: [],
-  offerRevenue: [],
-  fromApi: false,
-};

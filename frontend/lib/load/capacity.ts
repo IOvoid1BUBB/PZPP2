@@ -9,7 +9,8 @@ function toSlotConfig(entry: Record<string, unknown>): PayloadSlotConfig {
   return {
     row: Number(entry.row ?? 0),
     col: Number(entry.col ?? 0),
-    ldmPerSlot: Number(entry.ldm_per_slot ?? entry.ldmPerSlot ?? 0.8),
+    // 1 slot = 1 paleta EUR = 0.4 LDM
+    ldmPerSlot: Number(entry.ldm_per_slot ?? entry.ldmPerSlot ?? 0.4),
     xOffsetCm: Number(entry.x_offset_cm ?? entry.xOffsetCm ?? 0),
     yOffsetCm: Number(entry.y_offset_cm ?? entry.yOffsetCm ?? 0),
     widthCm: Number(entry.width_cm ?? entry.widthCm ?? 80),

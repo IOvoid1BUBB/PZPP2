@@ -32,6 +32,7 @@ from app.schemas.solver import (
 from app.services.solver_job import SolverJobStore
 from app.services.offer_detour import COST_PER_KM_EUR, haversine_added_detour_km
 from app.services.offer_scorer import OfferScorerService
+from app.services.planner_layout import build_layout_from_offers, slots_to_storage, vehicle_to_planner
 from app.services.sequence_optimizer import is_precedence_valid
 from app.services.sessions import SessionService
 from app.services.stop_cost_calculator import StopCostRates, calculate_stop_cost
@@ -284,6 +285,10 @@ class VRPSolver:
                 raise ValidationAppError("Optimized stop sequence violates pickup-before-delivery.")
             stop_sequence = SessionService.serialize_stop_sequence(ordered_stops)
             stop_sequence_json = [entry.model_dump(mode="json") for entry in stop_sequence]
+
+            # Automatycznie rozmieść wybrane oferty na pace (load_layout).
+            # Zeruje poprzedni layout, aby nie zostały stare palety z demo.
+            await self._rebuild_layout_from_selected(session_id, session, selected_ids)
 
         orm_result = SolverResult(
             session_id=session_id,

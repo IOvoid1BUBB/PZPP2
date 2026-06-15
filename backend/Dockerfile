@@ -17,7 +17,11 @@ COPY alembic ./alembic
 COPY app ./app
 COPY data ./data
 COPY scripts ./scripts
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Kolejność startu: alembic upgrade → seed_vehicles → seed_market_offers → uvicorn.
+# W środowisku dev (docker-compose) można nadpisać CMD na uvicorn --reload.
+CMD ["./entrypoint.sh"]

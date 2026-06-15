@@ -11,14 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import NotFoundError, ValidationAppError
-from app.lib.geo import lat_lon_from_geometry
+from app.core.exceptions import NotFoundError
 from app.lib.osrm import OSRMClient, get_osrm_client
 from app.lib.redis_client import get_redis
 from app.models import ConsolidationSession, RouteStop
 from app.schemas.route_geometry import LegGeometry, RouteGeometry
-from app.services.fuel_calculator import calculate_multi_stop_fuel
-from app.services.profit_calculator import split_route_into_leg_geometries
+from app.services.route_builder import build_session_route
 
 _logger = logging.getLogger(__name__)
 
@@ -60,39 +58,18 @@ class RouteGeometryService:
         if session is None:
             raise NotFoundError(f"Session {session_id} not found.")
 
-        vehicle = session.vehicle
-        if vehicle is None:
-            raise ValidationAppError("Session vehicle is not set.")
-        if session.origin_lat is None or session.origin_lon is None:
-            raise ValidationAppError("Session origin coordinates are not set.")
-
-        stops = sorted(session.route_stops, key=lambda s: s.sequence_order)
-        if not stops:
-            raise ValidationAppError(
-                "Session has no route stops; cannot build route geometry."
-            )
-
-        origin = (float(session.origin_lat), float(session.origin_lon))
-        waypoints: list[tuple[float, float]] = [origin]
-        for stop in stops:
-            waypoints.append(lat_lon_from_geometry(stop.location))
-
-        route = await self._osrm.get_route_multi(waypoints)
-
-        fuel_result = calculate_multi_stop_fuel(
-            route.legs,
-            stops,
-            vehicle,
-            fuel_price_eur_per_liter=self._settings.FUEL_PRICE_EUR_PER_LITER,
-            weight_fuel_factor=self._settings.WEIGHT_FUEL_FACTOR,
+        # Single OSRM multi-stop call + fuel + per-leg geometry split (shared).
+        build = await build_session_route(
+            session, osrm=self._osrm, settings=self._settings
         )
-
-        leg_geoms = split_route_into_leg_geometries(route)
+        vehicle = session.vehicle
+        stops = build.stops
+        route = build.route
 
         leg_geometries: list[LegGeometry] = []
         for leg_cost, geom, osrm_leg in zip(
-            fuel_result.leg_costs,
-            leg_geoms,
+            build.fuel_result.leg_costs,
+            build.leg_geoms,
             route.legs,
             strict=False,
         ):
