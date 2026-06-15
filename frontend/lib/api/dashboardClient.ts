@@ -1,26 +1,32 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
-export interface DashboardKpi {
-  active_sessions: number;
-  total_sessions: number;
-  total_estimated_profit_eur: number;
-  average_fill_pct: number;
-  market_offers_count: number;
+export type DashboardNotificationType = "info" | "warning" | "opportunity";
+
+export interface ActiveSessionSummary {
+  session_id: string;
+  vehicle_name: string;
+  current_location: string;
+  destination: string;
+  lfil_pct: number;
+  status: string;
+  has_time_window_risk: boolean;
 }
 
-export interface DashboardSessionSummary {
+export interface DashboardNotification {
   id: string;
-  status: string;
-  created_at: string;
-  vehicle_name: string | null;
-  stop_count: number;
-  offer_count: number;
-  estimated_net_profit_eur: number | null;
+  type: DashboardNotificationType;
+  title: string;
+  body: string;
+  link?: string;
+  href?: string;
 }
 
 export interface DashboardResponse {
-  kpis: DashboardKpi;
-  recent_sessions: DashboardSessionSummary[];
+  today_net_profit_eur: number;
+  avg_lfill_pct: number;
+  empty_runs_pct: number;
+  active_sessions: ActiveSessionSummary[];
+  notifications: DashboardNotification[];
 }
 
 export async function fetchDashboard(): Promise<DashboardResponse> {
