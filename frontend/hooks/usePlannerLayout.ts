@@ -60,7 +60,9 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
   const conflicts = useConflicts();
 
   const hasLayout =
-    vehicle !== null || sessionId !== null || Object.keys(slots).length > 0;
+    vehicle !== null || Object.keys(slots).length > 0;
+
+  const needsSessionHydration = sessionId !== null && vehicle === null;
 
   const applyLayout = useCallback((next: PlannerLayoutState) => {
     useLoadStore.getState().setLayout({
@@ -137,7 +139,7 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
       return;
     }
 
-    if (!hasLayout) {
+    if (needsSessionHydration || !hasLayout) {
       queueMicrotask(() => {
         void reload();
       });
@@ -174,7 +176,7 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
         /* keep existing layout if refresh fails */
       }
     })();
-  }, [applyLayout, hasLayout, hydrated, reload, vehicle]);
+  }, [applyLayout, hasLayout, hydrated, needsSessionHydration, reload, vehicle]);
 
   const currentVehicleType = useCallback(
     () => useLoadStore.getState().vehicle?.type ?? null,
