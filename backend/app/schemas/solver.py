@@ -31,3 +31,4 @@ class SolverResponse(BaseModel):
     objective_value: float | None = None
     solve_time_ms: int | None = None
     selected_offer_ids: list[UUID] = Field(default_factory=list)
+    is_optimal: bool = True
