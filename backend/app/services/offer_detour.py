@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Sequence
 
-from app.core.exceptions import OSRMUnavailableError
+from app.core.exceptions import RoutingUnavailableError
 from app.lib.geo import haversine_km
-from app.lib.osrm import OSRMClient
+from app.lib.routing import RoutingProvider
 
 _logger = logging.getLogger("offer.detour")
 
@@ -39,7 +39,7 @@ def haversine_added_detour_km(
 
 
 async def calculate_added_detour(
-    osrm: OSRMClient,
+    routing: RoutingProvider,
     baseline_km: float,
     waypoints: Sequence[tuple[float, float]],
     pickup: tuple[float, float],
@@ -47,7 +47,7 @@ async def calculate_added_detour(
 ) -> float:
     """Compute added route km when appending pickup + delivery to *waypoints*.
 
-    Falls back to :func:`haversine_added_detour_km` when OSRM is unavailable.
+    Falls back to :func:`haversine_added_detour_km` when routing is unavailable.
     """
     if not waypoints and pickup == delivery:
         return 0.0
@@ -56,13 +56,13 @@ async def calculate_added_detour(
     try:
         if len(extended) < 2:
             return 0.0
-        route = await osrm.get_route_multi(list(extended))
+        route = await routing.get_route_multi(list(extended))
         added = max(0.0, route.total_distance_km - baseline_km)
         return round(added, 2)
-    except OSRMUnavailableError as exc:
+    except RoutingUnavailableError as exc:
         _logger.warning(
-            "OSRM detour failed; using haversine fallback",
-            extra={"event": "detour:osrm:fallback", "error": str(exc)},
+            "Routing detour failed; using haversine fallback",
+            extra={"event": "detour:routing:fallback", "error": str(exc)},
         )
         return round(haversine_added_detour_km(waypoints, pickup, delivery), 2)
     except Exception as exc:
