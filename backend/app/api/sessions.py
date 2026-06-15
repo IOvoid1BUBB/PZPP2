@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
@@ -44,9 +45,11 @@ async def list_sessions(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    status: str | None = Query(None),
+    date: date | None = Query(None, description="ISO date (YYYY-MM-DD)"),
 ) -> list[SessionRead]:
     service = SessionService(db)
-    sessions = await service.list_all(limit=limit, offset=offset)
+    sessions = await service.list_all(limit=limit, offset=offset, status=status, date=date)
     return [SessionRead.model_validate(s) for s in sessions]
 
 
