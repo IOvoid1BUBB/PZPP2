@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from shapely.geometry import LineString
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import NotFoundError, ValidationAppError
+from app.core.exceptions import NotFoundError
 from app.lib.geo import geo_point_from_geometry, lat_lon_from_geometry
 from app.lib.geocoder import coordinate_fallback
 from app.lib.osrm import OSRMClient, get_osrm_client
@@ -18,9 +19,12 @@ from app.lib.redis_client import get_redis
 from app.models import ConsolidationSession, RouteStop
 from app.schemas.offer import GeoPoint
 from app.schemas.route_map import RouteMapLeg, RouteMapResponse, RouteMapStop
-from app.services.fuel_calculator import calculate_multi_stop_fuel
-from app.services.profit_calculator import split_route_into_leg_geometries
+from app.services.route_builder import build_session_route
 from app.services.stop_labels import ensure_stop_label
+
+_logger = logging.getLogger(__name__)
+
+_ROUTE_MAP_CACHE_TTL_SECONDS = 3600
 
 
 def _linestring_to_leaflet_coords(line: LineString) -> list[list[float]]:
@@ -61,53 +65,56 @@ class RouteMapService:
         self._settings = settings or get_settings()
 
     async def get_route_map(self, session_id: UUID) -> RouteMapResponse:
+        redis = get_redis()
+        cache_key = f"route_map:{session_id}"
+
+        cached = await redis.get(cache_key)
+        if cached is not None:
+            _logger.info(
+                "route map cache hit",
+                extra={"event": "route_map:cache:hit", "session_id": str(session_id)},
+            )
+            return RouteMapResponse.model_validate_json(cached)
+
+        _logger.info(
+            "route map cache miss",
+            extra={"event": "route_map:cache:miss", "session_id": str(session_id)},
+        )
+
         session = await self._load_session(session_id)
         if session is None:
             raise NotFoundError(f"Session {session_id} not found.")
 
+        # Single OSRM multi-stop call + fuel + per-leg geometry split (shared).
+        build = await build_session_route(
+            session, osrm=self._osrm, settings=self._settings
+        )
         vehicle = session.vehicle
-        if vehicle is None:
-            raise ValidationAppError("Session vehicle is not set.")
-        if session.origin_lat is None or session.origin_lon is None:
-            raise ValidationAppError("Session origin coordinates are not set.")
-
-        stops = sorted(session.route_stops, key=lambda s: s.sequence_order)
-        if not stops:
-            raise ValidationAppError(
-                "Session has no route stops; cannot build route map."
-            )
 
         origin = GeoPoint(
             lon=float(session.origin_lon),
             lat=float(session.origin_lat),
         )
-        waypoints_lat_lon: list[tuple[float, float]] = [
-            (float(session.origin_lat), float(session.origin_lon))
-        ]
-        for stop in stops:
-            waypoints_lat_lon.append(lat_lon_from_geometry(stop.location))
-
-        route = await self._osrm.get_route_multi(waypoints_lat_lon)
-        fuel_result = calculate_multi_stop_fuel(
-            route.legs,
-            stops,
-            vehicle,
-            fuel_price_eur_per_liter=self._settings.FUEL_PRICE_EUR_PER_LITER,
-            weight_fuel_factor=self._settings.WEIGHT_FUEL_FACTOR,
-        )
-        leg_geoms = split_route_into_leg_geometries(route)
 
         legs: list[RouteMapLeg] = []
         for leg_cost, geom, osrm_leg in zip(
-            fuel_result.leg_costs,
-            leg_geoms,
-            route.legs,
+            build.fuel_result.leg_costs,
+            build.leg_geoms,
+            build.route.legs,
             strict=False,
         ):
             coords = _linestring_to_leaflet_coords(geom)
             if not coords:
+                _logger.warning(
+                    "route map leg geometry empty; using straight-line fallback",
+                    extra={
+                        "event": "route_map:leg:fallback",
+                        "session_id": str(session_id),
+                        "leg_index": leg_cost.leg_index,
+                    },
+                )
                 coords = _leg_fallback_coords(
-                    waypoints_lat_lon,
+                    build.waypoints_lat_lon,
                     osrm_leg.from_index,
                     osrm_leg.to_index,
                 )
@@ -116,20 +123,33 @@ class RouteMapService:
                     leg_id=leg_cost.leg_index + 1,
                     weight_kg_at_leg=round(leg_cost.weight_kg_at_leg, 1),
                     geometry_coords=coords,
+                    distance_km=round(leg_cost.distance_km, 3),
+                    duration_minutes=osrm_leg.duration_minutes,
+                    load_ratio=round(leg_cost.load_ratio, 4),
                 )
             )
 
         stop_rows: list[RouteMapStop] = []
-        for index, stop in enumerate(stops):
+        for index, stop in enumerate(build.stops):
             stop_rows.append(await self._stop_row(stop, is_current=(index == 0)))
 
-        return RouteMapResponse(
+        result = RouteMapResponse(
             session_id=session.id,
             origin=origin,
             legs=legs,
             stops=stop_rows,
             vehicle_max_weight_kg=int(vehicle.max_weight_kg),
+            total_distance_km=round(build.route.total_distance_km, 3),
+            total_duration_minutes=build.route.total_duration_minutes,
         )
+
+        await redis.setex(
+            cache_key,
+            _ROUTE_MAP_CACHE_TTL_SECONDS,
+            result.model_dump_json(),
+        )
+
+        return result
 
     async def _stop_row(self, stop: RouteStop, *, is_current: bool) -> RouteMapStop:
         handling: int | None = None
