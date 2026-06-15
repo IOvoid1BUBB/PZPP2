@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, ValidationAppError
-from app.lib.osrm import OSRMClient, get_osrm_client
+from app.lib.routing import RoutingProvider, get_routing_provider
 from app.models import ConsolidationSession, RouteStop
 
 MAX_DAILY_DRIVING_HOURS = 9.0
@@ -59,11 +59,11 @@ class DriverComplianceService:
         self,
         db: AsyncSession,
         *,
-        osrm: OSRMClient | None = None,
+        routing: RoutingProvider | None = None,
         settings: Settings | None = None,
     ) -> None:
         self._db = db
-        self._osrm = osrm or get_osrm_client()
+        self._routing = routing or get_routing_provider()
         self._settings = settings or get_settings()
 
     async def evaluate_session(self, session_id: UUID) -> ComplianceResult:
@@ -98,7 +98,7 @@ class DriverComplianceService:
         for stop in ordered_stops:
             waypoints.append(lat_lon_from_geometry(stop.location))
 
-        route = await self._osrm.get_route_multi(waypoints)
+        route = await self._routing.get_route_multi(waypoints)
         stop_durations = [
             (
                 stop.offer.handling_time_minutes
