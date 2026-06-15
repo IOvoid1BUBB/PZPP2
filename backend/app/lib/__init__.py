@@ -1,1 +1,1 @@
-"""Thin clients for external services (OSRM, Redis)."""
+"""Thin clients for external services (routing, Redis)."""
