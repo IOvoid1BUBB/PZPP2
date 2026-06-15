@@ -3,6 +3,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -251,14 +252,18 @@ export interface PalletLibraryProps {
   sessionId: string;
   loadedOfferIds?: Set<string>;
   onOfferAdded?: (session: SessionFullResponse) => void;
+  onOfferRemoved?: (offerId: string) => void;
   onRegisterAddOffer?: (addOffer: (offerId: string) => Promise<void>) => void;
+  onRegisterRemoveOffer?: (removeOffer: (offerId: string) => void) => void;
 }
 
 export function PalletLibrary({
   sessionId,
   loadedOfferIds: loadedOfferIdsProp,
   onOfferAdded,
+  onOfferRemoved,
   onRegisterAddOffer,
+  onRegisterRemoveOffer,
 }: PalletLibraryProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -269,6 +274,7 @@ export function PalletLibrary({
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [simulating, setSimulating] = useState(false);
+  const [autoSimulated, setAutoSimulated] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const [loadingOfferId, setLoadingOfferId] = useState<string | null>(null);
   const [localLoadedIds, setLocalLoadedIds] = useState<Set<string>>(new Set());
@@ -352,6 +358,23 @@ export function PalletLibrary({
     onRegisterAddOffer?.(addOffer);
   }, [addOffer, onRegisterAddOffer]);
 
+  // Expose a callback so SlotEditor can mark an offer as unloaded
+  const removeOfferLocally = useCallback(
+    (offerId: string) => {
+      setLocalLoadedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(offerId);
+        return next;
+      });
+      onOfferRemoved?.(offerId);
+    },
+    [onOfferRemoved],
+  );
+
+  useEffect(() => {
+    onRegisterRemoveOffer?.(removeOfferLocally);
+  }, [onRegisterRemoveOffer, removeOfferLocally]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -382,6 +405,28 @@ export function PalletLibrary({
       cancelled = true;
     };
   }, [sessionId, refreshToken]);
+
+  // Auto-generate offers the first time the library loads with an empty DB
+  useEffect(() => {
+    if (!loading && !fetchError && offers.length === 0 && !autoSimulated && !simulating) {
+      setAutoSimulated(true);
+      void (async () => {
+        setSimulating(true);
+        try {
+          const result = await simulateMarketOffers(sessionId, 200);
+          showToast({
+            type: "success",
+            message: `Wygenerowano ${result.inserted} ofert testowych.`,
+          });
+          setRefreshToken((t) => t + 1);
+        } catch {
+          // silent — user can click manually
+        } finally {
+          setSimulating(false);
+        }
+      })();
+    }
+  }, [autoSimulated, fetchError, loading, offers.length, sessionId, simulating, showToast]);
 
   const handleSimulate = useCallback(async () => {
     setSimulating(true);
@@ -422,14 +467,14 @@ export function PalletLibrary({
         </span>
       </header>
 
-      {offers.length === 0 && !loading ? (
+      {(offers.length === 0 && !loading) || simulating ? (
         <button
           type="button"
           className="button button--secondary mb-3 w-full"
           disabled={simulating}
           onClick={() => void handleSimulate()}
         >
-          {simulating ? "Generowanie…" : "Generuj oferty rynkowe"}
+          {simulating ? "Generowanie ofert…" : "Generuj oferty rynkowe"}
         </button>
       ) : null}
 
@@ -506,5 +551,24 @@ export function PalletLibrary({
         </div>
       )}
     </aside>
+  );
+}
+
+/**
+ * Suspense-wrapped version of PalletLibrary.
+ * Use this anywhere PalletLibrary is rendered inside a client component tree
+ * to satisfy Next.js requirement for useSearchParams() boundaries.
+ */
+export function PalletLibrarySuspense(props: PalletLibraryProps) {
+  return (
+    <Suspense
+      fallback={
+        <aside className="pallet-library offer-sidebar" aria-label="Biblioteka ofert">
+          <p className="pallet-library__status">Wczytywanie ofert…</p>
+        </aside>
+      }
+    >
+      <PalletLibrary {...props} />
+    </Suspense>
   );
 }
