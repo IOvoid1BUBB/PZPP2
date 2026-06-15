@@ -1,6 +1,6 @@
 /**
  * API client for GET /api/v1/sessions/{id}/route-map.
- * geometry_coords and weight_kg_at_leg come from the backend (OSRM + fuel_calculator).
+ * geometry_coords and weight_kg_at_leg come from the backend (ORS + fuel_calculator).
  */
 
 import type { RouteMapData, RouteStop, StopType } from "@/lib/types/routeMap";
