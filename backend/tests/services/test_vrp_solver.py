@@ -471,7 +471,7 @@ async def test_vrp_solver_solve_mock_applies_route(monkeypatch: pytest.MonkeyPat
 async def test_vrp_solver_solve_empty_ranked_infeasible(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Empty ranked candidates return INFEASIBLE without DB changes."""
+    """Empty ranked candidates return INFEASIBLE and persist a solver_results row."""
     from unittest.mock import AsyncMock, MagicMock
 
     from app.core.config import Settings
@@ -486,8 +486,13 @@ async def test_vrp_solver_solve_empty_ranked_infeasible(
     session.status = "draft"
     session.vehicle = vehicle
     session.driver_profile = MagicMock()
+    session.solver_run_id = None
 
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+    mock_db.flush = AsyncMock()
+    mock_db.refresh = AsyncMock(side_effect=lambda obj: setattr(obj, "id", uuid4()))
+
     solver = VRPSolver(
         mock_db,
         settings=Settings(
@@ -495,6 +500,7 @@ async def test_vrp_solver_solve_empty_ranked_infeasible(
         ),
     )
     solver._load_session = AsyncMock(return_value=session)  # type: ignore[method-assign]
+    solver._session_service._session_offer_ids = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
     mock_scorer = AsyncMock()
     mock_scorer.rank_offers = AsyncMock(
@@ -518,6 +524,7 @@ async def test_vrp_solver_solve_empty_ranked_infeasible(
     )
     assert result.solver_status == "INFEASIBLE"
     assert result.selected_offer_ids == []
+    mock_db.add.assert_called()
 
 
 @pytest.mark.asyncio

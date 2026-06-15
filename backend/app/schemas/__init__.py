@@ -16,7 +16,12 @@ from app.schemas.session import (
     SessionStatusUpdate,
 )
 from app.schemas.profit import SessionProfitBreakdown
-from app.schemas.solver import SolverRequest, SolverResponse, SolverRunResult
+from app.schemas.solver import (
+    SolverRequest,
+    SolverResponse,
+    SolverRunResult,
+    SolverStatusResponse,
+)
 from app.schemas.stop import StopRead
 from app.schemas.vehicle import VehicleRead
 
@@ -34,6 +39,7 @@ __all__ = [
     "SolverRequest",
     "SolverResponse",
     "SolverRunResult",
+    "SolverStatusResponse",
     "StopRead",
     "VehicleRead",
 ]

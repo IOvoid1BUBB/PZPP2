@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-import uuid
 from datetime import datetime
 from uuid import UUID
 
@@ -23,7 +22,14 @@ from app.core.exceptions import NotFoundError, ValidationAppError
 from app.lib.geo import lat_lon_from_geometry
 from app.lib.osrm import OSRMClient, get_osrm_client
 from app.models import ConsolidationSession, MarketOffer, RouteStop, SolverResult
-from app.schemas.solver import SolverRunResult, SolverRunStatus, StopSequenceEntry
+from app.schemas.solver import (
+    SolverJobStatus,
+    SolverRunResult,
+    SolverRunStatus,
+    SolverStatusResponse,
+    StopSequenceEntry,
+)
+from app.services.solver_job import SolverJobStore
 from app.services.offer_detour import COST_PER_KM_EUR, haversine_added_detour_km
 from app.services.offer_scorer import OfferScorerService
 from app.services.planner_layout import build_layout_from_offers, slots_to_storage, vehicle_to_planner
@@ -198,7 +204,7 @@ class VRPSolver:
             )
             candidate_offer_ids = [o.offer_id for o in ranked.offers]
             if not candidate_offer_ids:
-                return self._empty_result(session_id, "INFEASIBLE", 0)
+                return await self._persist_empty_result(session_id, "INFEASIBLE", 0)
 
         candidates = await self._fetch_offers(candidate_offer_ids)
         if not candidates:
@@ -311,6 +317,49 @@ class VRPSolver:
             current_offer_ids=current_offer_ids,
         )
 
+    async def get_status(
+        self,
+        session_id: UUID,
+        *,
+        redis: object | None = None,
+    ) -> SolverStatusResponse:
+        session = await self._load_session(session_id)
+        if session is None:
+            raise NotFoundError(f"Session {session_id} not found.")
+
+        job = await SolverJobStore.get(redis, session_id)  # type: ignore[arg-type]
+        if job is not None and job.status == "RUNNING":
+            if job.cancel_requested:
+                return SolverStatusResponse(
+                    status="CANCELLED",
+                    elapsed_ms=job.elapsed_ms(),
+                    best_objective=job.best_objective,
+                    result=None,
+                )
+            return SolverStatusResponse(
+                status="RUNNING",
+                elapsed_ms=job.elapsed_ms(),
+                best_objective=job.best_objective,
+                result=None,
+            )
+
+        orm_result = await self._load_latest_result(session_id)
+        if orm_result is None:
+            return SolverStatusResponse(status="IDLE", elapsed_ms=0)
+
+        run_result = await self._orm_to_run_result(session_id, orm_result)
+        terminal_status: SolverJobStatus = (orm_result.solver_status or "UNKNOWN")  # type: ignore[assignment]
+        return SolverStatusResponse(
+            status=terminal_status,
+            elapsed_ms=orm_result.solve_time_ms or 0,
+            best_objective=(
+                float(orm_result.objective_value)
+                if orm_result.objective_value is not None
+                else None
+            ),
+            result=run_result,
+        )
+
     async def cancel(self, session_id: UUID) -> SolverRunResult:
         session = await self._load_session(session_id)
         if session is None:
@@ -371,6 +420,39 @@ class VRPSolver:
         result = await self._db.execute(stmt)
         return result.scalars().first()
 
+    async def _load_latest_result(self, session_id: UUID) -> SolverResult | None:
+        stmt = (
+            select(SolverResult)
+            .where(SolverResult.session_id == session_id)
+            .order_by(SolverResult.created_at.desc())
+            .limit(1)
+        )
+        result = await self._db.execute(stmt)
+        return result.scalars().first()
+
+    async def _orm_to_run_result(
+        self,
+        session_id: UUID,
+        orm_result: SolverResult,
+    ) -> SolverRunResult:
+        stop_sequence: list[StopSequenceEntry] = []
+        raw_sequence = orm_result.stop_sequence_json
+        if isinstance(raw_sequence, list):
+            stop_sequence = [StopSequenceEntry.model_validate(entry) for entry in raw_sequence]
+
+        status: SolverRunStatus = (orm_result.solver_status or "UNKNOWN")  # type: ignore[assignment]
+        return SolverRunResult(
+            session_id=session_id,
+            solver_run_id=orm_result.id,
+            selected_offer_ids=list(orm_result.selected_offer_ids or []),
+            objective_value=float(orm_result.objective_value or 0.0),
+            solver_status=status,
+            is_optimal=status == "OPTIMAL",
+            solve_time_ms=orm_result.solve_time_ms or 0,
+            stop_sequence=stop_sequence,
+            current_offer_ids=await self._session_service._session_offer_ids(session_id),
+        )
+
     async def _fetch_offers(self, offer_ids: list[UUID]) -> list[MarketOffer]:
         stmt = (
             select(MarketOffer)
@@ -379,56 +461,36 @@ class VRPSolver:
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
 
-    async def _rebuild_layout_from_selected(
+    async def _persist_empty_result(
         self,
-        session_id: UUID,
-        session: ConsolidationSession,
-        selected_ids: list[UUID],
-    ) -> None:
-        """Rozmieść wybrane oferty na pace i zapisz jako load_layout sesji.
-
-        Zeruje poprzedni layout, eliminując stare mock-palety.
-        """
-        if session.vehicle is None:
-            return
-
-        from app.models import Vehicle as VehicleModel  # noqa: F401
-        from sqlalchemy import select as sa_select  # noqa: F401
-
-        vehicle = session.vehicle
-        planner_vehicle = vehicle_to_planner(vehicle)
-
-        offers = await self._fetch_offers(selected_ids)
-        offers_by_id = {o.id: o for o in offers}
-        offer_dicts = [
-            {
-                "id": str(oid),
-                "ldm": float(offers_by_id[oid].ldm),
-                "weight_kg": int(offers_by_id[oid].weight_kg),
-                "price_eur": float(offers_by_id[oid].price_eur),
-                "stackable": bool(offers_by_id[oid].stackable),
-                "pickup_label": f"Oferta {str(oid)[:8]}",
-            }
-            for oid in selected_ids
-            if oid in offers_by_id
-        ]
-
-        slots = build_layout_from_offers(planner_vehicle.payload_slots, offer_dicts)
-        session.load_layout = slots_to_storage(slots)
-        await self._db.flush()
-
-    @staticmethod
-    def _empty_result(
         session_id: UUID,
         status: SolverRunStatus,
         solve_time_ms: int,
     ) -> SolverRunResult:
+        session = await self._load_session(session_id)
+        if session is None:
+            raise NotFoundError(f"Session {session_id} not found.")
+
+        orm_result = SolverResult(
+            session_id=session_id,
+            selected_offer_ids=[],
+            solver_status=status,
+            objective_value=0.0,
+            solve_time_ms=solve_time_ms,
+        )
+        self._db.add(orm_result)
+        await self._db.flush()
+        await self._db.refresh(orm_result)
+        session.solver_run_id = orm_result.id
+        await self._db.flush()
+
         return SolverRunResult(
             session_id=session_id,
-            solver_run_id=uuid.uuid4(),
+            solver_run_id=orm_result.id,
             selected_offer_ids=[],
             objective_value=0.0,
             solver_status=status,
             is_optimal=False,
             solve_time_ms=solve_time_ms,
+            current_offer_ids=await self._session_service._session_offer_ids(session_id),
         )
