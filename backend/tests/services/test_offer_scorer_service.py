@@ -47,15 +47,15 @@ async def test_rank_offers_sorts_by_score_desc() -> None:
     offers = [_offer(price=500), _offer(price=100)]
 
     db = AsyncMock()
-    osrm = AsyncMock()
-    osrm.get_route_multi = AsyncMock(
+    routing = AsyncMock()
+    routing.get_route_multi = AsyncMock(
         return_value=MagicMock(total_distance_km=50.0),
     )
     redis = AsyncMock()
     redis.get = AsyncMock(return_value=None)
     redis.setex = AsyncMock()
 
-    service = OfferScorerService(db, osrm=osrm, redis=redis)
+    service = OfferScorerService(db, routing=routing, redis=redis)
 
     with (
         patch.object(service, "_load_session", AsyncMock(return_value=session)),
@@ -77,7 +77,7 @@ async def test_rank_offers_session_not_found() -> None:
     from app.core.exceptions import NotFoundError
 
     db = AsyncMock()
-    service = OfferScorerService(db, osrm=AsyncMock(), redis=AsyncMock())
+    service = OfferScorerService(db, routing=AsyncMock(), redis=AsyncMock())
     with patch.object(service, "_load_session", AsyncMock(return_value=None)):
         with pytest.raises(NotFoundError):
             await service.rank_offers(uuid.uuid4())
@@ -90,15 +90,15 @@ async def test_rank_offers_no_vehicle_raises() -> None:
     session = MagicMock(spec=ConsolidationSession)
     session.vehicle = None
     db = AsyncMock()
-    service = OfferScorerService(db, osrm=AsyncMock(), redis=AsyncMock())
+    service = OfferScorerService(db, routing=AsyncMock(), redis=AsyncMock())
     with patch.object(service, "_load_session", AsyncMock(return_value=session)):
         with pytest.raises(ValidationAppError):
             await service.rank_offers(uuid.uuid4())
 
 
 @pytest.mark.asyncio
-async def test_build_scoring_context_osrm_fallback() -> None:
-    from app.core.exceptions import OSRMUnavailableError
+async def test_build_scoring_context_routing_fallback() -> None:
+    from app.core.exceptions import RoutingUnavailableError
     from app.services.offer_scorer import SessionScoringContext
 
     session = MagicMock(spec=ConsolidationSession)
@@ -107,9 +107,9 @@ async def test_build_scoring_context_osrm_fallback() -> None:
     session.origin_lon = 21.0
     session.created_at = datetime(2025, 5, 1, 6, 0, tzinfo=UTC)
 
-    osrm = AsyncMock()
-    osrm.get_route_multi = AsyncMock(side_effect=OSRMUnavailableError("down"))
-    service = OfferScorerService(AsyncMock(), osrm=osrm, redis=AsyncMock())
+    routing = AsyncMock()
+    routing.get_route_multi = AsyncMock(side_effect=RoutingUnavailableError("down"))
+    service = OfferScorerService(AsyncMock(), routing=routing, redis=AsyncMock())
     ctx = await service._build_scoring_context(session)
     assert isinstance(ctx, SessionScoringContext)
     assert ctx.baseline_km == 0.0
@@ -117,7 +117,7 @@ async def test_build_scoring_context_osrm_fallback() -> None:
 
 @pytest.mark.asyncio
 async def test_haversine_route_km_multi_leg() -> None:
-    service = OfferScorerService(AsyncMock(), osrm=AsyncMock(), redis=AsyncMock())
+    service = OfferScorerService(AsyncMock(), routing=AsyncMock(), redis=AsyncMock())
     km = service._haversine_route_km([(52.0, 21.0), (51.0, 20.0), (50.0, 19.0)])
     assert km > 0.0
 
@@ -128,7 +128,7 @@ async def test_fetch_candidate_offers_with_bbox() -> None:
     session.target_region_bbox = [14.0, 49.0, 24.0, 55.0]
     db = AsyncMock()
     db.execute = AsyncMock(return_value=MagicMock(scalars=lambda: MagicMock(all=lambda: [])))
-    service = OfferScorerService(db, osrm=AsyncMock(), redis=AsyncMock())
+    service = OfferScorerService(db, routing=AsyncMock(), redis=AsyncMock())
     offers = await service._fetch_candidate_offers(session)
     assert offers == []
     db.execute.assert_awaited_once()
