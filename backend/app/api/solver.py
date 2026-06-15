@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.exceptions import ConflictError
-from app.lib.osrm import OSRMClient, get_osrm_client
+from app.lib.routing import RoutingProvider, get_routing_provider
 from app.lib.redis_client import get_redis
 from app.schemas.solver import SolverRequest, SolverRunResult, SolverStatusResponse
 from app.services.solver_job import SolverJobStore
@@ -77,7 +77,7 @@ async def trigger_optimization(
 async def cancel_optimization(
     session_id: UUID,
     db: AsyncSession = Depends(get_db),
-    osrm: OSRMClient = Depends(get_osrm_client),
+    routing: RoutingProvider = Depends(get_routing_provider),
     redis: Redis = Depends(get_redis),
     settings: Settings = Depends(get_settings),
 ) -> SolverRunResult:
@@ -94,7 +94,7 @@ async def cancel_optimization(
             solve_time_ms=elapsed_ms,
         )
 
-    solver = VRPSolver(db, osrm=osrm, settings=settings)
+    solver = VRPSolver(db, routing=routing, settings=settings)
     result = await solver.cancel(session_id)
     await db.commit()
     return result
