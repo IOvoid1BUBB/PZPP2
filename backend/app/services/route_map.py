@@ -97,11 +97,23 @@ class RouteMapService:
         )
 
         legs: list[RouteMapLeg] = []
+        leg_counts = (
+            len(build.fuel_result.leg_costs),
+            len(build.leg_geoms),
+            len(build.route.legs),
+        )
+        if len(set(leg_counts)) != 1:
+            _logger.warning(
+                "route map leg segment count mismatch: costs=%d geoms=%d route_legs=%d",
+                *leg_counts,
+                extra={"event": "route_map:leg:mismatch", "session_id": str(session_id)},
+            )
+        leg_count = min(leg_counts)
         for leg_cost, geom, route_leg in zip(
-            build.fuel_result.leg_costs,
-            build.leg_geoms,
-            build.route.legs,
-            strict=False,
+            build.fuel_result.leg_costs[:leg_count],
+            build.leg_geoms[:leg_count],
+            build.route.legs[:leg_count],
+            strict=True,
         ):
             coords = _linestring_to_leaflet_coords(geom)
             if not coords:
