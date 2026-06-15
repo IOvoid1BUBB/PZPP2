@@ -28,6 +28,17 @@ TOLL_RATES: dict[str, dict[str, float]] = {
     "HU": {"bus": 0.12, "solo": 0.18},
 }
 
+# Phase-1 flat EUR/km rates used by ``estimate_toll_eur``.
+ESTIMATE_RATES_EUR_PER_KM: dict[str, float] = {
+    "DE": 0.187,
+    "AT": 0.220,
+    "CZ": 0.145,
+    "PL": 0.095,
+    "FR": 0.280,
+    "CH": 0.350,
+    "DEFAULT": 0.05,
+}
+
 
 class LegToll(BaseModel):
     """Toll breakdown for a single route leg."""
@@ -100,6 +111,63 @@ def calculate_leg_tolls(
 
     leg_total = round(sum(per_country.values()), 4)
     return LegToll(leg_index=leg_index, per_country=per_country, leg_total_eur=leg_total)
+
+
+def _parse_route_linestring(route_geometry: dict[str, object]) -> LineString | None:
+    """Convert a GeoJSON geometry dict into a LineString, or None when invalid."""
+    if not route_geometry:
+        return None
+    try:
+        geom = shape(route_geometry)
+    except (TypeError, ValueError, KeyError):
+        return None
+    if not isinstance(geom, LineString) or geom.is_empty:
+        return None
+    return geom
+
+
+def _per_country_km_from_line(route_line: LineString) -> dict[str, float]:
+    """Return approximate kilometres driven inside each intersected country."""
+    countries = load_country_geometries()
+    per_country: dict[str, float] = {}
+    for country_code, country_geom in countries.items():
+        intersection = route_line.intersection(country_geom)
+        if intersection.is_empty:
+            continue
+        per_country[country_code] = intersection.length * 111.0
+    return per_country
+
+
+def estimate_toll_eur(
+    route_geometry: dict[str, object],
+    vehicle_type: str,
+    total_distance_km: float,
+) -> tuple[float, bool]:
+    """Estimate total toll cost from route geometry and country boundaries.
+
+    Returns ``(toll_eur, is_estimated)``. On empty or invalid geometry the
+    function falls back to ``(0.0, True)`` without raising.
+    """
+    _ = vehicle_type  # reserved for future vehicle-class rate tables
+    route_line = _parse_route_linestring(route_geometry)
+    if route_line is None:
+        return 0.0, True
+
+    per_country_km = _per_country_km_from_line(route_line)
+    geometry_total_km = sum(per_country_km.values())
+    if geometry_total_km <= 0.0:
+        return 0.0, True
+
+    scale = total_distance_km / geometry_total_km if total_distance_km > 0.0 else 1.0
+    toll_total = 0.0
+    for country_code, km in per_country_km.items():
+        rate = ESTIMATE_RATES_EUR_PER_KM.get(
+            country_code,
+            ESTIMATE_RATES_EUR_PER_KM["DEFAULT"],
+        )
+        toll_total += km * scale * rate
+
+    return round(toll_total, 4), True
 
 
 def calculate_route_tolls(
