@@ -513,6 +513,7 @@ export function SlotEditor() {
               profitEur={Math.round(profitData.netProfitEur)}
               saving={saving}
               onSave={isReadOnly ? undefined : () => void handleSendToDriver()}
+              sessionId={sessionId ?? undefined}
             />
 
             {conflicts.length > 0 && (
