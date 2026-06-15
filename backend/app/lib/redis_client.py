@@ -1,6 +1,6 @@
 """Tiny async Redis wrapper.
 
-Used for OSRM matrix / route response caching and lightweight queues.
+Used for routing matrix / route response caching and lightweight queues.
 The connection pool is shared across the process.
 """
 
