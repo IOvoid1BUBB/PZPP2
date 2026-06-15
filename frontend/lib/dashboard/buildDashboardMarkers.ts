@@ -25,6 +25,21 @@ export interface DashboardMarker {
 /** Warszawa — domyślny środek, gdy brak koordynatów. */
 export const DEFAULT_ORIGIN: [number, number] = [21.01, 52.22];
 
+/** Parse backend location labels into map coordinates [lon, lat]. */
+export function parseDashboardCoordinates(location: string): [number, number] | null {
+  const labeled = location.match(/([\d.]+)°N,\s*([\d.]+)°E/);
+  if (labeled) {
+    return [Number.parseFloat(labeled[2]), Number.parseFloat(labeled[1])];
+  }
+
+  const plain = location.match(/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/);
+  if (plain) {
+    return [Number.parseFloat(plain[2]), Number.parseFloat(plain[1])];
+  }
+
+  return null;
+}
+
 function deriveLabel(vehicleName: string | null, index: number): string {
   if (vehicleName) {
     const initials = vehicleName
