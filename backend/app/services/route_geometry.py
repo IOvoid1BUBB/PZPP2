@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError
-from app.lib.osrm import OSRMClient, get_osrm_client
+from app.lib.routing import RoutingProvider, get_routing_provider
 from app.lib.redis_client import get_redis
 from app.models import ConsolidationSession, RouteStop
 from app.schemas.route_geometry import LegGeometry, RouteGeometry
@@ -30,11 +30,11 @@ class RouteGeometryService:
         self,
         db: AsyncSession,
         *,
-        osrm: OSRMClient | None = None,
+        routing: RoutingProvider | None = None,
         settings: Settings | None = None,
     ) -> None:
         self._db = db
-        self._osrm = osrm or get_osrm_client()
+        self._routing = routing or get_routing_provider()
         self._settings = settings or get_settings()
 
     async def get_route_geometry(self, session_id: UUID) -> RouteGeometry:
@@ -58,23 +58,23 @@ class RouteGeometryService:
         if session is None:
             raise NotFoundError(f"Session {session_id} not found.")
 
-        # Single OSRM multi-stop call + fuel + per-leg geometry split (shared).
+        # Single ORS multi-stop call + fuel + per-leg geometry split (shared).
         build = await build_session_route(
-            session, osrm=self._osrm, settings=self._settings
+            session, routing=self._routing, settings=self._settings
         )
         vehicle = session.vehicle
         stops = build.stops
         route = build.route
 
         leg_geometries: list[LegGeometry] = []
-        for leg_cost, geom, osrm_leg in zip(
+        for leg_cost, geom, route_leg in zip(
             build.fuel_result.leg_costs,
             build.leg_geoms,
             route.legs,
             strict=False,
         ):
-            from_stop_id = self._map_stop_id(stops, osrm_leg.from_index)
-            to_stop_id = self._map_stop_id(stops, osrm_leg.to_index)
+            from_stop_id = self._map_stop_id(stops, route_leg.from_index)
+            to_stop_id = self._map_stop_id(stops, route_leg.to_index)
 
             geometry_geojson = self._linestring_to_geojson(geom)
 
@@ -85,7 +85,7 @@ class RouteGeometryService:
                     to_stop_id=to_stop_id,
                     geometry_geojson=geometry_geojson,
                     distance_km=round(leg_cost.distance_km, 3),
-                    duration_minutes=osrm_leg.duration_minutes,
+                    duration_minutes=route_leg.duration_minutes,
                     weight_kg_at_leg=round(leg_cost.weight_kg_at_leg, 1),
                     load_ratio=round(leg_cost.load_ratio, 4),
                 )
