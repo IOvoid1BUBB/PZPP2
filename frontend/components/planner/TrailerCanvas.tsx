@@ -11,7 +11,10 @@ import {
 
 import { DraggablePallet } from "@/components/planner/DraggablePallet";
 import { DroppableSlot } from "@/components/planner/DroppableSlot";
-import { getCompanyColorPair } from "@/lib/colors/companyColors";
+import {
+  getCompanyColorHex,
+  getCompanyColorPair,
+} from "@/lib/colors/companyColors";
 import { useClientSummary } from "@/lib/stores/loadStore";
 import type {
   PalletData,
@@ -149,6 +152,11 @@ const VEHICLE_OUTLINES: Record<VehicleConfig["type"], FC<BedLayout>> = {
 
 export function getClientColor(offerId: string): string {
   return getCompanyColorPair(offerId).intense;
+}
+
+/** Fixed HEX for Recharts — same palette index as {@link getClientColor}. */
+export function getClientColorHex(offerId: string, isDark = false): string {
+  return getCompanyColorHex(offerId, isDark);
 }
 
 function truncateLabel(name: string, max = 8): string {

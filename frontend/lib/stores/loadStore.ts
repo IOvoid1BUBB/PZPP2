@@ -47,7 +47,8 @@ interface SlotMeta {
   col: number;
 }
 
-interface ClientSummary {
+export interface ClientSummary {
+  clientId: string;
   offerId: string;
   name: string;
   color: string;
@@ -448,6 +449,7 @@ export const useClientSummary = (): ClientSummary[] => {
       }
 
       clients.set(pallet.clientId, {
+        clientId: pallet.clientId,
         offerId: pallet.offerId,
         name: pallet.clientName,
         color: getCompanyColorPair(pallet.clientId || pallet.offerId).intense,
