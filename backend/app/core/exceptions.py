@@ -53,19 +53,12 @@ class ExternalServiceError(AppException):
     default_detail = "Upstream service failed."
 
 
-class OSRMUnavailableError(ExternalServiceError):
-    """Raised when OSRM is unreachable after all retry attempts or returns an error response."""
+class RoutingUnavailableError(ExternalServiceError):
+    """Raised when the routing provider is unreachable or returns an error response."""
 
-    error_code = "osrm_unavailable"
-    default_detail = "OSRM service is unavailable."
+    error_code = "routing_unavailable"
+    default_detail = "Routing service is unavailable."
 
-    def __init__(self, message: str = "OSRM service is unavailable") -> None:
+    def __init__(self, message: str = "Routing service is unavailable") -> None:
         super().__init__(detail=message)
         self.message = message
-
-
-class OSRMResponseError(ExternalServiceError):
-    """Raised when OSRM returns an unexpected or malformed response."""
-
-    error_code = "osrm_response_error"
-    default_detail = "OSRM returned an unexpected response."

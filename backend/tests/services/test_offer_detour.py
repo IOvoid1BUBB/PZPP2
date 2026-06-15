@@ -6,30 +6,30 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.core.exceptions import OSRMUnavailableError
+from app.core.exceptions import RoutingUnavailableError
 from app.services.offer_detour import calculate_added_detour, haversine_added_detour_km
 
 
 @pytest.mark.asyncio
 async def test_calculate_added_detour_short_waypoints() -> None:
-    osrm = AsyncMock()
+    routing = AsyncMock()
     added = await calculate_added_detour(
-        osrm,
+        routing,
         baseline_km=0.0,
         waypoints=[],
         pickup=(52.0, 21.0),
         delivery=(52.0, 21.0),
     )
     assert added == 0.0
-    osrm.get_route_multi.assert_not_awaited()
+    routing.get_route_multi.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_calculate_added_detour_unexpected_error_fallback() -> None:
-    osrm = AsyncMock()
-    osrm.get_route_multi = AsyncMock(side_effect=RuntimeError("boom"))
+    routing = AsyncMock()
+    routing.get_route_multi = AsyncMock(side_effect=RuntimeError("boom"))
     added = await calculate_added_detour(
-        osrm,
+        routing,
         baseline_km=0.0,
         waypoints=[(52.0, 21.0)],
         pickup=(52.1, 21.1),

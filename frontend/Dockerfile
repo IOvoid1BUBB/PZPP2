@@ -12,7 +12,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # routes-manifest.json, so BACKEND_URL must be present during `next build`.
 # Defaults to the docker-compose service name; override for other networks.
 ARG BACKEND_URL=http://api:8000
+ARG NEXT_PUBLIC_API_BASE=
 ENV BACKEND_URL=$BACKEND_URL
+ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
 RUN npm run build
 
 FROM node:22-alpine AS runner

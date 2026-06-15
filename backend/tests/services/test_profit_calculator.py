@@ -55,7 +55,7 @@ os.environ.setdefault(
 from geoalchemy2.shape import from_shape
 from shapely.geometry import LineString, Point
 
-from app.lib.osrm import MultiStopRouteResult, RouteLeg
+from app.lib.routing import MultiStopRouteResult, RouteLeg
 from app.services.profit_calculator import (
     SessionProfitCalculator,
     split_route_into_leg_geometries,
@@ -139,7 +139,7 @@ _STOPS = [
     _Stop("delivery", _OFFER_3, 5, _loc(*_COORDS[6])),
 ]
 
-# Mock OSRM route — 6 legs × 83.333 km / 60 min
+# Mock routing route — 6 legs × 83.333 km / 60 min
 _ROUTE = MultiStopRouteResult(
     total_distance_km=500.0,
     total_duration_minutes=360,
@@ -210,14 +210,14 @@ def test_split_route_zero_total_distance() -> None:
 # Tests — SessionProfitCalculator (main fixture)
 # ---------------------------------------------------------------------------
 
-def _build_calculator(mock_db: AsyncMock, mock_osrm: AsyncMock) -> SessionProfitCalculator:
+def _build_calculator(mock_db: AsyncMock, mock_routing: AsyncMock) -> SessionProfitCalculator:
     settings = MagicMock()
     settings.FUEL_PRICE_EUR_PER_LITER = 1.75
     settings.DRIVER_DAILY_ALLOWANCE_EUR = 49.0
     settings.WEIGHT_FUEL_FACTOR = 0.30
     settings.MAINTENANCE_EUR_PER_KM = 0.08
     settings.STOP_COST_MINUTES = 30
-    return SessionProfitCalculator(mock_db, osrm=mock_osrm, settings=settings)
+    return SessionProfitCalculator(mock_db, routing=mock_routing, settings=settings)
 
 
 @pytest.mark.asyncio
@@ -228,10 +228,10 @@ async def test_profit_3_offers_6_stops_within_tolerance() -> None:
     mock_db.add = MagicMock()
     mock_db.flush = AsyncMock()
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
-    calc = _build_calculator(mock_db, mock_osrm)
+    calc = _build_calculator(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -327,10 +327,10 @@ async def test_profit_negative_net_returns_200_value() -> None:
     mock_session = _mock_session()
     mock_session.route_stops = cheap_stops
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=short_route)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=short_route)
 
-    calc = _build_calculator(mock_db, mock_osrm)
+    calc = _build_calculator(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -356,10 +356,10 @@ async def test_profit_stop_costs_separate_from_fuel() -> None:
     mock_db.add = MagicMock()
     mock_db.flush = AsyncMock()
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
-    calc = _build_calculator(mock_db, mock_osrm)
+    calc = _build_calculator(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -396,10 +396,10 @@ async def test_profit_breakeven_formula() -> None:
     mock_db.add = MagicMock()
     mock_db.flush = AsyncMock()
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
-    calc = _build_calculator(mock_db, mock_osrm)
+    calc = _build_calculator(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -427,10 +427,10 @@ async def test_profit_cost_events_written_five_rows() -> None:
     mock_db.add = MagicMock(side_effect=added_events.append)
     mock_db.flush = AsyncMock()
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
-    calc = _build_calculator(mock_db, mock_osrm)
+    calc = _build_calculator(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -459,11 +459,11 @@ async def test_profit_session_fields_updated() -> None:
     mock_db.add = MagicMock()
     mock_db.flush = AsyncMock()
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     mock_session = _mock_session()
-    calc = _build_calculator(mock_db, mock_osrm)
+    calc = _build_calculator(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -484,8 +484,8 @@ async def test_profit_not_found_raises_404() -> None:
     mock_db = AsyncMock()
     mock_db.execute = AsyncMock()
 
-    mock_osrm = AsyncMock()
-    calc = SessionProfitCalculator(mock_db, osrm=mock_osrm)
+    mock_routing = AsyncMock()
+    calc = SessionProfitCalculator(mock_db, routing=mock_routing)
 
     with patch.object(
         SessionProfitCalculator,
@@ -503,8 +503,8 @@ async def test_profit_no_stops_raises_422() -> None:
     mock_db = AsyncMock()
     mock_db.execute = AsyncMock()
 
-    mock_osrm = AsyncMock()
-    calc = SessionProfitCalculator(mock_db, osrm=mock_osrm)
+    mock_routing = AsyncMock()
+    calc = SessionProfitCalculator(mock_db, routing=mock_routing)
 
     mock_session = _mock_session()
     mock_session.route_stops = []
@@ -521,17 +521,17 @@ async def test_profit_no_stops_raises_422() -> None:
 
 
 @pytest.mark.asyncio
-async def test_profit_leg_costs_length_matches_osrm_legs() -> None:
+async def test_profit_leg_costs_length_matches_routing_legs() -> None:
     """len(leg_costs) must equal len(route.legs)."""
     mock_db = AsyncMock()
     mock_db.execute = AsyncMock()
     mock_db.add = MagicMock()
     mock_db.flush = AsyncMock()
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
-    calc = _build_calculator(mock_db, mock_osrm)
+    calc = _build_calculator(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -557,15 +557,15 @@ async def test_profit_stop_costs_from_persisted_stop_cost_eur() -> None:
     mock_db.add = MagicMock()
     mock_db.flush = AsyncMock()
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     mock_session = _mock_session()
     persisted_cost = 25.0
     for stop in mock_session.route_stops:
         stop.stop_cost_eur = persisted_cost
 
-    calc = _build_calculator(mock_db, mock_osrm)
+    calc = _build_calculator(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -608,10 +608,10 @@ async def test_profit_days_on_road_formula_24h() -> None:
     mock_session = _mock_session()
     mock_session.route_stops = simple_stops
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=long_route)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=long_route)
 
-    calc = _build_calculator(mock_db, mock_osrm)
+    calc = _build_calculator(mock_db, mock_routing)
 
     with (
         patch.object(

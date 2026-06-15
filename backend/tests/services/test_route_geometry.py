@@ -18,7 +18,7 @@ os.environ.setdefault(
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
-from app.lib.osrm import MultiStopRouteResult, RouteLeg
+from app.lib.routing import MultiStopRouteResult, RouteLeg
 from app.services.route_geometry import RouteGeometryService
 
 
@@ -90,25 +90,25 @@ def _mock_session(session_id: UUID = SESSION_ID) -> MagicMock:
     return s
 
 
-def _build_service(mock_db: AsyncMock, mock_osrm: AsyncMock) -> RouteGeometryService:
+def _build_service(mock_db: AsyncMock, mock_routing: AsyncMock) -> RouteGeometryService:
     settings = MagicMock()
     settings.FUEL_PRICE_EUR_PER_LITER = 1.75
     settings.WEIGHT_FUEL_FACTOR = 0.30
-    return RouteGeometryService(mock_db, osrm=mock_osrm, settings=settings)
+    return RouteGeometryService(mock_db, routing=mock_routing, settings=settings)
 
 
 @pytest.mark.asyncio
 async def test_route_geometry_returns_geojson_linestring() -> None:
     """get_route_geometry returns valid GeoJSON LineString."""
     mock_db = AsyncMock()
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=None)
     mock_redis.setex = AsyncMock()
 
-    service = _build_service(mock_db, mock_osrm)
+    service = _build_service(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -126,17 +126,17 @@ async def test_route_geometry_returns_geojson_linestring() -> None:
 
 
 @pytest.mark.asyncio
-async def test_route_geometry_leg_count_matches_osrm() -> None:
-    """Number of legs matches OSRM route legs."""
+async def test_route_geometry_leg_count_matches_routing() -> None:
+    """Number of legs matches routing route legs."""
     mock_db = AsyncMock()
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=None)
     mock_redis.setex = AsyncMock()
 
-    service = _build_service(mock_db, mock_osrm)
+    service = _build_service(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -155,14 +155,14 @@ async def test_route_geometry_leg_count_matches_osrm() -> None:
 async def test_route_geometry_load_ratio_in_bounds() -> None:
     """All load_ratio values are in [0, 1]."""
     mock_db = AsyncMock()
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=None)
     mock_redis.setex = AsyncMock()
 
-    service = _build_service(mock_db, mock_osrm)
+    service = _build_service(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -182,14 +182,14 @@ async def test_route_geometry_load_ratio_in_bounds() -> None:
 async def test_route_geometry_from_stop_id_mapping() -> None:
     """from_stop_id is None for first leg (origin), then set to previous stop ID."""
     mock_db = AsyncMock()
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=None)
     mock_redis.setex = AsyncMock()
 
-    service = _build_service(mock_db, mock_osrm)
+    service = _build_service(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -210,11 +210,11 @@ async def test_route_geometry_from_stop_id_mapping() -> None:
 
 
 @pytest.mark.asyncio
-async def test_route_geometry_cache_hit_skips_osrm() -> None:
-    """Cached response is returned without calling OSRM."""
+async def test_route_geometry_cache_hit_skips_routing() -> None:
+    """Cached response is returned without calling routing."""
     mock_db = AsyncMock()
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     cached_response = {
         "session_id": str(SESSION_ID),
@@ -241,27 +241,27 @@ async def test_route_geometry_cache_hit_skips_osrm() -> None:
     mock_redis.get = AsyncMock(return_value=json.dumps(cached_response))
     mock_redis.setex = AsyncMock()
 
-    service = _build_service(mock_db, mock_osrm)
+    service = _build_service(mock_db, mock_routing)
 
     with patch("app.services.route_geometry.get_redis", return_value=mock_redis):
         result = await service.get_route_geometry(SESSION_ID)
 
     assert result.session_id == SESSION_ID
-    mock_osrm.get_route_multi.assert_not_called()
+    mock_routing.get_route_multi.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_route_geometry_cache_miss_calls_osrm() -> None:
-    """Cache miss triggers OSRM call and stores result."""
+async def test_route_geometry_cache_miss_calls_routing() -> None:
+    """Cache miss triggers routing call and stores result."""
     mock_db = AsyncMock()
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=None)
     mock_redis.setex = AsyncMock()
 
-    service = _build_service(mock_db, mock_osrm)
+    service = _build_service(mock_db, mock_routing)
 
     with (
         patch.object(
@@ -273,7 +273,7 @@ async def test_route_geometry_cache_miss_calls_osrm() -> None:
     ):
         await service.get_route_geometry(SESSION_ID)
 
-    mock_osrm.get_route_multi.assert_called_once()
+    mock_routing.get_route_multi.assert_called_once()
     mock_redis.setex.assert_called_once()
     call_args = mock_redis.setex.call_args
     assert call_args[0][0] == f"route_geom:{SESSION_ID}"
@@ -284,12 +284,12 @@ async def test_route_geometry_cache_miss_calls_osrm() -> None:
 async def test_route_geometry_not_found_raises_404() -> None:
     """Non-existent session raises NotFoundError."""
     mock_db = AsyncMock()
-    mock_osrm = AsyncMock()
+    mock_routing = AsyncMock()
 
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=None)
 
-    service = RouteGeometryService(mock_db, osrm=mock_osrm)
+    service = RouteGeometryService(mock_db, routing=mock_routing)
 
     with (
         patch.object(
@@ -309,7 +309,7 @@ async def test_route_geometry_not_found_raises_404() -> None:
 async def test_route_geometry_no_stops_raises_422() -> None:
     """Session without stops raises ValidationAppError."""
     mock_db = AsyncMock()
-    mock_osrm = AsyncMock()
+    mock_routing = AsyncMock()
 
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=None)
@@ -317,7 +317,7 @@ async def test_route_geometry_no_stops_raises_422() -> None:
     mock_session = _mock_session()
     mock_session.route_stops = []
 
-    service = RouteGeometryService(mock_db, osrm=mock_osrm)
+    service = RouteGeometryService(mock_db, routing=mock_routing)
 
     with (
         patch.object(
@@ -337,14 +337,14 @@ async def test_route_geometry_no_stops_raises_422() -> None:
 async def test_route_geometry_weight_changes_after_stops() -> None:
     """weight_kg_at_leg increases after pickup, decreases after delivery."""
     mock_db = AsyncMock()
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=None)
     mock_redis.setex = AsyncMock()
 
-    service = _build_service(mock_db, mock_osrm)
+    service = _build_service(mock_db, mock_routing)
 
     with (
         patch.object(

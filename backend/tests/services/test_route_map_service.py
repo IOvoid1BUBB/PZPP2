@@ -18,7 +18,7 @@ os.environ.setdefault(
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 
-from app.lib.osrm import MultiStopRouteResult, RouteLeg
+from app.lib.routing import MultiStopRouteResult, RouteLeg
 from app.services.route_map import RouteMapService
 
 SESSION_ID = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
@@ -85,24 +85,24 @@ def _mock_session() -> MagicMock:
     return s
 
 
-def _build_service(osrm: AsyncMock) -> RouteMapService:
+def _build_service(routing: AsyncMock) -> RouteMapService:
     settings = MagicMock()
     settings.FUEL_PRICE_EUR_PER_LITER = 1.75
     settings.WEIGHT_FUEL_FACTOR = 0.30
-    return RouteMapService(AsyncMock(), osrm=osrm, settings=settings)
+    return RouteMapService(AsyncMock(), routing=routing, settings=settings)
 
 
 @pytest.mark.asyncio
-async def test_route_map_geometry_not_straight_line_with_osrm_mock() -> None:
-    """Each leg geometry retains >= 3 points when OSRM returns a curve."""
-    osrm = AsyncMock()
-    osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+async def test_route_map_geometry_not_straight_line_with_routing_mock() -> None:
+    """Each leg geometry retains >= 3 points when routing returns a curve."""
+    routing = AsyncMock()
+    routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     redis = AsyncMock()
     redis.get = AsyncMock(return_value=None)
     redis.setex = AsyncMock()
 
-    service = _build_service(osrm)
+    service = _build_service(routing)
 
     with (
         patch.object(
@@ -120,14 +120,14 @@ async def test_route_map_geometry_not_straight_line_with_osrm_mock() -> None:
 @pytest.mark.asyncio
 async def test_route_map_legs_expose_metadata() -> None:
     """Legs carry distance_km, duration_minutes, load_ratio; totals populated."""
-    osrm = AsyncMock()
-    osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    routing = AsyncMock()
+    routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     redis = AsyncMock()
     redis.get = AsyncMock(return_value=None)
     redis.setex = AsyncMock()
 
-    service = _build_service(osrm)
+    service = _build_service(routing)
 
     with (
         patch.object(
@@ -147,15 +147,15 @@ async def test_route_map_legs_expose_metadata() -> None:
 
 @pytest.mark.asyncio
 async def test_route_map_cache_miss_writes_cache_key() -> None:
-    """Cache miss calls OSRM once and stores under route_map:{id} for 3600s."""
-    osrm = AsyncMock()
-    osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+    """Cache miss calls routing once and stores under route_map:{id} for 3600s."""
+    routing = AsyncMock()
+    routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     redis = AsyncMock()
     redis.get = AsyncMock(return_value=None)
     redis.setex = AsyncMock()
 
-    service = _build_service(osrm)
+    service = _build_service(routing)
 
     with (
         patch.object(
@@ -165,7 +165,7 @@ async def test_route_map_cache_miss_writes_cache_key() -> None:
     ):
         await service.get_route_map(SESSION_ID)
 
-    osrm.get_route_multi.assert_awaited_once()
+    routing.get_route_multi.assert_awaited_once()
     redis.setex.assert_awaited_once()
     call_args = redis.setex.call_args
     assert call_args[0][0] == f"route_map:{SESSION_ID}"
@@ -173,10 +173,10 @@ async def test_route_map_cache_miss_writes_cache_key() -> None:
 
 
 @pytest.mark.asyncio
-async def test_route_map_cache_hit_skips_osrm() -> None:
-    """A cached payload is returned without an OSRM call."""
-    osrm = AsyncMock()
-    osrm.get_route_multi = AsyncMock(return_value=_ROUTE)
+async def test_route_map_cache_hit_skips_routing() -> None:
+    """A cached payload is returned without a routing call."""
+    routing = AsyncMock()
+    routing.get_route_multi = AsyncMock(return_value=_ROUTE)
 
     cached = {
         "session_id": str(SESSION_ID),
@@ -194,10 +194,10 @@ async def test_route_map_cache_hit_skips_osrm() -> None:
     redis.get = AsyncMock(return_value=json.dumps(cached))
     redis.setex = AsyncMock()
 
-    service = _build_service(osrm)
+    service = _build_service(routing)
 
     with patch("app.services.route_map.get_redis", return_value=redis):
         result = await service.get_route_map(SESSION_ID)
 
     assert result.total_distance_km == 12.0
-    osrm.get_route_multi.assert_not_called()
+    routing.get_route_multi.assert_not_called()

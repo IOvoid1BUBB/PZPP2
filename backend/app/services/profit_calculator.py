@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, ValidationAppError
 from app.lib.geo import lat_lon_from_geometry
-from app.lib.osrm import MultiStopRouteResult, OSRMClient, get_osrm_client
+from app.lib.routing import MultiStopRouteResult, RoutingProvider, get_routing_provider
 from app.models import ConsolidationSession, CostEvent, RouteStop
 from app.schemas.profit import (
     CostFormulaMeta,
@@ -37,7 +37,7 @@ _COST_TYPES = ("fuel", "toll", "stop", "driver", "maintenance")
 def split_route_into_leg_geometries(route: MultiStopRouteResult) -> list[LineString]:
     """Proportionally split the route LineString into per-leg LineStrings.
 
-    OSRM provides a single geometry for the full route. We split it into
+    The routing provider returns a single geometry for the full route. We split it into
     per-leg segments proportionally by each leg's distance_km. The result
     is fed to the toll calculator which intersects each segment with country
     boundaries.
@@ -73,11 +73,11 @@ class SessionProfitCalculator:
         self,
         db: AsyncSession,
         *,
-        osrm: OSRMClient | None = None,
+        routing: RoutingProvider | None = None,
         settings: Settings | None = None,
     ) -> None:
         self._db = db
-        self._osrm = osrm or get_osrm_client()
+        self._routing = routing or get_routing_provider()
         self._settings = settings or get_settings()
 
     async def calculate_session_profit(self, session_id: UUID) -> SessionProfitBreakdown:
@@ -99,7 +99,7 @@ class SessionProfitCalculator:
 
         origin = (float(session.origin_lat), float(session.origin_lon))
         waypoints = [origin] + [lat_lon_from_geometry(s.location) for s in stops]
-        route = await self._osrm.get_route_multi(waypoints)
+        route = await self._routing.get_route_multi(waypoints)
 
         driver_profile = session.driver_profile
         rates = StopCostRates.from_driver_profile(driver_profile)

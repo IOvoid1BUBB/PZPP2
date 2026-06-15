@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.lib.osrm import OSRMClient, get_osrm_client
+from app.lib.routing import RoutingProvider, get_routing_provider
 from app.schemas.offer import RankedOffersResponse, SimulateOffersResponse
 from app.schemas.profit import SessionProfitBreakdown
 from app.schemas.route_geometry import RouteGeometry
@@ -35,8 +35,8 @@ from app.services.stop_labels import resolve_and_persist_stop_label
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
-def _service(db: AsyncSession, osrm: OSRMClient) -> SessionService:
-    return SessionService(db, osrm=osrm)
+def _service(db: AsyncSession, routing: RoutingProvider) -> SessionService:
+    return SessionService(db, routing=routing)
 
 
 @router.get("", response_model=list[SessionRead], summary="List consolidation sessions")
@@ -74,10 +74,10 @@ async def create_session(
 async def get_ranked_offers(
     session_id: UUID,
     db: AsyncSession = Depends(get_db),
-    osrm: OSRMClient = Depends(get_osrm_client),
+    routing: RoutingProvider = Depends(get_routing_provider),
     limit: int = Query(50, ge=1, le=500),
 ) -> RankedOffersResponse:
-    scorer = OfferScorerService(db, osrm=osrm)
+    scorer = OfferScorerService(db, routing=routing)
     return await scorer.rank_offers(session_id, limit=limit)
 
 
@@ -89,9 +89,9 @@ async def get_ranked_offers(
 async def get_session(
     session_id: UUID,
     db: AsyncSession = Depends(get_db),
-    osrm: OSRMClient = Depends(get_osrm_client),
+    routing: RoutingProvider = Depends(get_routing_provider),
 ) -> SessionFullResponse:
-    service = _service(db, osrm)
+    service = _service(db, routing)
     return await service.get_full(session_id)
 
 
@@ -103,9 +103,9 @@ async def get_session(
 async def get_driver_compliance(
     id: UUID,
     db: AsyncSession = Depends(get_db),
-    osrm: OSRMClient = Depends(get_osrm_client),
+    routing: RoutingProvider = Depends(get_routing_provider),
 ) -> ComplianceResult:
-    service = DriverComplianceService(db, osrm=osrm)
+    service = DriverComplianceService(db, routing=routing)
     return await service.evaluate_session(id)
 
 
@@ -119,9 +119,9 @@ async def add_offer_to_session(
     offer_id: UUID,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    osrm: OSRMClient = Depends(get_osrm_client),
+    routing: RoutingProvider = Depends(get_routing_provider),
 ) -> SessionFullResponse:
-    service = _service(db, osrm)
+    service = _service(db, routing)
     response, new_stop_ids = await service.add_offer(session_id, offer_id)
     await db.commit()
     for stop_id in new_stop_ids:
@@ -139,9 +139,9 @@ async def replace_session_offers(
     payload: SessionOffersReplace,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    osrm: OSRMClient = Depends(get_osrm_client),
+    routing: RoutingProvider = Depends(get_routing_provider),
 ) -> SessionFullResponse:
-    service = _service(db, osrm)
+    service = _service(db, routing)
     response, new_stop_ids = await service.replace_offers(session_id, payload.offer_ids)
     await db.commit()
     for stop_id in new_stop_ids:
@@ -158,9 +158,9 @@ async def remove_offer_from_session(
     session_id: UUID,
     offer_id: UUID,
     db: AsyncSession = Depends(get_db),
-    osrm: OSRMClient = Depends(get_osrm_client),
+    routing: RoutingProvider = Depends(get_routing_provider),
 ) -> SessionFullResponse:
-    service = _service(db, osrm)
+    service = _service(db, routing)
     response = await service.remove_offer(session_id, offer_id)
     await db.commit()
     return response
@@ -175,9 +175,9 @@ async def update_session_status(
     session_id: UUID,
     payload: SessionStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    osrm: OSRMClient = Depends(get_osrm_client),
+    routing: RoutingProvider = Depends(get_routing_provider),
 ) -> SessionFullResponse:
-    service = _service(db, osrm)
+    service = _service(db, routing)
     response = await service.update_status(session_id, payload.status)
     await db.commit()
     return response
@@ -206,9 +206,9 @@ async def delete_session(
 async def get_session_route_map(
     session_id: UUID,
     db: AsyncSession = Depends(get_db),
-    osrm: OSRMClient = Depends(get_osrm_client),
+    routing: RoutingProvider = Depends(get_routing_provider),
 ) -> RouteMapResponse:
-    service = RouteMapService(db, osrm=osrm)
+    service = RouteMapService(db, routing=routing)
     return await service.get_route_map(session_id)
 
 
@@ -220,20 +220,20 @@ async def get_session_route_map(
 async def get_session_route(
     session_id: UUID,
     db: AsyncSession = Depends(get_db),
-    osrm: OSRMClient = Depends(get_osrm_client),
+    routing: RoutingProvider = Depends(get_routing_provider),
 ) -> RouteGeometry:
-    service = RouteGeometryService(db, osrm=osrm)
+    service = RouteGeometryService(db, routing=routing)
     return await service.get_route_geometry(session_id)
 
 
 async def _profit_handler(
     session_id: UUID,
     db: AsyncSession,
-    osrm: OSRMClient,
+    routing: RoutingProvider,
     settings: Settings,
 ) -> SessionProfitBreakdown:
     """Shared handler for profit calculation (used by both GET and POST)."""
-    calc = SessionProfitCalculator(db, osrm=osrm, settings=settings)
+    calc = SessionProfitCalculator(db, routing=routing, settings=settings)
     breakdown = await calc.calculate_session_profit(session_id)
     await db.commit()
     return breakdown
@@ -247,10 +247,10 @@ async def _profit_handler(
 async def calculate_session_profit(
     session_id: UUID,
     db: AsyncSession = Depends(get_db),
-    osrm: OSRMClient = Depends(get_osrm_client),
+    routing: RoutingProvider = Depends(get_routing_provider),
     settings: Settings = Depends(get_settings),
 ) -> SessionProfitBreakdown:
-    return await _profit_handler(session_id, db, osrm, settings)
+    return await _profit_handler(session_id, db, routing, settings)
 
 
 @router.get(
@@ -261,10 +261,10 @@ async def calculate_session_profit(
 async def get_session_profit(
     session_id: UUID,
     db: AsyncSession = Depends(get_db),
-    osrm: OSRMClient = Depends(get_osrm_client),
+    routing: RoutingProvider = Depends(get_routing_provider),
     settings: Settings = Depends(get_settings),
 ) -> SessionProfitBreakdown:
-    return await _profit_handler(session_id, db, osrm, settings)
+    return await _profit_handler(session_id, db, routing, settings)
 
 
 @router.post(

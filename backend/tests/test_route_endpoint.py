@@ -1,7 +1,7 @@
 """Integration tests for GET /api/v1/sessions/{id}/route.
 
 Requires PostgreSQL + PostGIS (pytest.mark.integration).
-OSRM is replaced with a deterministic mock via FastAPI dependency_overrides.
+Routing is replaced with a deterministic mock via FastAPI dependency_overrides.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from app.lib.osrm import MultiStopRouteResult, RouteLeg
+from app.lib.routing import MultiStopRouteResult, RouteLeg
 
 pytestmark = pytest.mark.integration
 
@@ -44,12 +44,12 @@ def _make_route(waypoints: list[tuple[float, float]]) -> MultiStopRouteResult:
 
 async def _create_session_with_stops(client: AsyncClient) -> UUID:
     """Create a session with at least 2 offers (4 stops)."""
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         vehicles = await client.get("/api/v1/vehicles")
@@ -80,18 +80,18 @@ async def _create_session_with_stops(client: AsyncClient) -> UUID:
 
         return session_id
     finally:
-        fastapi_app.dependency_overrides.pop(get_osrm_client, None)
+        fastapi_app.dependency_overrides.pop(get_routing_provider, None)
 
 
 @pytest.mark.asyncio
 async def test_route_returns_geojson_linestring(client: AsyncClient) -> None:
     """GET /route returns valid GeoJSON LineString geometry."""
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         session_id = await _create_session_with_stops(client)
@@ -111,18 +111,18 @@ async def test_route_returns_geojson_linestring(client: AsyncClient) -> None:
             assert -90 <= lat <= 90
 
     finally:
-        del fastapi_app.dependency_overrides[get_osrm_client]
+        del fastapi_app.dependency_overrides[get_routing_provider]
 
 
 @pytest.mark.asyncio
 async def test_route_leg_count_matches_waypoints(client: AsyncClient) -> None:
     """Number of legs equals number of waypoint intervals (stops + 1)."""
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         session_id = await _create_session_with_stops(client)
@@ -141,18 +141,18 @@ async def test_route_leg_count_matches_waypoints(client: AsyncClient) -> None:
         assert first_leg["geometry_geojson"]["type"] == "LineString"
 
     finally:
-        del fastapi_app.dependency_overrides[get_osrm_client]
+        del fastapi_app.dependency_overrides[get_routing_provider]
 
 
 @pytest.mark.asyncio
 async def test_route_load_ratio_bounds(client: AsyncClient) -> None:
     """All load_ratio values are in [0, 1] range."""
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         session_id = await _create_session_with_stops(client)
@@ -168,7 +168,7 @@ async def test_route_load_ratio_bounds(client: AsyncClient) -> None:
             assert leg["duration_minutes"] >= 0
 
     finally:
-        del fastapi_app.dependency_overrides[get_osrm_client]
+        del fastapi_app.dependency_overrides[get_routing_provider]
 
 
 @pytest.mark.asyncio
@@ -205,13 +205,13 @@ async def test_route_422_without_stops(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_route_redis_cache_hit(client: AsyncClient) -> None:
-    """Second call to GET /route should not hit OSRM (cache hit)."""
-    from app.lib.osrm import get_osrm_client
+    """Second call to GET /route should not hit routing (cache hit)."""
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         session_id = await _create_session_with_stops(client)
@@ -219,7 +219,7 @@ async def test_route_redis_cache_hit(client: AsyncClient) -> None:
         resp1 = await client.get(f"/api/v1/sessions/{session_id}/route")
         assert resp1.status_code == 200
 
-        call_count_after_first = mock_osrm.get_route_multi.call_count
+        call_count_after_first = mock_routing.get_route_multi.call_count
 
         resp2 = await client.get(f"/api/v1/sessions/{session_id}/route")
         assert resp2.status_code == 200
@@ -227,21 +227,21 @@ async def test_route_redis_cache_hit(client: AsyncClient) -> None:
         assert resp1.json()["session_id"] == resp2.json()["session_id"]
         assert resp1.json()["total_distance_km"] == resp2.json()["total_distance_km"]
 
-        assert mock_osrm.get_route_multi.call_count == call_count_after_first
+        assert mock_routing.get_route_multi.call_count == call_count_after_first
 
     finally:
-        del fastapi_app.dependency_overrides[get_osrm_client]
+        del fastapi_app.dependency_overrides[get_routing_provider]
 
 
 @pytest.mark.asyncio
 async def test_route_total_distance_and_duration(client: AsyncClient) -> None:
     """total_distance_km and total_duration_minutes are present and positive."""
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         session_id = await _create_session_with_stops(client)
@@ -255,4 +255,4 @@ async def test_route_total_distance_and_duration(client: AsyncClient) -> None:
         assert body["vehicle_max_weight_kg"] > 0
 
     finally:
-        del fastapi_app.dependency_overrides[get_osrm_client]
+        del fastapi_app.dependency_overrides[get_routing_provider]

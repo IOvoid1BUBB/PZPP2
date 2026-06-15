@@ -20,7 +20,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, ValidationAppError
 from app.lib.geo import lat_lon_from_geometry
-from app.lib.osrm import OSRMClient, get_osrm_client
+from app.lib.routing import RoutingProvider, get_routing_provider
 from app.models import ConsolidationSession, MarketOffer, RouteStop, SolverResult
 from app.schemas.solver import (
     SolverJobStatus,
@@ -161,13 +161,13 @@ class VRPSolver:
         self,
         db: AsyncSession,
         *,
-        osrm: OSRMClient | None = None,
+        routing: RoutingProvider | None = None,
         settings: Settings | None = None,
     ) -> None:
         self._db = db
-        self._osrm = osrm or get_osrm_client()
+        self._routing = routing or get_routing_provider()
         self._settings = settings or get_settings()
-        self._session_service = SessionService(db, osrm=self._osrm, settings=self._settings)
+        self._session_service = SessionService(db, routing=self._routing, settings=self._settings)
 
     async def solve(
         self,
@@ -198,7 +198,7 @@ class VRPSolver:
         max_offer_slots = max(0, max_offer_slots)
 
         if not candidate_offer_ids:
-            ranked = await OfferScorerService(self._db, osrm=self._osrm).rank_offers(
+            ranked = await OfferScorerService(self._db, routing=self._routing).rank_offers(
                 session_id,
                 limit=vehicle.max_stops // 2,
             )
@@ -285,10 +285,6 @@ class VRPSolver:
                 raise ValidationAppError("Optimized stop sequence violates pickup-before-delivery.")
             stop_sequence = SessionService.serialize_stop_sequence(ordered_stops)
             stop_sequence_json = [entry.model_dump(mode="json") for entry in stop_sequence]
-
-            # Automatycznie rozmieść wybrane oferty na pace (load_layout).
-            # Zeruje poprzedni layout, aby nie zostały stare palety z demo.
-            await self._rebuild_layout_from_selected(session_id, session, selected_ids)
 
         orm_result = SolverResult(
             session_id=session_id,

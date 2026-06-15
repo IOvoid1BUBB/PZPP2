@@ -21,7 +21,7 @@ from app.core.database import get_engine, get_sessionmaker
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging
 from app.core.middleware import AccessLogMiddleware, RequestIDMiddleware
-from app.lib.osrm import shutdown_osrm_client
+from app.lib.routing import shutdown_routing_provider
 from app.lib.redis_client import get_redis, shutdown_redis
 from app.schemas.common import DependencyStatus, HealthResponse, ReadinessResponse
 from app.services.market_offers import bulk_insert_offers
@@ -80,7 +80,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         async with contextlib.AsyncExitStack():
             with contextlib.suppress(asyncio.CancelledError):
                 await refresh_task
-        await shutdown_osrm_client()
+        await shutdown_routing_provider()
         await shutdown_redis()
         _logger.info("application_shutdown")
     _ = app  # silence unused-arg warnings
@@ -155,7 +155,7 @@ def _register_routes(app: FastAPI, settings: Settings) -> None:
         "/health/ready",
         response_model=ReadinessResponse,
         tags=["health"],
-        summary="Readiness probe (database, Redis, OSRM)",
+        summary="Readiness probe (database, Redis, routing)",
     )
     async def readiness(request: Request) -> ReadinessResponse:
         checks: list[DependencyStatus] = []
@@ -180,29 +180,44 @@ def _register_routes(app: FastAPI, settings: Settings) -> None:
         except Exception as exc:  # noqa: BLE001
             checks.append(DependencyStatus(name="redis", ok=False, detail=str(exc)))
 
-        try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                # Punkt testowy: Warszawa → Łódź (pokryte przez poland-latest PBF)
-                response = await client.get(
-                    f"{settings.OSRM_HOST.rstrip('/')}"
-                    f"/route/v1/{settings.OSRM_PROFILE}/21.01,52.22;19.46,51.75",
-                    params={"overview": "false"},
-                )
-            osrm_ok = response.status_code == 200
+        if not settings.ORS_API_KEY:
             checks.append(
                 DependencyStatus(
-                    name="osrm",
-                    ok=osrm_ok,
-                    detail=(
-                        None if osrm_ok
-                        else f"HTTP {response.status_code} (profil: {settings.OSRM_PROFILE})"
-                    ),
+                    name="routing",
+                    ok=False,
+                    detail="ORS_API_KEY not configured",
                 ),
             )
-        except Exception as exc:  # noqa: BLE001
-            checks.append(DependencyStatus(name="osrm", ok=False, detail=str(exc)))
+        else:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.post(
+                        f"{settings.ORS_BASE_URL.rstrip('/')}"
+                        f"/v2/directions/{settings.ORS_PROFILE}/geojson",
+                        headers={"Authorization": settings.ORS_API_KEY},
+                        json={
+                            "coordinates": [[21.01, 52.22], [19.46, 51.75]],
+                            "geometry": True,
+                        },
+                    )
+                routing_ok = response.status_code == 200
+                checks.append(
+                    DependencyStatus(
+                        name="routing",
+                        ok=routing_ok,
+                        detail=(
+                            None
+                            if routing_ok
+                            else f"HTTP {response.status_code} (profil: {settings.ORS_PROFILE})"
+                        ),
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001
+                checks.append(DependencyStatus(name="routing", ok=False, detail=str(exc)))
 
-        required_ok = all(check.ok for check in checks if check.name in {"database", "redis"})
+        required_ok = all(
+            check.ok for check in checks if check.name in {"database", "redis", "routing"}
+        )
         return ReadinessResponse(
             status="ok" if required_ok else "degraded",
             version=settings.APP_VERSION,

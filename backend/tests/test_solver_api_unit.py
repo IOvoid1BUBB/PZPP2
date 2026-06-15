@@ -29,7 +29,7 @@ def _clear_job_store() -> None:
 async def test_solver_post_and_delete_routes(monkeypatch: pytest.MonkeyPatch) -> None:
     """POST starts background job; DELETE /optimize delegates to VRPSolver.cancel."""
     from app.core.database import get_db
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.lib.redis_client import get_redis
     from app.main import app
     from app.schemas.solver import SolverRunResult, SolverStatusResponse
@@ -69,11 +69,11 @@ async def test_solver_post_and_delete_routes(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr("app.api.solver.run_solver_job", fake_run_solver_job)
     monkeypatch.setattr(
         "app.api.solver.VRPSolver",
-        lambda db, osrm=None, settings=None: mock_solver,
+        lambda db, routing=None, settings=None: mock_solver,
     )
 
     app.dependency_overrides[get_db] = lambda: mock_db
-    app.dependency_overrides[get_osrm_client] = lambda: AsyncMock()
+    app.dependency_overrides[get_routing_provider] = lambda: AsyncMock()
     app.dependency_overrides[get_redis] = lambda: AsyncMock()
 
     transport = ASGITransport(app=app)

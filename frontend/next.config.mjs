@@ -1,6 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  async redirects() {
+    return [
+      {
+        source: "/",
+        destination: "/planner",
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
 

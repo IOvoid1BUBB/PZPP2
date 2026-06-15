@@ -9,7 +9,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from app.lib.osrm import MultiStopRouteResult, RouteLeg
+from app.lib.routing import MultiStopRouteResult, RouteLeg
 
 pytestmark = pytest.mark.integration
 
@@ -44,12 +44,12 @@ def _make_route(waypoints: list[tuple[float, float]]) -> MultiStopRouteResult:
 
 
 async def _create_session_with_stops(client: AsyncClient) -> UUID:
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         vehicles = await client.get("/api/v1/vehicles")
@@ -80,7 +80,7 @@ async def _create_session_with_stops(client: AsyncClient) -> UUID:
 
         return session_id
     finally:
-        fastapi_app.dependency_overrides.pop(get_osrm_client, None)
+        fastapi_app.dependency_overrides.pop(get_routing_provider, None)
 
 
 @pytest.mark.asyncio

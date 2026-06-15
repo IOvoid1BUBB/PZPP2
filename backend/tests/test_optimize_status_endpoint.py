@@ -72,7 +72,7 @@ async def test_get_optimize_status_idle(monkeypatch: pytest.MonkeyPatch) -> None
     )
     monkeypatch.setattr(
         "app.api.solver.VRPSolver",
-        lambda db, osrm=None, settings=None: mock_solver,
+        lambda db, routing=None, settings=None: mock_solver,
     )
 
     mock_db = AsyncMock()
@@ -105,7 +105,7 @@ async def test_get_optimize_status_running(monkeypatch: pytest.MonkeyPatch) -> N
     )
     monkeypatch.setattr(
         "app.api.solver.VRPSolver",
-        lambda db, osrm=None, settings=None: mock_solver,
+        lambda db, routing=None, settings=None: mock_solver,
     )
 
     app.dependency_overrides[get_db] = lambda: AsyncMock()
@@ -145,7 +145,7 @@ async def test_get_optimize_status_completed_with_result(
     )
     monkeypatch.setattr(
         "app.api.solver.VRPSolver",
-        lambda db, osrm=None, settings=None: mock_solver,
+        lambda db, routing=None, settings=None: mock_solver,
     )
 
     app.dependency_overrides[get_db] = lambda: AsyncMock()
@@ -184,7 +184,7 @@ async def test_get_optimize_status_session_not_found(
     )
     monkeypatch.setattr(
         "app.api.solver.VRPSolver",
-        lambda db, osrm=None, settings=None: mock_solver,
+        lambda db, routing=None, settings=None: mock_solver,
     )
 
     app.dependency_overrides[get_db] = lambda: AsyncMock()
@@ -212,7 +212,7 @@ async def test_get_optimize_status_cancelled(monkeypatch: pytest.MonkeyPatch) ->
     )
     monkeypatch.setattr(
         "app.api.solver.VRPSolver",
-        lambda db, osrm=None, settings=None: mock_solver,
+        lambda db, routing=None, settings=None: mock_solver,
     )
 
     app.dependency_overrides[get_db] = lambda: AsyncMock()
@@ -242,7 +242,7 @@ async def test_post_optimize_returns_202_running(monkeypatch: pytest.MonkeyPatch
     )
     monkeypatch.setattr(
         "app.api.solver.VRPSolver",
-        lambda db, osrm=None, settings=None: mock_solver,
+        lambda db, routing=None, settings=None: mock_solver,
     )
 
     started: list[UUID] = []
@@ -296,7 +296,7 @@ async def test_post_optimize_conflict_when_already_running(
     )
     monkeypatch.setattr(
         "app.api.solver.VRPSolver",
-        lambda db, osrm=None, settings=None: mock_solver,
+        lambda db, routing=None, settings=None: mock_solver,
     )
     monkeypatch.setattr("app.api.solver.run_solver_job", AsyncMock())
 
@@ -360,7 +360,7 @@ async def test_long_solve_two_poll_ticks(monkeypatch: pytest.MonkeyPatch) -> Non
     mock_solver.get_status = dynamic_get_status
     monkeypatch.setattr(
         "app.api.solver.VRPSolver",
-        lambda db, osrm=None, settings=None: mock_solver,
+        lambda db, routing=None, settings=None: mock_solver,
     )
 
     redis = AsyncMock()

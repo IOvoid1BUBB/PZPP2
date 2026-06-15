@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.lib.osrm import DistanceMatrix
+from app.lib.routing import DistanceMatrix
 from app.models.stop import RouteStop
 
 StopType = Literal["pickup", "delivery"]

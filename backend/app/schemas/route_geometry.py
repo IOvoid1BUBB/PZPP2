@@ -38,7 +38,7 @@ class RouteGeometry(BaseModel):
     total_distance_km: float = Field(..., ge=0)
     total_duration_minutes: int = Field(..., ge=0)
     geometry_geojson: dict[str, Any] = Field(
-        ..., description="Full route GeoJSON LineString from OSRM"
+        ..., description="Full route GeoJSON LineString from routing provider"
     )
     legs: list[LegGeometry]
     vehicle_max_weight_kg: int = Field(..., gt=0)

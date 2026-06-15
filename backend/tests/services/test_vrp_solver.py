@@ -406,7 +406,7 @@ async def test_vrp_solver_solve_mock_applies_route(monkeypatch: pytest.MonkeyPat
 
     solver = VRPSolver(
         mock_db,
-        osrm=AsyncMock(),
+        routing=AsyncMock(),
         settings=Settings(
             DATABASE_URL="postgresql+asyncpg://x:x@localhost/x",
             USE_SOLVER_MOCK=True,
@@ -513,7 +513,7 @@ async def test_vrp_solver_solve_empty_ranked_infeasible(
     )
     monkeypatch.setattr(
         "app.services.vrp_solver.OfferScorerService",
-        lambda db, osrm=None: mock_scorer,
+        lambda db, routing=None: mock_scorer,
     )
 
     result = await solver.solve(

@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import Settings, get_settings
 from app.core.exceptions import AppException, NotFoundError, ValidationAppError
 from app.lib.geo import geo_point_from_geometry, lat_lon_from_geometry
-from app.lib.osrm import OSRMClient, get_osrm_client
+from app.lib.routing import RoutingProvider, get_routing_provider
 from app.lib.redis_client import get_redis
 from app.models import ConsolidationSession, DriverProfile, MarketOffer, RouteStop, Vehicle
 from app.schemas.driver_profile import DriverProfileRead
@@ -48,11 +48,11 @@ class SessionService:
         self,
         db: AsyncSession,
         *,
-        osrm: OSRMClient | None = None,
+        routing: RoutingProvider | None = None,
         settings: Settings | None = None,
     ) -> None:
         self._db = db
-        self._osrm = osrm or get_osrm_client()
+        self._routing = routing or get_routing_provider()
         self._settings = settings or get_settings()
 
     async def list_all(self, *, limit: int = 100, offset: int = 0) -> list[ConsolidationSession]:
@@ -358,7 +358,7 @@ class SessionService:
 
         origin = (float(session.origin_lat), float(session.origin_lon))
         waypoints = [origin] + [stop.location for stop in stops]
-        matrix = await self._osrm.get_distance_matrix(waypoints)
+        matrix = await self._routing.get_distance_matrix(waypoints)
 
         optimizer = SequenceOptimizerService()
         await optimizer.optimize_and_persist(
@@ -485,7 +485,7 @@ class SessionService:
         for stop in stops:
             waypoints.append(lat_lon_from_geometry(stop.location))
 
-        route = await self._osrm.get_route_multi(waypoints)
+        route = await self._routing.get_route_multi(waypoints)
 
         driver_profile = await self._require_driver_profile(session)
         rates = StopCostRates.from_driver_profile(driver_profile)
@@ -590,7 +590,7 @@ class SessionService:
         waypoints: list[tuple[float, float]] = [origin]
         for stop in stops:
             waypoints.append(lat_lon_from_geometry(stop.location))
-        route = await self._osrm.get_route_multi(waypoints)
+        route = await self._routing.get_route_multi(waypoints)
         return route.total_distance_km
 
     def _compute_metrics(

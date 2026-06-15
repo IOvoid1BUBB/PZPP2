@@ -1,6 +1,4 @@
-import { redirect } from "next/navigation";
-
-/** Główny entrypoint — planner ma boczne menu z linkiem do mapy trasy. */
+/** Root redirect is handled in next.config.mjs (HTTP 307, no RSC error page). */
 export default function HomePage() {
-  redirect("/planner");
+  return null;
 }

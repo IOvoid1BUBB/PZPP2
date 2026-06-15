@@ -311,7 +311,7 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
           <div>
             <CardTitle>Mapa trasy</CardTitle>
             <CardDescription>
-              Odcinki wg obciążenia (OSRM truck + waga z kalkulatora paliwa).
+              Odcinki wg obciążenia (ORS HGV + waga z kalkulatora paliwa).
             </CardDescription>
           </div>
           <Button
