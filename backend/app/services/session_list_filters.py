@@ -6,6 +6,8 @@ from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
+from fastapi import HTTPException, status
+
 from app.models import ConsolidationSession
 
 if TYPE_CHECKING:
@@ -37,3 +39,18 @@ def apply_session_list_filters(
             ConsolidationSession.created_at < day_end,
         )
     return stmt
+
+
+def parse_session_list_date(raw: str | None, *, tz_name: str) -> date | None:
+    """Parse list filter date: ISO ``YYYY-MM-DD`` or the literal ``today``."""
+    if raw is None:
+        return None
+    if raw == "today":
+        return datetime.now(ZoneInfo(tz_name)).date()
+    try:
+        return date.fromisoformat(raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid date; use YYYY-MM-DD or today",
+        ) from exc
