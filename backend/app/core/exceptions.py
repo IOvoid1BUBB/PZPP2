@@ -36,7 +36,9 @@ class NotFoundError(AppException):
 
 
 class ValidationAppError(AppException):
-    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    status_code = getattr(
+        status, "HTTP_422_UNPROCESSABLE_CONTENT", status.HTTP_422_UNPROCESSABLE_ENTITY
+    )
     error_code = "validation_error"
     default_detail = "Validation failed."
 
