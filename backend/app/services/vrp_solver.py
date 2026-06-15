@@ -26,6 +26,7 @@ from app.models import ConsolidationSession, MarketOffer, RouteStop, SolverResul
 from app.schemas.solver import SolverRunResult, SolverRunStatus, StopSequenceEntry
 from app.services.offer_detour import COST_PER_KM_EUR, haversine_added_detour_km
 from app.services.offer_scorer import OfferScorerService
+from app.services.planner_layout import build_layout_from_offers, slots_to_storage, vehicle_to_planner
 from app.services.sequence_optimizer import is_precedence_valid
 from app.services.sessions import SessionService
 from app.services.stop_cost_calculator import StopCostRates, calculate_stop_cost
@@ -279,6 +280,10 @@ class VRPSolver:
             stop_sequence = SessionService.serialize_stop_sequence(ordered_stops)
             stop_sequence_json = [entry.model_dump(mode="json") for entry in stop_sequence]
 
+            # Automatycznie rozmieść wybrane oferty na pace (load_layout).
+            # Zeruje poprzedni layout, aby nie zostały stare palety z demo.
+            await self._rebuild_layout_from_selected(session_id, session, selected_ids)
+
         orm_result = SolverResult(
             session_id=session_id,
             selected_offer_ids=selected_ids,
@@ -373,6 +378,44 @@ class VRPSolver:
         )
         result = await self._db.execute(stmt)
         return list(result.scalars().all())
+
+    async def _rebuild_layout_from_selected(
+        self,
+        session_id: UUID,
+        session: ConsolidationSession,
+        selected_ids: list[UUID],
+    ) -> None:
+        """Rozmieść wybrane oferty na pace i zapisz jako load_layout sesji.
+
+        Zeruje poprzedni layout, eliminując stare mock-palety.
+        """
+        if session.vehicle is None:
+            return
+
+        from app.models import Vehicle as VehicleModel  # noqa: F401
+        from sqlalchemy import select as sa_select  # noqa: F401
+
+        vehicle = session.vehicle
+        planner_vehicle = vehicle_to_planner(vehicle)
+
+        offers = await self._fetch_offers(selected_ids)
+        offers_by_id = {o.id: o for o in offers}
+        offer_dicts = [
+            {
+                "id": str(oid),
+                "ldm": float(offers_by_id[oid].ldm),
+                "weight_kg": int(offers_by_id[oid].weight_kg),
+                "price_eur": float(offers_by_id[oid].price_eur),
+                "stackable": bool(offers_by_id[oid].stackable),
+                "pickup_label": f"Oferta {str(oid)[:8]}",
+            }
+            for oid in selected_ids
+            if oid in offers_by_id
+        ]
+
+        slots = build_layout_from_offers(planner_vehicle.payload_slots, offer_dicts)
+        session.load_layout = slots_to_storage(slots)
+        await self._db.flush()
 
     @staticmethod
     def _empty_result(
