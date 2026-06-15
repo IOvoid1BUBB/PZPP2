@@ -6,7 +6,6 @@ import { useShallow } from "zustand/shallow";
 import { useClientHydrated } from "@/hooks/useClientHydrated";
 
 import {
-  fetchDemoLayout,
   fetchSessionLayout,
   moveDemoPallet,
   moveDemoToFirstFree,
@@ -86,10 +85,12 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
     setLoading(true);
     setError(null);
     try {
-      const currentVehicleType = useLoadStore.getState().vehicle?.type ?? null;
-      const next = activeSessionId
-        ? await fetchSessionLayout(activeSessionId)
-        : await fetchDemoLayout(currentVehicleType);
+      if (!activeSessionId) {
+        // Brak aktywnej sesji — nie ładujemy demo, czekamy aż użytkownik wybierze pojazd.
+        setLoading(false);
+        return;
+      }
+      const next = await fetchSessionLayout(activeSessionId);
       if (!hadLayoutBeforeFetch && hasStoreLayout()) {
         return;
       }
@@ -115,6 +116,7 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
           applyLayout(next);
           return;
         }
+        // Brak sesji — użyj demo endpointa (akceptowalne w flow wyboru pojazdu bez sesji)
         const next = await resetDemoLayout(vehicleType);
         applyLayout(next);
       } catch (err) {
@@ -151,9 +153,10 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
     void (async () => {
       try {
         const activeSessionId = useLoadStore.getState().sessionId;
-        const next = activeSessionId
-          ? await fetchSessionLayout(activeSessionId)
-          : await fetchDemoLayout(useLoadStore.getState().vehicle?.type ?? null);
+        if (!activeSessionId) {
+          return;
+        }
+        const next = await fetchSessionLayout(activeSessionId);
         const current = useLoadStore.getState();
         if (!current.vehicle) {
           return;
