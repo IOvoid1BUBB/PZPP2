@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.session import SessionStatus
 
-DashboardNotificationType = Literal["info", "warning", "opportunity"]
+DashboardNotificationType = Literal["free_space", "time_window_risk", "hot_offer"]
 
 
 class ActiveSessionSummary(BaseModel):
@@ -45,6 +45,7 @@ class DashboardResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     today_net_profit_eur: float
+    today_net_profit_pln: float
     avg_lfill_pct: float
     empty_runs_pct: float
     active_sessions: list[ActiveSessionSummary]
