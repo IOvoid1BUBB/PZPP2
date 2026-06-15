@@ -1,6 +1,9 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
-export type DashboardNotificationType = "info" | "warning" | "opportunity";
+export type DashboardNotificationType =
+  | "free_space"
+  | "time_window_risk"
+  | "hot_offer";
 
 export interface ActiveSessionSummary {
   session_id: string;
@@ -23,6 +26,7 @@ export interface DashboardNotification {
 
 export interface DashboardResponse {
   today_net_profit_eur: number;
+  today_net_profit_pln: number;
   avg_lfill_pct: number;
   empty_runs_pct: number;
   active_sessions: ActiveSessionSummary[];
