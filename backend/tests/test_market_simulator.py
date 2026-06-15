@@ -7,12 +7,14 @@ import pytest
 
 from app.services.market_simulator import (
     LOGISTICS_HUBS,
+    PALLET_LDM,
     generate_batch,
     generate_single_offer,
 )
 
 _HANDLING_ALLOWED = {15, 30, 45, 60}
-_LDM_ALLOWED = {0.5, 1.0, 1.5, 2.0, 2.4, 3.0, 4.0, 6.0, 8.0, 13.6}
+# Dozwolone LDM: wielokrotności PALLET_LDM (0.4) dla k=1..10
+_LDM_ALLOWED = {round(k * PALLET_LDM, 1) for k in range(1, 11)}
 
 
 def test_generate_single_offer_fields() -> None:
@@ -23,7 +25,9 @@ def test_generate_single_offer_fields() -> None:
     assert offer.pickup_point.startswith("SRID=4326;POINT(")
     assert offer.delivery_point.startswith("SRID=4326;POINT(")
     assert offer.handling_time_minutes in _HANDLING_ALLOWED
-    assert float(offer.ldm) in _LDM_ALLOWED
+    assert float(offer.ldm) in _LDM_ALLOWED, (
+        f"ldm={offer.ldm} nie jest wielokrotnością {PALLET_LDM}"
+    )
     assert offer.weight_kg > 0
     assert offer.price_eur > 0
     assert offer.time_window_open >= base
@@ -31,6 +35,18 @@ def test_generate_single_offer_fields() -> None:
     assert item.pickup_hub_key in LOGISTICS_HUBS
     assert item.delivery_hub_key in LOGISTICS_HUBS
     assert item.pickup_hub_key != item.delivery_hub_key
+
+
+def test_ldm_is_pallet_multiple() -> None:
+    """Każda wygenerowana oferta ma LDM = k × PALLET_LDM (k ∈ ℕ, k ≥ 1)."""
+    base = datetime(2026, 5, 18, 0, 0, 0, tzinfo=UTC)
+    for item in generate_batch(200, base_time=base):
+        ldm = float(item.offer.ldm)
+        quotient = ldm / PALLET_LDM
+        assert abs(quotient - round(quotient)) < 1e-9, (
+            f"ldm={ldm} nie jest wielokrotnością {PALLET_LDM} (quotient={quotient})"
+        )
+        assert quotient >= 1.0 - 1e-9, f"ldm={ldm} poniżej minimalnej 1 palety"
 
 
 def test_time_window_width_at_least_two_hours() -> None:
@@ -56,13 +72,6 @@ def test_stackable_false_share_in_expected_band() -> None:
     non_stackable = sum(1 for item in batch if not item.offer.stackable)
     share = non_stackable / len(batch)
     assert 0.25 <= share <= 0.45
-
-
-def test_ldm_is_half_multiple() -> None:
-    base = datetime(2026, 5, 18, 0, 0, 0, tzinfo=UTC)
-    for item in generate_batch(50, base_time=base):
-        ldm = float(item.offer.ldm)
-        assert abs((ldm * 2) - round(ldm * 2)) < 1e-9
 
 
 def test_generate_batch_requires_positive_count() -> None:
