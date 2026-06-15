@@ -17,6 +17,7 @@ import type {
   SolverResult,
   UUID,
 } from "@/lib/types/solver";
+import type {
   OfferScore,
   RankedOfferRow,
   RankedOffersResponse,
