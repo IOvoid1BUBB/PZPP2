@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from app.lib.osrm import RouteLeg
+from app.lib.routing import RouteLeg
 
 if TYPE_CHECKING:
     from app.models.stop import RouteStop
