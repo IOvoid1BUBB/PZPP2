@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+import { getClientColorHex } from "@/components/planner/TrailerCanvas";
 import type { ProfitBreakdownData } from "@/lib/api/profitClient";
 import {
   buildWaterfallData,
@@ -18,6 +19,17 @@ vi.mock("recharts", async () => {
       displayValue: number;
       fill: string;
       formula?: string;
+    }>;
+    children?: React.ReactNode;
+  };
+
+  type PieProps = {
+    data?: Array<{
+      clientId: string;
+      name: string;
+      value: number;
+      fill: string;
+      valueSource: string;
     }>;
     children?: React.ReactNode;
   };
@@ -52,6 +64,26 @@ vi.mock("recharts", async () => {
         {children}
       </div>
     ),
+    PieChart: ({ children }: { children?: React.ReactNode }) => (
+      <div data-testid="pie-chart">{children}</div>
+    ),
+    Pie: ({ data = [], children }: PieProps) => (
+      <div data-testid="client-pie">
+        {data.map((slice) => (
+          <div
+            key={slice.clientId}
+            data-testid="pie-slice"
+            data-client={slice.name}
+            data-value={slice.value}
+            data-fill={slice.fill}
+            data-source={slice.valueSource}
+          >
+            {slice.name}
+          </div>
+        ))}
+        {children}
+      </div>
+    ),
     Bar: passthrough(),
     Cell: passthrough(),
     CartesianGrid: passthrough(),
@@ -73,9 +105,11 @@ vi.mock("@/hooks/useProfitBreakdown", () => ({
 }));
 
 const mockUseLoadStore = vi.fn();
+const mockUseClientSummary = vi.fn();
 vi.mock("@/lib/stores/loadStore", () => ({
   useLoadStore: (selector: (state: unknown) => unknown) =>
     mockUseLoadStore(selector),
+  useClientSummary: () => mockUseClientSummary(),
 }));
 
 function makeBreakdown(
@@ -104,12 +138,39 @@ function makeBreakdown(
   };
 }
 
-function stubLoadStore(slots: Record<string, { offerId: string } | null>) {
+function stubLoadStore(
+  slots: Record<
+    string,
+    {
+      offerId: string;
+      clientId?: string;
+      clientName?: string;
+      ldm?: number;
+    } | null
+  >,
+) {
   mockUseLoadStore.mockImplementation((selector) =>
     selector({
       slots,
       sessionId: "session-1",
     }),
+  );
+}
+
+function stubClientSummary(
+  clients: Array<{
+    clientId: string;
+    offerId: string;
+    name: string;
+    ldm: number;
+  }> = [],
+) {
+  mockUseClientSummary.mockReturnValue(
+    clients.map((client) => ({
+      ...client,
+      color: "var(--ui-company-1-intense)",
+      weight: 400,
+    })),
   );
 }
 
@@ -123,6 +184,7 @@ describe("ProfitWaterfall", () => {
       reload: vi.fn(),
     });
     stubLoadStore({});
+    stubClientSummary([]);
   });
 
   it("shows empty state when no loads are on the trailer", () => {
@@ -134,7 +196,17 @@ describe("ProfitWaterfall", () => {
   });
 
   it("renders seven waterfall bars for a session with at least two stops", () => {
-    stubLoadStore({ "slot-a": { offerId: "offer-1" } });
+    stubLoadStore({
+      "slot-a": {
+        offerId: "offer-1",
+        clientId: "client-1",
+        clientName: "Acme",
+        ldm: 2,
+      },
+    });
+    stubClientSummary([
+      { clientId: "client-1", offerId: "offer-1", name: "Acme", ldm: 2 },
+    ]);
     const data = makeBreakdown({ stopCount: 3 });
 
     render(<ProfitWaterfall data={data} />);
@@ -144,6 +216,63 @@ describe("ProfitWaterfall", () => {
     expect(screen.getByText("Przystanki")).toBeInTheDocument();
     expect(screen.getByText("200L × 2 EUR/L")).toBeInTheDocument();
     expect(screen.getByText("4 dni × 50 EUR/dzień")).toBeInTheDocument();
+    expect(screen.getByTestId("client-pie")).toBeInTheDocument();
+  });
+
+  it("renders client pie with API revenue and TrailerCanvas colors", () => {
+    stubLoadStore({
+      "slot-a": {
+        offerId: "offer-1",
+        clientId: "client-1",
+        clientName: "Acme",
+        ldm: 3,
+      },
+    });
+    stubClientSummary([
+      { clientId: "client-1", offerId: "offer-1", name: "Acme", ldm: 3 },
+    ]);
+    const data = makeBreakdown({
+      stopCount: 2,
+      offerRevenue: [{ offerId: "offer-1", revenueEur: 2000 }],
+      fromApi: true,
+    });
+
+    render(<ProfitWaterfall data={data} />);
+
+    const slice = screen.getByTestId("pie-slice");
+    expect(slice).toHaveAttribute("data-value", "2000");
+    expect(slice).toHaveAttribute("data-source", "revenue");
+    expect(slice).toHaveAttribute(
+      "data-fill",
+      getClientColorHex("offer-1", false),
+    );
+    expect(screen.getByText("2000 EUR")).toBeInTheDocument();
+  });
+
+  it("renders estimated LDM share when API revenue is unavailable", () => {
+    stubLoadStore({
+      "slot-a": {
+        offerId: "offer-1",
+        clientId: "client-1",
+        clientName: "Acme",
+        ldm: 4,
+      },
+    });
+    stubClientSummary([
+      { clientId: "client-1", offerId: "offer-1", name: "Acme", ldm: 4 },
+    ]);
+    const data = makeBreakdown({
+      stopCount: 2,
+      fromApi: false,
+      offerRevenue: [],
+    });
+
+    render(<ProfitWaterfall data={data} />);
+
+    const slice = screen.getByTestId("pie-slice");
+    expect(slice).toHaveAttribute("data-source", "estimated");
+    expect(slice).toHaveAttribute("data-value", String(Math.round(4 * 187.5)));
+    expect(screen.getByText(/4,0 LDM/)).toBeInTheDocument();
   });
 
   it("renders negative net profit label with minus sign and red bar", () => {
