@@ -112,6 +112,24 @@ export interface SessionDetailResponse {
   };
 }
 
+export interface SessionListItem {
+  id: string;
+  vehicle_id: string | null;
+  driver_profile_id: string;
+  status: SessionDetailResponse["status"];
+  created_at: string;
+  total_revenue_eur: number | null;
+  net_profit_eur: number | null;
+  solver_run_id: string | null;
+}
+
+export interface ListSessionsParams {
+  status?: SessionDetailResponse["status"];
+  date?: "today" | string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface SimulateOffersResult {
   requested: number;
   inserted: number;
@@ -236,6 +254,28 @@ function mapVehicle(raw: VehicleApiRecord): VehicleConfig {
 }
 
 // ─── API calls ──────────────────────────────────────────────────────────────
+
+/**
+ * Lista sesji z opcjonalnymi filtrami status i date (ISO lub `today`).
+ */
+export async function listSessions(
+  params: ListSessionsParams = {},
+): Promise<SessionListItem[]> {
+  const search = new URLSearchParams();
+  if (params.status) search.set("status", params.status);
+  if (params.date) search.set("date", params.date);
+  if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.offset != null) search.set("offset", String(params.offset));
+
+  const query = search.toString();
+  const response = await fetch(
+    `${API_BASE}/api/v1/sessions${query ? `?${query}` : ""}`,
+  );
+  if (!response.ok) {
+    throw new Error(`Nie udało się pobrać listy sesji (${response.status})`);
+  }
+  return (await response.json()) as SessionListItem[];
+}
 
 /**
  * Pobierz listę dostępnych pojazdów.
