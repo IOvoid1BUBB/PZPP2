@@ -3,6 +3,8 @@
  * Maps snake_case backend response → camelCase for React components.
  */
 
+import { toNumber, toOptionalNumber } from "@/lib/api/coerce";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 export interface CostFormulaMeta {
@@ -81,27 +83,27 @@ interface SessionProfitBreakdownApi {
 
 function mapFormula(raw: CostFormulaApi): CostFormulaMeta {
   return {
-    litersTotal: raw.liters_total ?? undefined,
-    fuelPrice: raw.fuel_price ?? undefined,
-    distanceKm: raw.distance_km ?? undefined,
-    stopCount: raw.stop_count ?? undefined,
-    perStopCost: raw.per_stop_cost ?? undefined,
-    daysOnRoad: raw.days_on_road ?? undefined,
-    dailyAllowance: raw.daily_allowance ?? undefined,
-    maintRate: raw.maint_rate ?? undefined,
+    litersTotal: toOptionalNumber(raw.liters_total),
+    fuelPrice: toOptionalNumber(raw.fuel_price),
+    distanceKm: toOptionalNumber(raw.distance_km),
+    stopCount: toOptionalNumber(raw.stop_count),
+    perStopCost: toOptionalNumber(raw.per_stop_cost),
+    daysOnRoad: toOptionalNumber(raw.days_on_road),
+    dailyAllowance: toOptionalNumber(raw.daily_allowance),
+    maintRate: toOptionalNumber(raw.maint_rate),
   };
 }
 
 export function mapProfitBreakdown(raw: SessionProfitBreakdownApi): ProfitBreakdownData {
   return {
-    revenueEur: raw.revenue_eur,
-    fuelEur: raw.fuel_eur,
-    tollEur: raw.toll_eur,
-    stopCostsEur: raw.stop_costs_eur,
-    driverEur: raw.driver_eur,
-    maintenanceEur: raw.maintenance_eur,
-    netProfitEur: raw.net_profit_eur,
-    stopCount: raw.stop_count,
+    revenueEur: toNumber(raw.revenue_eur),
+    fuelEur: toNumber(raw.fuel_eur),
+    tollEur: toNumber(raw.toll_eur),
+    stopCostsEur: toNumber(raw.stop_costs_eur),
+    driverEur: toNumber(raw.driver_eur),
+    maintenanceEur: toNumber(raw.maintenance_eur),
+    netProfitEur: toNumber(raw.net_profit_eur),
+    stopCount: toNumber(raw.stop_count),
     formulas: {
       fuel: mapFormula(raw.formulas.fuel),
       toll: mapFormula(raw.formulas.toll),
@@ -111,11 +113,11 @@ export function mapProfitBreakdown(raw: SessionProfitBreakdownApi): ProfitBreakd
     },
     legs: raw.legs.map((leg) => ({
       legId: leg.leg_id,
-      fuelConsumption: leg.fuel_consumption,
+      fuelConsumption: toNumber(leg.fuel_consumption),
     })),
     offerRevenue: raw.offer_revenue.map((row) => ({
       offerId: row.offer_id,
-      revenueEur: row.revenue_eur,
+      revenueEur: toNumber(row.revenue_eur),
     })),
     fromApi: true,
   };
@@ -139,7 +141,7 @@ export async function fetchSessionProfit(
   sessionId: string,
 ): Promise<ProfitBreakdownData> {
   const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/profit`, {
-    method: "POST",
+    method: "GET",
   });
 
   if (!response.ok) {
