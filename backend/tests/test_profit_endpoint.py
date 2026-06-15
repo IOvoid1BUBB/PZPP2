@@ -1,7 +1,7 @@
 """Integration tests for POST /api/v1/sessions/{id}/profit.
 
 Requires PostgreSQL + PostGIS (pytest.mark.integration).
-OSRM is replaced with a deterministic mock via FastAPI dependency_overrides.
+Routing is replaced with a deterministic mock via FastAPI dependency_overrides.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from app.lib.osrm import MultiStopRouteResult, RouteLeg
+from app.lib.routing import MultiStopRouteResult, RouteLeg
 
 pytestmark = pytest.mark.integration
 
@@ -79,12 +79,12 @@ async def _create_session(client: AsyncClient) -> UUID:
 @pytest.mark.asyncio
 async def test_profit_returns_5_cost_components(client: AsyncClient) -> None:
     """POST /profit returns all cost fields and stops_costs_eur is a separate item."""
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         session_id = await _create_session(client)
@@ -193,18 +193,18 @@ async def test_profit_returns_5_cost_components(client: AsyncClient) -> None:
         assert data["net_profit_eur"] == pytest.approx(expected_net, abs=0.01)
 
     finally:
-        del fastapi_app.dependency_overrides[get_osrm_client]
+        del fastapi_app.dependency_overrides[get_routing_provider]
 
 
 @pytest.mark.asyncio
 async def test_profit_session_net_profit_updated(client: AsyncClient) -> None:
     """After POST /profit, consolidation_sessions.net_profit_eur is set."""
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         session_id = await _create_session(client)
@@ -238,22 +238,22 @@ async def test_profit_session_net_profit_updated(client: AsyncClient) -> None:
         )
 
     finally:
-        del fastapi_app.dependency_overrides[get_osrm_client]
+        del fastapi_app.dependency_overrides[get_routing_provider]
 
 
 @pytest.mark.asyncio
 async def test_profit_idempotency_cost_events(client: AsyncClient) -> None:
     """Two consecutive POSTs produce exactly 5 cost_events rows, not 10."""
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
     from sqlalchemy import func, select
 
     from app.core.database import get_sessionmaker
     from app.models import CostEvent
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         session_id = await _create_session(client)
@@ -284,13 +284,13 @@ async def test_profit_idempotency_cost_events(client: AsyncClient) -> None:
         assert count == 5, f"expected 5 cost_events after 2 POSTs, got {count}"
 
     finally:
-        del fastapi_app.dependency_overrides[get_osrm_client]
+        del fastapi_app.dependency_overrides[get_routing_provider]
 
 
 @pytest.mark.asyncio
 async def test_profit_negative_net_returns_200(client: AsyncClient) -> None:
     """Negative net_profit is a valid value — must return HTTP 200, not an error."""
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
     # Return a very long route (20 000 km) so costs exceed revenue
@@ -314,9 +314,9 @@ async def test_profit_negative_net_returns_200(client: AsyncClient) -> None:
             },
         )
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=long_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=long_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         session_id = await _create_session(client)
@@ -336,7 +336,7 @@ async def test_profit_negative_net_returns_200(client: AsyncClient) -> None:
         assert data["net_profit_eur"] < 0, "expected negative profit with huge costs"
 
     finally:
-        del fastapi_app.dependency_overrides[get_osrm_client]
+        del fastapi_app.dependency_overrides[get_routing_provider]
 
 
 @pytest.mark.asyncio
@@ -349,12 +349,12 @@ async def test_profit_session_not_found(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_profit_empty_session_returns_422(client: AsyncClient) -> None:
     """Session with no offers (empty route_stops) should return 422."""
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         session_id = await _create_session(client)
@@ -362,18 +362,18 @@ async def test_profit_empty_session_returns_422(client: AsyncClient) -> None:
         assert resp.status_code == 422
 
     finally:
-        del fastapi_app.dependency_overrides[get_osrm_client]
+        del fastapi_app.dependency_overrides[get_routing_provider]
 
 
 @pytest.mark.asyncio
 async def test_get_profit_alias_returns_same_as_post(client: AsyncClient) -> None:
     """GET /profit alias returns the same data structure as POST /profit."""
-    from app.lib.osrm import get_osrm_client
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         session_id = await _create_session(client)
@@ -405,7 +405,7 @@ async def test_get_profit_alias_returns_same_as_post(client: AsyncClient) -> Non
         assert get_data["toll_is_estimated"] == post_data["toll_is_estimated"]
 
     finally:
-        del fastapi_app.dependency_overrides[get_osrm_client]
+        del fastapi_app.dependency_overrides[get_routing_provider]
 
 
 @pytest.mark.asyncio
