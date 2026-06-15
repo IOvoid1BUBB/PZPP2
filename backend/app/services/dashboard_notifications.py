@@ -9,7 +9,7 @@ from uuid import UUID
 from app.schemas.dashboard import DashboardNotification
 
 DAY_MS = 24 * 60 * 60 * 1000
-_ACTIVE_STATUSES = frozenset({"draft", "optimizing", "confirmed"})
+_ACTIVE_STATUSES = frozenset({"draft", "optimizing", "confirmed", "dispatched"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,14 +48,14 @@ def build_dashboard_notifications(
         alerts.append(
             DashboardNotification(
                 id=f"empty-{session.session_id}",
-                type="info",
+                type="free_space",
                 title="Wolna przestrzeń",
                 body=(
                     f"Sesja {_short_id(session.session_id)}{vehicle_suffix} "
                     "nie ma jeszcze ofert. Znajdź doładunek!"
                 ),
                 link="Zaplanuj załadunek →",
-                href="/planner",
+                href=f"/planner?session={session.session_id}",
             ),
         )
 
@@ -70,14 +70,14 @@ def build_dashboard_notifications(
             alerts.append(
                 DashboardNotification(
                     id=f"stale-{session.session_id}",
-                    type="warning",
+                    type="free_space",
                     title="Niedokończony plan",
                     body=(
                         f"Szkic {_short_id(session.session_id)} czeka ponad 24h. "
                         "Dokończ planowanie lub usuń sesję."
                     ),
                     link="Otwórz planner →",
-                    href="/planner",
+                    href=f"/planner?session={session.session_id}",
                 ),
             )
 
@@ -87,14 +87,14 @@ def build_dashboard_notifications(
         alerts.append(
             DashboardNotification(
                 id=f"time-window-{session.session_id}",
-                type="warning",
+                type="time_window_risk",
                 title="Ryzyko okna czasowego",
                 body=(
                     f"Sesja {_short_id(session.session_id)} ma oferty z ryzykiem "
                     "naruszenia okna czasowego."
                 ),
                 link="Otwórz planner →",
-                href="/planner",
+                href=f"/planner?session={session.session_id}",
             ),
         )
 
@@ -102,7 +102,7 @@ def build_dashboard_notifications(
         alerts.append(
             DashboardNotification(
                 id="market-volume",
-                type="opportunity",
+                type="hot_offer",
                 title="Aktywna giełda",
                 body=(
                     f"Na rynku dostępnych jest {market_offers_count} ofert. "
@@ -117,7 +117,7 @@ def build_dashboard_notifications(
         alerts.append(
             DashboardNotification(
                 id="empty-state",
-                type="info",
+                type="free_space",
                 title="Wszystko pod kontrolą",
                 body=(
                     "Brak alertów. Utwórz sesję lub wygeneruj oferty, "
