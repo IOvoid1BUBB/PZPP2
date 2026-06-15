@@ -356,7 +356,7 @@ export function ProfitWaterfall({ data: dataOverride }: ProfitWaterfallProps = {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart
-                data={perLegView ? legRows : chartRows}
+                data={(perLegView ? legRows : chartRows) as unknown as Record<string, unknown>[]}
                 margin={{ top: 20, right: 8, left: 0, bottom: 0 }}
               >
                 <CartesianGrid

@@ -1,37 +1,175 @@
 "use client";
 
+/**
+ * Planning lab — v0 layout
+ *
+ * lg: grid [280px | 1fr]
+ *   left:  VehicleSelector (compact) + offer sidebar (PalletLibrary / ranked-offers)
+ *   right: metrics strip + trailer canvas (DnD) + profit waterfall + inline route map
+ *
+ * SlotEditor внутри уже рендерит PalletLibrary (left) + trailer (right) в
+ * собственном DnDContext. Мы просто помещаем VehicleSelector и SolverPanel
+ * над ним и открываем drawer для "Send to driver".
+ */
+
+import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 
 import { DriverHoursWarning } from "@/components/planner/DriverHoursWarning";
 import { SlotEditor } from "@/components/planner/SlotEditor";
 import { SolverPanel } from "@/components/planner/SolverPanel";
 import { VehicleSelector } from "@/components/planner/VehicleSelector";
+import { DriverRouteBriefing } from "@/components/driver/DriverRouteBriefing";
 import { Button } from "@/components/ui/Button";
+import { Drawer } from "@/components/ui/Drawer";
+import { useToast } from "@/components/ui/Toast";
 import { useHydratedSessionId } from "@/hooks/useHydratedSessionId";
 import { usePlannerLayout } from "@/hooks/usePlannerLayout";
+import { updateSessionStatus } from "@/lib/api/sessionClient";
+import { usePlannerActionStore } from "@/lib/stores/plannerActionStore";
+
+// Leaflet loaded only client-side
+const RouteMapClient = dynamic(
+  () => import("@/components/map/RouteMapClient"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-h-[340px] items-center justify-center rounded-2xl border border-ui-border/70 bg-ui-raised text-sm text-ui-secondary">
+        Ładowanie mapy trasy…
+      </div>
+    ),
+  },
+);
 
 export default function PlannerPage() {
   const sessionId = useHydratedSessionId();
   const { reload } = usePlannerLayout();
+  const { showToast } = useToast();
+  const register = usePlannerActionStore((s) => s.register);
+  const setBusy = usePlannerActionStore((s) => s.setBusy);
+  const resetAction = usePlannerActionStore((s) => s.reset);
+
+  const [briefingOpen, setBriefingOpen] = useState(false);
+  const [dispatching, setDispatching] = useState(false);
+  const [mapKey, setMapKey] = useState(0);
+
+  // Wire AppShell header "Send to driver" button
+  useEffect(() => {
+    register(() => setBriefingOpen(true), Boolean(sessionId));
+    return () => resetAction();
+  }, [register, resetAction, sessionId]);
+
+  const handleDispatch = useCallback(async () => {
+    if (!sessionId) return;
+    setDispatching(true);
+    setBusy(true);
+    try {
+      await updateSessionStatus(sessionId, "dispatched");
+      showToast({ type: "success", message: "Trasa wysłana do kierowcy." });
+      setBriefingOpen(false);
+      void reload();
+    } catch (err) {
+      showToast({
+        type: "error",
+        message: err instanceof Error ? err.message : "Nie udało się wysłać.",
+      });
+    } finally {
+      setDispatching(false);
+      setBusy(false);
+    }
+  }, [reload, sessionId, setBusy, showToast]);
+
+  const handleSolverApplied = useCallback(() => {
+    void reload();
+    setMapKey((k) => k + 1);
+  }, [reload]);
 
   return (
-    <section className="planning-lab">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="planning-lab__title">Visual Load Planner</h1>
-        {sessionId ? (
+    <div className="flex flex-col gap-6">
+      {/* ── Nagłówek ─────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight text-ui-primary">
+          Planning lab
+        </h1>
+        {sessionId && (
           <Link href={`/sessions/${sessionId}/map`}>
-            <Button variant="secondary">Mapa trasy</Button>
+            <Button variant="secondary">Pełna mapa trasy →</Button>
           </Link>
-        ) : (
-          <p className="text-sm text-[var(--ui-text-secondary)]">
-            Wybierz pojazd, aby otworzyć mapę trasy.
-          </p>
         )}
       </div>
+
+      {/* ── Alerty czasu pracy ────────────────────────────────────── */}
       <DriverHoursWarning />
+
+      {/* ── Krok 1: Wybierz pojazd (tworzy sesję + ładuje oferty) ── */}
       <VehicleSelector />
-      <SolverPanel sessionId={sessionId} onApplied={() => void reload()} />
+
+      {/* ── Krok 2: Solver VRP (tylko gdy sesja istnieje) ─────────── */}
+      {sessionId && (
+        <details className="rounded-2xl border border-ui-border/70 bg-ui-surface shadow-sm">
+          <summary className="cursor-pointer select-none px-5 py-3 text-sm font-semibold text-ui-primary">
+            ⚙ Solver VRP — automatyczna optymalizacja
+          </summary>
+          <div className="border-t border-ui-border/50 px-4 pb-4 pt-3">
+            <SolverPanel sessionId={sessionId} onApplied={handleSolverApplied} />
+          </div>
+        </details>
+      )}
+
+      {/*
+       * ── Krok 3: Główny edytor ──────────────────────────────────
+       *
+       * SlotEditor renderuje wewnętrznie:
+       *   lg: grid [minmax(220px,280px) | 1fr]
+       *     left:  PalletLibrary (ranked-offers z API)
+       *     right: VehicleHeader + TrailerCanvas (DnD) + ProfitWaterfall
+       *
+       * Gdy brak pojazdu → komunikat "Brak przypisanego pojazdu"
+       * Gdy brak ofert w DB → PalletLibrary pokazuje "Generuj oferty rynkowe"
+       */}
       <SlotEditor />
-    </section>
+
+      {/* ── Krok 4: Mapa trasy (Leaflet + ORS, inline) ───────────── */}
+      {sessionId && (
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-ui-primary">
+              Mapa trasy
+            </h2>
+            <p className="text-xs text-ui-muted">
+              Rzeczywiste drogi z OpenRouteService (profil HGV).
+              Aktualizuje się po dodaniu ofert i uruchomieniu solvera.
+            </p>
+          </div>
+          <RouteMapClient
+            key={`${sessionId}-${mapKey}`}
+            sessionId={sessionId}
+          />
+        </section>
+      )}
+
+      {/* ── Drawer: Send to driver ────────────────────────────────── */}
+      <Drawer
+        open={briefingOpen}
+        title="Wyślij trasę do kierowcy"
+        onClose={() => setBriefingOpen(false)}
+      >
+        {sessionId ? (
+          <div className="flex flex-col gap-4">
+            <DriverRouteBriefing sessionId={sessionId} variant="full" />
+            <Button
+              variant="primary"
+              disabled={dispatching}
+              onClick={() => void handleDispatch()}
+            >
+              {dispatching ? "Wysyłanie…" : "Potwierdź i wyślij (dispatched)"}
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm text-ui-secondary">Brak aktywnej sesji.</p>
+        )}
+      </Drawer>
+    </div>
   );
 }

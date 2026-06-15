@@ -20,7 +20,7 @@ import {
 
 import { useClientHydrated } from "@/hooks/useClientHydrated";
 
-import { PalletLibrary } from "@/components/planner/PalletLibrary";
+import { PalletLibrarySuspense } from "@/components/planner/PalletLibrary";
 
 import { ProfitWaterfall } from "@/components/planner/ProfitWaterfall";
 
@@ -40,7 +40,7 @@ import { useToast } from "@/components/ui/Toast";
 import { usePlannerLayout } from "@/hooks/usePlannerLayout";
 import { useProfitBreakdown } from "@/hooks/useProfitBreakdown";
 
-import { fetchSessionDetail, updateSessionStatus } from "@/lib/api/sessionClient";
+import { fetchSessionDetail, updateSessionStatus, removeOfferFromSession } from "@/lib/api/sessionClient";
 
 import { getCompanyColorPair } from "@/lib/colors/companyColors";
 import {
@@ -153,6 +153,8 @@ export function SlotEditor() {
     null,
   );
 
+  const libraryRemoveRef = useRef<((offerId: string) => void) | null>(null);
+
   const [shakingSlotIds, setShakingSlotIds] = useState<Set<string>>(new Set());
 
   const [drawerSlotId, setDrawerSlotId] = useState<string | null>(null);
@@ -246,30 +248,44 @@ export function SlotEditor() {
     () => [
       {
         label: "Usuń ładunek",
-
         destructive: true,
-
         action: (slotId) => {
           void removePallet(slotId);
         },
       },
-
+      {
+        label: "Odłóż na listę ofert",
+        action: (slotId) => {
+          const pallet = slots[slotId];
+          if (!pallet) return;
+          // Remove from session (API) then from layout
+          if (sessionId) {
+            void removeOfferFromSession(sessionId, pallet.offerId)
+              .then(() => {
+                libraryRemoveRef.current?.(pallet.offerId);
+                void removePallet(slotId);
+              })
+              .catch(() => {
+                showToast({ type: "error", message: "Nie udało się odłożyć oferty." });
+              });
+          } else {
+            libraryRemoveRef.current?.(pallet.offerId);
+            void removePallet(slotId);
+          }
+        },
+      },
       {
         label: "Przenieś do pierwszego wolnego slotu",
-
         action: (slotId) => {
           void handleMoveToFirstFree(slotId);
         },
       },
-
       {
         label: "Szczegóły ładunku",
-
         action: openDrawer,
       },
     ],
-
-    [handleMoveToFirstFree, openDrawer, removePallet],
+    [handleMoveToFirstFree, openDrawer, removePallet, showToast],
   );
 
   const { bindSlot } = useContextMenuTrigger({
@@ -453,7 +469,38 @@ export function SlotEditor() {
   }
 
   if (!vehicle) {
-    return <p className="planner-empty">Brak przypisanego pojazdu.</p>;
+    return (
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
+        <aside className="offer-sidebar rounded-2xl border border-ui-border/70 bg-ui-surface p-5" aria-label="Biblioteka ofert">
+          <p className="text-sm font-semibold text-ui-primary">Oferty</p>
+          <p className="mt-3 text-sm text-ui-secondary">
+            Wybierz pojazd powyżej, aby załadować dostępne oferty z giełdy.
+          </p>
+        </aside>
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-ui-border/70 bg-ui-border/40 sm:grid-cols-3 lg:grid-cols-6">
+            {["Vehicle", "Driver", "Items", "Weight", "Profit", "LFIL"].map((label) => (
+              <div key={label} className="bg-ui-surface p-4">
+                <p className="text-xs text-ui-muted">{label}</p>
+                <p className="mt-1 text-sm font-semibold text-ui-primary">—</p>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-2xl border border-ui-border/70 bg-ui-surface p-5">
+            <div className="rounded-xl bg-ui-raised p-4">
+              <div className="grid grid-cols-8 gap-2">
+                {Array.from({ length: 24 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="aspect-square rounded-lg border border-dashed border-ui-border/80 bg-ui-surface/60"
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const drawerPallet = drawerSlotId ? slots[drawerSlotId] : null;
@@ -485,11 +532,14 @@ export function SlotEditor() {
       >
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
           {sessionId ? (
-            <PalletLibrary
+            <PalletLibrarySuspense
               sessionId={sessionId}
               loadedOfferIds={loadedOfferIds}
               onRegisterAddOffer={(addOffer) => {
                 libraryAddRef.current = addOffer;
+              }}
+              onRegisterRemoveOffer={(removeOffer) => {
+                libraryRemoveRef.current = removeOffer;
               }}
               onOfferAdded={() => void reload()}
             />

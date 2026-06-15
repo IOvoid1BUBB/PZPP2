@@ -553,6 +553,24 @@ export async function replaceSessionOffers(
   return (await response.json()) as SessionDetailResponse;
 }
 
+/**
+ * Usuń ofertę z sesji (DELETE /sessions/{id}/offers/{offerId}).
+ * Ładunek wraca na listę dostępnych ofert w bibliotece plannera.
+ */
+export async function removeOfferFromSession(
+  sessionId: string,
+  offerId: string,
+): Promise<SessionDetailResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/sessions/${sessionId}/offers/${offerId}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    throw new Error(`Nie udało się usunąć oferty z sesji (${response.status})`);
+  }
+  return (await response.json()) as SessionDetailResponse;
+}
+
 export async function updateSessionStatus(
   sessionId: string,
   status: SessionDetailResponse["status"],

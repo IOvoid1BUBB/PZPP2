@@ -20,9 +20,11 @@ import {
 } from "@/lib/map/legColors";
 import type { RouteMapData, RouteStop } from "@/lib/types/routeMap";
 
-const TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+// CartoDB Positron — jasny minimalistyczny motyw pasujący do UI (#e6e7ef tło)
+const TILE_URL =
+  "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
 const TILE_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
