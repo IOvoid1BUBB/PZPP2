@@ -1,9 +1,9 @@
 """Shared route assembly for map + geometry endpoints.
 
-A single :func:`build_session_route` performs **one** ``get_route_multi`` OSRM
+A single :func:`build_session_route` performs **one** ``get_route_multi`` ORS
 call per request, computes load-aware fuel data, and splits the full geometry
 into per-leg ``LineString`` segments. Both :class:`RouteMapService` and
-:class:`RouteGeometryService` delegate here so the OSRM/fuel/split logic lives
+:class:`RouteGeometryService` delegate here so the ORS/fuel/split logic lives
 in exactly one place (DRY).
 """
 
@@ -16,7 +16,7 @@ from shapely.geometry import LineString
 from app.core.config import Settings
 from app.core.exceptions import ValidationAppError
 from app.lib.geo import lat_lon_from_geometry
-from app.lib.osrm import MultiStopRouteResult, OSRMClient
+from app.lib.routing import MultiStopRouteResult, RoutingProvider
 from app.models import ConsolidationSession, RouteStop
 from app.services.fuel_calculator import MultistopFuelResult, calculate_multi_stop_fuel
 from app.services.profit_calculator import split_route_into_leg_geometries
@@ -24,7 +24,7 @@ from app.services.profit_calculator import split_route_into_leg_geometries
 
 @dataclass(frozen=True)
 class SessionRouteBuild:
-    """Result of a single OSRM multi-stop build for a consolidation session."""
+    """Result of a single ORS multi-stop build for a consolidation session."""
 
     stops: list[RouteStop]
     waypoints_lat_lon: list[tuple[float, float]]
@@ -50,10 +50,10 @@ def _validate_and_order_stops(session: ConsolidationSession) -> list[RouteStop]:
 async def build_session_route(
     session: ConsolidationSession,
     *,
-    osrm: OSRMClient,
+    routing: RoutingProvider,
     settings: Settings,
 ) -> SessionRouteBuild:
-    """Build per-leg geometry + fuel data with a single OSRM call.
+    """Build per-leg geometry + fuel data with a single ORS call.
 
     Raises
     ------
@@ -69,8 +69,8 @@ async def build_session_route(
     for stop in stops:
         waypoints_lat_lon.append(lat_lon_from_geometry(stop.location))
 
-    # Exactly one OSRM request per session build (lightweight, multi-stop).
-    route = await osrm.get_route_multi(waypoints_lat_lon)
+    # Exactly one ORS request per session build (lightweight, multi-stop).
+    route = await routing.get_route_multi(waypoints_lat_lon)
 
     fuel_result = calculate_multi_stop_fuel(
         route.legs,
