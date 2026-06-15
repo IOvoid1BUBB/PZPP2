@@ -7,7 +7,11 @@ from datetime import UTC, date, datetime
 from sqlalchemy import select
 
 from app.models import ConsolidationSession
-from app.services.session_list_filters import apply_session_list_filters, calendar_day_bounds
+from app.services.session_list_filters import (
+    apply_session_list_filters,
+    calendar_day_bounds,
+    parse_session_list_date,
+)
 
 
 def test_calendar_day_bounds_utc() -> None:
@@ -70,3 +74,16 @@ def test_apply_session_list_filters_status_and_date() -> None:
     assert "consolidation_sessions.status" in compiled
     assert "consolidation_sessions.created_at" in compiled
     assert "dispatched" in compiled
+
+
+def test_parse_session_list_date_iso() -> None:
+    assert parse_session_list_date("2026-06-02", tz_name="UTC") == date(2026, 6, 2)
+
+
+def test_parse_session_list_date_today() -> None:
+    parsed = parse_session_list_date("today", tz_name="UTC")
+    assert parsed == datetime.now(UTC).date()
+
+
+def test_parse_session_list_date_none() -> None:
+    assert parse_session_list_date(None, tz_name="UTC") is None
