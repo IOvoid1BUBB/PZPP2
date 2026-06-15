@@ -8,6 +8,7 @@ import { MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/Card";
+import { DriverRouteBriefing } from "@/components/driver/DriverRouteBriefing";
 import {
   DEMO_ROUTE_MAP,
   fetchSessionRouteMap,
@@ -322,6 +323,12 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
           </Button>
         </div>
 
+        {!isDemoFallback ? (
+          <div className="border-b border-[var(--ui-border)] px-4 py-3">
+            <DriverRouteBriefing sessionId={sessionId} variant="compact" />
+          </div>
+        ) : null}
+
         {error ? (
           <p className="px-4 py-2 text-sm text-[var(--ui-error)]">{error}</p>
         ) : null}
@@ -340,9 +347,13 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
                 key={leg.legId}
                 positions={leg.geometryCoords}
                 pathOptions={{
-                  color: getLegColor(leg.weightKgAtLeg, maxWeightKg),
-                  weight: 3,
-                  opacity: 0.8,
+                  color: getLegColor(
+                    leg.weightKgAtLeg,
+                    maxWeightKg,
+                    leg.loadRatio,
+                  ),
+                  weight: 4,
+                  opacity: 0.85,
                 }}
               />
             ))}

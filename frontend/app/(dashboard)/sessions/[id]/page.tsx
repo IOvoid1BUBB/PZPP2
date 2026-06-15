@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/Card";
+import { DriverRouteBriefing } from "@/components/driver/DriverRouteBriefing";
 import { fetchSessionDetail, type SessionDetailResponse } from "@/lib/api/sessionClient";
 
 export default function SessionPage() {
@@ -104,6 +105,16 @@ export default function SessionPage() {
             <dd>{session.metrics.total_distance_km.toFixed(1)} km</dd>
           </div>
         </dl>
+      </Card>
+
+      <Card>
+        <CardTitle>Plan dla kierowcy</CardTitle>
+        <CardDescription>
+          Podsumowanie trasy z GPS, ETA i linkami do map — gotowe do wysłania.
+        </CardDescription>
+        <div className="mt-3">
+          <DriverRouteBriefing sessionId={session.id} variant="full" />
+        </div>
       </Card>
 
       <div className="flex flex-wrap gap-2">
