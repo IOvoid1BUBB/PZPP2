@@ -65,10 +65,10 @@ def generate_single_offer(
     pickup_hub = LOGISTICS_HUBS[pickup_hub_key]
     delivery_hub = LOGISTICS_HUBS[delivery_hub_key]
 
-    pickup_lon = pickup_hub[0] + random.gauss(0, 0.5)
-    pickup_lat = pickup_hub[1] + random.gauss(0, 0.4)
-    delivery_lon = delivery_hub[0] + random.gauss(0, 0.3)
-    delivery_lat = delivery_hub[1] + random.gauss(0, 0.25)
+    pickup_lon = pickup_hub[0] + random.gauss(0, 0.03)
+    pickup_lat = pickup_hub[1] + random.gauss(0, 0.02)
+    delivery_lon = delivery_hub[0] + random.gauss(0, 0.03)
+    delivery_lat = delivery_hub[1] + random.gauss(0, 0.02)
 
     window_open = base_time + timedelta(hours=random.uniform(0, 72))
     window_width = max(2.0, random.gauss(4.0, 1.5))
