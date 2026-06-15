@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     MAX_STOPS_PER_ROUTE: int = 12
     USE_SOLVER_MOCK: bool = False
     APP_TIMEZONE: str = "UTC"
+    EUR_TO_PLN: float = 4.32
 
     model_config = SettingsConfigDict(
         env_file=".env",
