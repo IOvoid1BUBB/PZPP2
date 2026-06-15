@@ -32,6 +32,7 @@ function makeBreakdown(
       maintenance: { distanceKm: 500, maintRate: 0.1 },
     },
     legs: [{ legId: 1, fuelConsumption: 200 }],
+    legCosts: [],
     offerRevenue: [{ offerId: "offer-1", revenueEur: 2000 }],
     fromApi: true,
     ...overrides,

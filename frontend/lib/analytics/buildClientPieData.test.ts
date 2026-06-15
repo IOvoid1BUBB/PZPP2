@@ -49,6 +49,7 @@ function makeBreakdown(
       maintenance: {},
     },
     legs: [],
+    legCosts: [],
     offerRevenue: [{ offerId: "offer-a", revenueEur: 1200 }],
     fromApi: true,
     ...overrides,

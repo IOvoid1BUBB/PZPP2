@@ -32,6 +32,13 @@ import {
   getWaterfallYDomain,
   type WaterfallBarRow,
 } from "@/lib/analytics/buildWaterfallData";
+import {
+  buildLegConsumptionData,
+  formatConsumption,
+  formatLoadRatio,
+  getLegConsumptionYDomain,
+  type LegConsumptionBarRow,
+} from "@/lib/analytics/buildLegConsumptionData";
 import { useClientSummary, useLoadStore } from "@/lib/stores/loadStore";
 
 export interface ProfitWaterfallProps {
@@ -168,6 +175,49 @@ function WaterfallBarShape(props: RectangleProps & { payload?: WaterfallBarRow }
   );
 }
 
+interface LegTooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload?: LegConsumptionBarRow }>;
+}
+
+function LegConsumptionTooltip({ active, payload }: LegTooltipProps) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const row = payload[0]?.payload;
+  if (!row) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-xs shadow-md">
+      <p className="font-semibold text-[var(--ui-text-primary)]">{row.label}</p>
+      <p className="mt-0.5 font-medium text-[var(--ui-text-primary)]">
+        {formatConsumption(row.consumptionL100km)}
+      </p>
+      <p className="mt-1 text-[var(--ui-text-secondary)]">
+        {formatLoadRatio(row.loadRatio)} · {row.distanceKm.toLocaleString("pl-PL")} km
+      </p>
+    </div>
+  );
+}
+
+function LegBarShape(
+  props: RectangleProps & { payload?: LegConsumptionBarRow },
+) {
+  const { payload, ...rectProps } = props;
+  return (
+    <g
+      data-testid="leg-consumption-bar"
+      data-bar-key={payload?.key}
+      data-fill={payload?.fill}
+    >
+      <Rectangle {...rectProps} fill={payload?.fill ?? rectProps.fill} />
+    </g>
+  );
+}
+
 function EmptyState() {
   return (
     <section
@@ -184,6 +234,7 @@ function EmptyState() {
 export function ProfitWaterfall({ data: dataOverride }: ProfitWaterfallProps = {}) {
   const hydrated = useClientHydrated();
   const isDark = useIsDarkMode();
+  const [perLegView, setPerLegView] = useState(false);
   const { slots, sessionId } = useLoadStore(
     useShallow((state) => ({ slots: state.slots, sessionId: state.sessionId })),
   );
@@ -203,6 +254,11 @@ export function ProfitWaterfall({ data: dataOverride }: ProfitWaterfallProps = {
     [data],
   );
 
+  const legRows = useMemo(
+    () => (data ? buildLegConsumptionData(data.legCosts) : []),
+    [data],
+  );
+
   const clientSlices = useMemo(
     () => buildClientPieData(clientSummary, slots, data, isDark),
     [clientSummary, slots, data, isDark],
@@ -212,11 +268,19 @@ export function ProfitWaterfall({ data: dataOverride }: ProfitWaterfallProps = {
     if (!data) {
       return { yMin: 0, yMax: 100 };
     }
+    if (perLegView) {
+      return getLegConsumptionYDomain(legRows);
+    }
     return getWaterfallYDomain(chartRows, data.revenueEur, data.netProfitEur);
-  }, [chartRows, data]);
+  }, [chartRows, data, legRows, perLegView]);
 
   const gridStroke = isDark ? "#263044" : "#e5e7eb";
   const tickFill = isDark ? "#94a3b8" : "#64748b";
+  const chartAnimation = {
+    isAnimationActive: true,
+    animationDuration: 400,
+    animationEasing: "ease-in-out" as const,
+  };
 
   if (!hydrated) {
     return (
@@ -256,41 +320,107 @@ export function ProfitWaterfall({ data: dataOverride }: ProfitWaterfallProps = {
 
   return (
     <section className="profit-waterfall" aria-label="Podsumowanie finansowe">
+      <header className="profit-waterfall__header">
+        <div>
+          <h2 className="profit-waterfall__title">Kalkulacja zysku</h2>
+          <p className="profit-waterfall__subtitle">
+            {perLegView
+              ? "Spalanie per odcinek (L/100km) — kolor = obciążenie"
+              : "Waterfall kosztów i zysku netto"}
+          </p>
+        </div>
+        <label className="profit-waterfall__toggle">
+          <span>Spalanie per odcinek</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={perLegView}
+            aria-label="Spalanie per odcinek"
+            onClick={() => setPerLegView((prev) => !prev)}
+            className={`profit-waterfall__switch ${
+              perLegView ? "profit-waterfall__switch--on" : ""
+            }`}
+          >
+            <span className="profit-waterfall__switch-thumb" />
+          </button>
+        </label>
+      </header>
+
       <div className="profit-waterfall__layout">
         <div className="profit-waterfall__chart">
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart
-              data={chartRows}
-              margin={{ top: 20, right: 8, left: 0, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
-              <XAxis
-                dataKey="label"
-                tick={{ fill: tickFill, fontSize: 11 }}
-                interval={0}
-                angle={-18}
-                textAnchor="end"
-                height={52}
-              />
-              <YAxis
-                domain={[yMin, yMax]}
-                tick={{ fill: tickFill, fontSize: 11 }}
-                width={48}
-              />
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: "transparent" }} />
-              <Bar
-                dataKey="range"
-                radius={[3, 3, 0, 0]}
-                isAnimationActive={false}
-                shape={WaterfallBarShape}
+          {perLegView && legRows.length === 0 ? (
+            <p className="profit-waterfall__empty-text profit-waterfall__empty-text--inline">
+              Brak danych odcinków — zoptymalizuj trasę, aby zobaczyć spalanie
+              per odcinek.
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart
+                data={perLegView ? legRows : chartRows}
+                margin={{ top: 20, right: 8, left: 0, bottom: 0 }}
               >
-                <LabelList content={<WaterfallBarLabel />} />
-                {chartRows.map((row) => (
-                  <Cell key={row.key} fill={row.fill} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke={gridStroke}
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: tickFill, fontSize: 11 }}
+                  interval={0}
+                  angle={perLegView ? 0 : -18}
+                  textAnchor={perLegView ? "middle" : "end"}
+                  height={perLegView ? 32 : 52}
+                />
+                <YAxis
+                  domain={[yMin, yMax]}
+                  tick={{ fill: tickFill, fontSize: 11 }}
+                  width={48}
+                  label={
+                    perLegView
+                      ? {
+                          value: "L/100km",
+                          angle: -90,
+                          position: "insideLeft",
+                          fill: tickFill,
+                          fontSize: 10,
+                        }
+                      : undefined
+                  }
+                />
+                <Tooltip
+                  content={
+                    perLegView ? <LegConsumptionTooltip /> : <CustomTooltip />
+                  }
+                  cursor={{ fill: "transparent" }}
+                />
+                {perLegView ? (
+                  <Bar
+                    dataKey="consumptionL100km"
+                    radius={[3, 3, 0, 0]}
+                    shape={LegBarShape}
+                    {...chartAnimation}
+                  >
+                    {legRows.map((row) => (
+                      <Cell key={row.key} fill={row.fill} />
+                    ))}
+                  </Bar>
+                ) : (
+                  <Bar
+                    dataKey="range"
+                    radius={[3, 3, 0, 0]}
+                    shape={WaterfallBarShape}
+                    {...chartAnimation}
+                  >
+                    <LabelList content={<WaterfallBarLabel />} />
+                    {chartRows.map((row) => (
+                      <Cell key={row.key} fill={row.fill} />
+                    ))}
+                  </Bar>
+                )}
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {clientSlices.length > 0 ? (

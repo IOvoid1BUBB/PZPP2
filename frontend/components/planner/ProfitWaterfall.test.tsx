@@ -1,25 +1,40 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import { getClientColorHex } from "@/components/planner/TrailerCanvas";
-import type { ProfitBreakdownData } from "@/lib/api/profitClient";
+import type { LegCostRow, ProfitBreakdownData } from "@/lib/api/profitClient";
+import { buildLegConsumptionData } from "@/lib/analytics/buildLegConsumptionData";
 import {
   buildWaterfallData,
   COLOR_COST,
   COLOR_PROFIT,
   formatEur,
 } from "@/lib/analytics/buildWaterfallData";
+import { getLegColorByRatio } from "@/lib/map/legColors";
 import { ProfitWaterfall } from "./ProfitWaterfall";
 
+let lastBarProps: Record<string, unknown> | null = null;
+
 vi.mock("recharts", async () => {
+  type WaterfallRow = {
+    key: string;
+    label: string;
+    displayValue: number;
+    fill: string;
+    formula?: string;
+  };
+
+  type LegRow = {
+    key: string;
+    label: string;
+    consumptionL100km: number;
+    fill: string;
+    loadRatio: number;
+  };
+
   type ChartProps = {
-    data?: Array<{
-      key: string;
-      label: string;
-      displayValue: number;
-      fill: string;
-      formula?: string;
-    }>;
+    data?: Array<WaterfallRow | LegRow>;
     children?: React.ReactNode;
   };
 
@@ -45,22 +60,39 @@ vi.mock("recharts", async () => {
     ),
     BarChart: ({ data = [], children }: ChartProps) => (
       <div data-testid="bar-chart">
-        {data.map((row) => (
-          <div
-            key={row.key}
-            data-testid="waterfall-bar"
-            data-bar-key={row.key}
-            data-fill={row.fill}
-          >
-            <span>{row.label}</span>
-            <span>
-              {row.displayValue < 0
-                ? formatEur(row.displayValue)
-                : formatEur(row.displayValue, true)}
-            </span>
-            {row.formula ? <span>{row.formula}</span> : null}
-          </div>
-        ))}
+        {data.map((row) => {
+          if ("consumptionL100km" in row) {
+            return (
+              <div
+                key={row.key}
+                data-testid="leg-consumption-bar"
+                data-bar-key={row.key}
+                data-fill={row.fill}
+                data-load-ratio={row.loadRatio}
+              >
+                <span>{row.label}</span>
+                <span>{row.consumptionL100km}</span>
+              </div>
+            );
+          }
+
+          return (
+            <div
+              key={row.key}
+              data-testid="waterfall-bar"
+              data-bar-key={row.key}
+              data-fill={row.fill}
+            >
+              <span>{row.label}</span>
+              <span>
+                {row.displayValue < 0
+                  ? formatEur(row.displayValue)
+                  : formatEur(row.displayValue, true)}
+              </span>
+              {row.formula ? <span>{row.formula}</span> : null}
+            </div>
+          );
+        })}
         {children}
       </div>
     ),
@@ -84,7 +116,10 @@ vi.mock("recharts", async () => {
         {children}
       </div>
     ),
-    Bar: passthrough(),
+    Bar: (props: Record<string, unknown> & { children?: React.ReactNode }) => {
+      lastBarProps = props;
+      return <div data-testid="bar-layer">{props.children}</div>;
+    },
     Cell: passthrough(),
     CartesianGrid: passthrough(),
     XAxis: passthrough(),
@@ -112,6 +147,23 @@ vi.mock("@/lib/stores/loadStore", () => ({
   useClientSummary: () => mockUseClientSummary(),
 }));
 
+function makeLegCost(
+  overrides: Partial<LegCostRow> = {},
+  legIndex = 0,
+): LegCostRow {
+  return {
+    legIndex,
+    distanceKm: 120,
+    durationMinutes: 75,
+    weightKgAtLeg: 8000,
+    loadRatio: 0.35,
+    consumptionL100km: 24.5,
+    liters: 29.4,
+    costEur: 58.8,
+    ...overrides,
+  };
+}
+
 function makeBreakdown(
   overrides: Partial<ProfitBreakdownData> = {},
 ): ProfitBreakdownData {
@@ -132,6 +184,7 @@ function makeBreakdown(
       maintenance: { distanceKm: 500, maintRate: 0.1 },
     },
     legs: [{ legId: 1, fuelConsumption: 200 }],
+    legCosts: [],
     offerRevenue: [{ offerId: "offer-1", revenueEur: 2000 }],
     fromApi: true,
     ...overrides,
@@ -177,6 +230,7 @@ function stubClientSummary(
 describe("ProfitWaterfall", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    lastBarProps = null;
     mockUseProfitBreakdown.mockReturnValue({
       data: null,
       loading: false,
@@ -327,5 +381,89 @@ describe("ProfitWaterfall", () => {
       .map((node) => node.getAttribute("data-bar-key"));
 
     expect(renderedKeys).toEqual(expectedKeys);
+  });
+
+  it("toggles per-leg view and renders one bar per leg_cost", async () => {
+    const user = userEvent.setup();
+    stubLoadStore({ "slot-a": { offerId: "offer-1" } });
+    const legCosts = [
+      makeLegCost({ legIndex: 0, consumptionL100km: 18.5, loadRatio: 0.1 }),
+      makeLegCost({ legIndex: 1, consumptionL100km: 31.2, loadRatio: 0.8 }),
+      makeLegCost({ legIndex: 2, consumptionL100km: 22.1, loadRatio: 0.45 }),
+    ];
+    const data = makeBreakdown({ stopCount: 2, legCosts });
+
+    render(<ProfitWaterfall data={data} />);
+
+    expect(screen.getAllByTestId("waterfall-bar")).toHaveLength(7);
+
+    const toggle = screen.getByRole("switch", { name: "Spalanie per odcinek" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    const legBars = screen.getAllByTestId("leg-consumption-bar");
+    expect(legBars).toHaveLength(legCosts.length);
+    expect(screen.getByText("Leg 1")).toBeInTheDocument();
+    expect(screen.getByText("Leg 3")).toBeInTheDocument();
+    expect(legBars[0]).toHaveAttribute(
+      "data-fill",
+      getLegColorByRatio(0.1),
+    );
+    expect(legBars[1]).toHaveAttribute(
+      "data-fill",
+      getLegColorByRatio(0.8),
+    );
+    expect(lastBarProps).toMatchObject({
+      dataKey: "consumptionL100km",
+      animationDuration: 400,
+      isAnimationActive: true,
+    });
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.getAllByTestId("waterfall-bar")).toHaveLength(7);
+    expect(lastBarProps).toMatchObject({
+      dataKey: "range",
+      animationDuration: 400,
+      isAnimationActive: true,
+    });
+  });
+
+  it("shows message instead of chart when per-leg view has no leg_costs", async () => {
+    const user = userEvent.setup();
+    stubLoadStore({ "slot-a": { offerId: "offer-1" } });
+    const data = makeBreakdown({ stopCount: 2, legCosts: [] });
+
+    render(<ProfitWaterfall data={data} />);
+
+    await user.click(screen.getByRole("switch", { name: "Spalanie per odcinek" }));
+
+    expect(
+      screen.getByText(/Brak danych odcinków — zoptymalizuj trasę/),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("bar-chart")).not.toBeInTheDocument();
+  });
+
+  it("maps leg_costs through buildLegConsumptionData for per-leg bars", async () => {
+    const user = userEvent.setup();
+    stubLoadStore({ "slot-a": { offerId: "offer-1" } });
+    const legCosts = [
+      makeLegCost({ legIndex: 0, consumptionL100km: 19.2, loadRatio: 0.2 }),
+      makeLegCost({ legIndex: 1, consumptionL100km: 27.8, loadRatio: 0.7 }),
+    ];
+    const data = makeBreakdown({ stopCount: 2, legCosts });
+
+    render(<ProfitWaterfall data={data} />);
+    await user.click(screen.getByRole("switch", { name: "Spalanie per odcinek" }));
+
+    const expected = buildLegConsumptionData(legCosts).map((row) => row.key);
+    const rendered = screen
+      .getAllByTestId("leg-consumption-bar")
+      .map((node) => node.getAttribute("data-bar-key"));
+
+    expect(rendered).toEqual(expected);
   });
 });

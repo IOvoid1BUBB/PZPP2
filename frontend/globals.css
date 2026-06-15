@@ -824,6 +824,68 @@ select {
   padding: 20px 16px 12px;
 }
 
+.profit-waterfall__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.profit-waterfall__title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ui-text-primary);
+}
+
+.profit-waterfall__subtitle {
+  margin: 2px 0 0;
+  font-size: 0.7rem;
+  color: var(--ui-text-secondary);
+}
+
+.profit-waterfall__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.7rem;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+
+.profit-waterfall__switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: var(--ui-border);
+  cursor: pointer;
+  transition: background-color 300ms ease;
+}
+
+.profit-waterfall__switch--on {
+  background: #534ab7;
+}
+
+.profit-waterfall__switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 12%);
+  transition: transform 300ms ease;
+}
+
+.profit-waterfall__switch--on .profit-waterfall__switch-thumb {
+  transform: translateX(20px);
+}
+
 .profit-waterfall__chart {
   min-height: 220px;
 }
@@ -921,6 +983,15 @@ select {
 
 .profit-waterfall__empty-text--error {
   color: var(--ui-error, #dc2626);
+}
+
+.profit-waterfall__empty-text--inline {
+  display: flex;
+  min-height: 220px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  text-align: center;
 }
 
 .profit-waterfall__column {
