@@ -87,4 +87,3 @@ async def run_solver_job(
                 "solver job failed",
                 extra={"event": "solver:job_failed", "session_id": str(session_id)},
             )
-            raise
