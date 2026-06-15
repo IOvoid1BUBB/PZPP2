@@ -46,15 +46,6 @@ async def get_optimization_status(
 async def trigger_optimization(
     session_id: UUID,
     payload: SolverRequest,
-) -> SolverResponse:
-    # NOTE: hands off to services.optimization in a follow-up task.
-    return SolverResponse(
-        session_id=session_id,
-        solver_run_id=uuid4(),
-        status="ok",
-        selected_offer_ids=payload.candidate_offer_ids,
-        is_optimal=True,
-    )
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
     settings: Settings = Depends(get_settings),
