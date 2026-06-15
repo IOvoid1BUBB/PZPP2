@@ -142,7 +142,7 @@ async def test_apply_offers_requires_origin() -> None:
 @pytest.mark.asyncio
 async def test_apply_offers_and_optimize_route_flow() -> None:
     """_apply_offers_and_optimize_route deletes, inserts, optimizes, recalculates."""
-    from app.lib.osrm import DistanceMatrix
+    from app.lib.routing import DistanceMatrix
 
     session_id = uuid4()
     offer_id = uuid4()
@@ -182,10 +182,10 @@ async def test_apply_offers_and_optimize_route_flow() -> None:
         durations_minutes=[[0, 60], [60, 0]],
         n=2,
     )
-    mock_osrm = AsyncMock()
-    mock_osrm.get_distance_matrix = AsyncMock(return_value=matrix)
+    mock_routing = AsyncMock()
+    mock_routing.get_distance_matrix = AsyncMock(return_value=matrix)
 
-    service = SessionService(mock_db, osrm=mock_osrm)
+    service = SessionService(mock_db, routing=mock_routing)
     service.get = AsyncMock(return_value=session)
     service._get_offers = AsyncMock(return_value=[offer])  # type: ignore[method-assign]
     service._recalculate_route_stops = AsyncMock()  # type: ignore[method-assign]
@@ -219,7 +219,7 @@ async def test_apply_offers_empty_offer_ids_returns_empty() -> None:
     mock_db.flush = AsyncMock()
     mock_db.execute = AsyncMock()
 
-    service = SessionService(mock_db, osrm=AsyncMock())
+    service = SessionService(mock_db, routing=AsyncMock())
     service.get = AsyncMock(return_value=session)
     service._get_offers = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
