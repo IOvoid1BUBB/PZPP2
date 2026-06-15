@@ -8,7 +8,7 @@ from uuid import UUID
 
 from app.core.config import Settings
 from app.core.database import get_sessionmaker
-from app.lib.osrm import get_osrm_client
+from app.lib.routing import get_routing_provider
 from app.schemas.solver import SolverRequest
 from app.services.solver_job import SolverJobStore
 from app.services.vrp_solver import VRPSolver
@@ -32,8 +32,8 @@ async def run_solver_job(
 
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as db:
-        osrm = get_osrm_client()
-        solver = VRPSolver(db, osrm=osrm, settings=settings)
+        routing = get_routing_provider()
+        solver = VRPSolver(db, routing=routing, settings=settings)
         try:
             if await SolverJobStore.is_cancel_requested(redis, session_id):  # type: ignore[arg-type]
                 result = await solver.cancel(session_id)
