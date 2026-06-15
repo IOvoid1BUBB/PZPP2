@@ -16,6 +16,14 @@ pytestmark = pytest.mark.integration
 
 def _make_route(waypoints: list[tuple[float, float]]) -> MultiStopRouteResult:
     n = max(len(waypoints) - 1, 1)
+    # Dense curved geometry (8 vertices per leg) so each split leg keeps >= 3 points.
+    points_per_leg = 8
+    coords: list[list[float]] = []
+    for leg_idx in range(n):
+        for k in range(points_per_leg):
+            t = leg_idx + k / points_per_leg
+            coords.append([20.0 + t * 0.5, 52.0 - t * 0.3])
+    coords.append([20.0 + n * 0.5, 52.0 - n * 0.3])
     return MultiStopRouteResult(
         total_distance_km=float(n * 100),
         total_duration_minutes=n * 60,
@@ -30,9 +38,7 @@ def _make_route(waypoints: list[tuple[float, float]]) -> MultiStopRouteResult:
         ],
         geometry_geojson={
             "type": "LineString",
-            "coordinates": [
-                [20.0 + i * 0.5, 52.0 - i * 0.3] for i in range(n + 1)
-            ],
+            "coordinates": coords,
         },
     )
 
@@ -89,7 +95,12 @@ async def test_route_map_returns_legs_and_stops(client: AsyncClient) -> None:
     assert len(body["legs"]) >= 1
     assert len(body["stops"]) >= 2
     assert body["legs"][0]["geometry_coords"]
+    # Real road geometry: each leg keeps >= 3 points (not a 2-point straight line).
+    assert len(body["legs"][0]["geometry_coords"]) >= 3
     assert body["legs"][0]["weight_kg_at_leg"] > 0
+    assert body["legs"][0]["distance_km"] > 0
+    assert 0 <= body["legs"][0]["load_ratio"] <= 1
+    assert body["total_distance_km"] > 0
     assert body["stops"][0]["address_label"]
 
 
