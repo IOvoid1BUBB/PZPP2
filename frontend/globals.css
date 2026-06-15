@@ -828,6 +828,82 @@ select {
   min-height: 220px;
 }
 
+.profit-waterfall__layout {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 1024px) {
+  .profit-waterfall__layout {
+    grid-template-columns: minmax(0, 1fr) 220px;
+    align-items: start;
+  }
+}
+
+.profit-waterfall__pie {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profit-waterfall__pie-title {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ui-text-secondary);
+}
+
+.profit-waterfall__pie-chart {
+  min-height: 180px;
+}
+
+.profit-waterfall__pie-legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.profit-waterfall__pie-legend-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.68rem;
+  color: var(--ui-text-secondary);
+}
+
+.profit-waterfall__pie-legend-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.profit-waterfall__pie-swatch {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 999px;
+}
+
+.profit-waterfall__pie-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profit-waterfall__pie-value {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--ui-text-primary);
+  text-align: right;
+}
+
 .profit-waterfall--empty {
   display: flex;
   min-height: 180px;
