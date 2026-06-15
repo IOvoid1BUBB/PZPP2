@@ -11,7 +11,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from app.lib.osrm import DistanceMatrix, MultiStopRouteResult, RouteLeg
+from app.lib.routing import DistanceMatrix, MultiStopRouteResult, RouteLeg
 
 pytestmark = pytest.mark.integration
 
@@ -44,22 +44,22 @@ def _make_matrix(locations: list[tuple[float, float]]) -> DistanceMatrix:
     return DistanceMatrix(distances_km=distances_km, durations_minutes=durations_minutes, n=n)
 
 
-def _install_osrm_mock() -> AsyncMock:
-    from app.lib.osrm import get_osrm_client
+def _install_routing_mock() -> AsyncMock:
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_route_multi = AsyncMock(side_effect=_make_route)
-    mock_osrm.get_distance_matrix = AsyncMock(side_effect=_make_matrix)
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
-    return mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    mock_routing.get_distance_matrix = AsyncMock(side_effect=_make_matrix)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
+    return mock_routing
 
 
-def _clear_osrm_mock() -> None:
-    from app.lib.osrm import get_osrm_client
+def _clear_routing_mock() -> None:
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    fastapi_app.dependency_overrides.pop(get_osrm_client, None)
+    fastapi_app.dependency_overrides.pop(get_routing_provider, None)
 
 
 async def _create_session(client: AsyncClient) -> UUID:
@@ -94,7 +94,7 @@ async def _ranked_offer_ids(client: AsyncClient, session_id: UUID, limit: int) -
 @pytest.mark.asyncio
 async def test_put_three_offers_six_stops_ordered(client: AsyncClient) -> None:
     """PUT 3 offer_ids creates 6 stops with pickup before delivery."""
-    _install_osrm_mock()
+    _install_routing_mock()
     try:
         session_id = await _create_session(client)
         offer_ids = await _ranked_offer_ids(client, session_id, 5)
@@ -117,13 +117,13 @@ async def test_put_three_offers_six_stops_ordered(client: AsyncClient) -> None:
         for orders in by_offer.values():
             assert orders["pickup"] < orders["delivery"]
     finally:
-        _clear_osrm_mock()
+        _clear_routing_mock()
 
 
 @pytest.mark.asyncio
 async def test_put_exceeds_ldm_returns_409_with_free_ldm(client: AsyncClient) -> None:
     """Total LDM over vehicle capacity returns 409 with free_ldm context."""
-    _install_osrm_mock()
+    _install_routing_mock()
     try:
         session_id = await _create_session(client)
         offer_ids = await _ranked_offer_ids(client, session_id, 20)
@@ -138,19 +138,19 @@ async def test_put_exceeds_ldm_returns_409_with_free_ldm(client: AsyncClient) ->
         assert body.get("error") == "insufficient_ldm"
         assert "free_ldm" in body
     finally:
-        _clear_osrm_mock()
+        _clear_routing_mock()
 
 
 @pytest.mark.asyncio
-async def test_put_rollback_on_osrm_failure(client: AsyncClient) -> None:
-    """OSRM failure during replace rolls back — no orphan route_stops."""
-    from app.lib.osrm import get_osrm_client
+async def test_put_rollback_on_routing_failure(client: AsyncClient) -> None:
+    """routing failure during replace rolls back — no orphan route_stops."""
+    from app.lib.routing import get_routing_provider
     from app.main import app as fastapi_app
 
-    mock_osrm = AsyncMock()
-    mock_osrm.get_distance_matrix = AsyncMock(side_effect=RuntimeError("OSRM down"))
-    mock_osrm.get_route_multi = AsyncMock(side_effect=RuntimeError("OSRM down"))
-    fastapi_app.dependency_overrides[get_osrm_client] = lambda: mock_osrm
+    mock_routing = AsyncMock()
+    mock_routing.get_distance_matrix = AsyncMock(side_effect=RuntimeError("routing down"))
+    mock_routing.get_route_multi = AsyncMock(side_effect=RuntimeError("routing down"))
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
 
     try:
         session_id = await _create_session(client)
@@ -166,13 +166,13 @@ async def test_put_rollback_on_osrm_failure(client: AsyncClient) -> None:
         assert session_resp.status_code == 200
         assert len(session_resp.json()["stops"]) == 0
     finally:
-        _clear_osrm_mock()
+        _clear_routing_mock()
 
 
 @pytest.mark.asyncio
 async def test_put_not_found_session(client: AsyncClient) -> None:
     """Unknown session returns 404."""
-    _install_osrm_mock()
+    _install_routing_mock()
     try:
         missing = "00000000-0000-0000-0000-000000000099"
         resp = await client.put(
@@ -181,13 +181,13 @@ async def test_put_not_found_session(client: AsyncClient) -> None:
         )
         assert resp.status_code == 404
     finally:
-        _clear_osrm_mock()
+        _clear_routing_mock()
 
 
 @pytest.mark.asyncio
 async def test_put_empty_offer_ids_returns_422(client: AsyncClient) -> None:
     """Empty offer_ids list is rejected with 422."""
-    _install_osrm_mock()
+    _install_routing_mock()
     try:
         session_id = await _create_session(client)
         resp = await client.put(
@@ -196,4 +196,4 @@ async def test_put_empty_offer_ids_returns_422(client: AsyncClient) -> None:
         )
         assert resp.status_code == 422
     finally:
-        _clear_osrm_mock()
+        _clear_routing_mock()
