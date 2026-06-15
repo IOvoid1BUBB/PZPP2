@@ -23,7 +23,7 @@ import { SquareMarker } from "@/components/loadmax/MapMarkers";
 import { TruckIllustration } from "@/components/loadmax/TruckIllustration";
 import { SegmentedToggle } from "@/components/loadmax/SegmentedToggle";
 import { useToast } from "@/components/ui/Toast";
-import { fetchDashboard, type DashboardSessionSummary } from "@/lib/api/dashboardClient";
+import { fetchDashboard, type ActiveSessionSummary } from "@/lib/api/dashboardClient";
 import {
   createSession,
   fetchDriverProfiles,
@@ -97,7 +97,7 @@ function VehiclesView({
   sessionsByVehicle,
 }: {
   vehicles: VehicleConfig[];
-  sessionsByVehicle: Map<string, DashboardSessionSummary>;
+  sessionsByVehicle: Map<string, ActiveSessionSummary>;
 }) {
   const router = useRouter();
   const { showToast } = useToast();
@@ -115,7 +115,7 @@ function VehiclesView({
       return;
     }
     let cancelled = false;
-    void fetchSessionDetail(matchedSession.id)
+    void fetchSessionDetail(matchedSession.session_id)
       .then((d) => {
         if (!cancelled) setDetail(d);
       })
@@ -367,7 +367,7 @@ function FleetPageInner() {
 
   const [vehicles, setVehicles] = useState<VehicleConfig[]>([]);
   const [drivers, setDrivers] = useState<DriverProfileRecord[]>([]);
-  const [recentSessions, setRecentSessions] = useState<DashboardSessionSummary[]>([]);
+  const [recentSessions, setRecentSessions] = useState<ActiveSessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -384,7 +384,7 @@ function FleetPageInner() {
         setDrivers(driverList);
         try {
           const dashboard = await fetchDashboard();
-          if (!cancelled) setRecentSessions(dashboard.recent_sessions);
+          if (!cancelled) setRecentSessions(dashboard.active_sessions);
         } catch {
           /* statystyki tras opcjonalne */
         }
@@ -403,7 +403,7 @@ function FleetPageInner() {
   }, []);
 
   const sessionsByVehicle = useMemo(() => {
-    const map = new Map<string, DashboardSessionSummary>();
+    const map = new Map<string, ActiveSessionSummary>();
     for (const session of recentSessions) {
       if (session.vehicle_name && !map.has(session.vehicle_name)) {
         map.set(session.vehicle_name, session);
