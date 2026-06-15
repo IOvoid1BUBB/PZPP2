@@ -13,6 +13,7 @@ async def test_dashboard_returns_kpis(client: AsyncClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert "today_net_profit_eur" in body
+    assert "today_net_profit_pln" in body
     assert "avg_lfill_pct" in body
     assert "empty_runs_pct" in body
     assert "active_sessions" in body
