@@ -83,7 +83,7 @@ function mockFetch(options: MockOptions = {}) {
   );
 }
 
-const writeText = vi.fn(() => Promise.resolve());
+const writeText = vi.fn<Clipboard["writeText"]>(() => Promise.resolve());
 
 beforeEach(() => {
   writeText.mockClear();
@@ -146,9 +146,8 @@ describe("DriverRouteBriefing", () => {
     });
 
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledOnce();
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("PLAN TRASY"));
     });
-    expect(writeText.mock.calls[0][0]).toContain("PLAN TRASY");
   });
 
   it("falls back to clipboard when Web Share API is unavailable", async () => {
