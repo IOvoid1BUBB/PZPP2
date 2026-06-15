@@ -34,7 +34,7 @@ def test_empty_state_when_no_conditions() -> None:
     alerts = build_dashboard_notifications([], market_offers_count=0, now=NOW)
     assert len(alerts) == 1
     assert alerts[0].id == "empty-state"
-    assert alerts[0].type == "info"
+    assert alerts[0].type == "free_space"
 
 
 def test_empty_session_notification() -> None:
@@ -45,7 +45,7 @@ def test_empty_session_notification() -> None:
     )
     assert any(alert.id == f"empty-{SESSION_A}" for alert in alerts)
     empty = next(alert for alert in alerts if alert.id == f"empty-{SESSION_A}")
-    assert empty.type == "info"
+    assert empty.type == "free_space"
     assert "Wolna przestrzeń" in empty.title
 
 
@@ -67,14 +67,14 @@ def test_time_window_risk_notification() -> None:
     )
     assert any(alert.id == f"time-window-{SESSION_A}" for alert in alerts)
     tw = next(alert for alert in alerts if alert.id == f"time-window-{SESSION_A}")
-    assert tw.type == "warning"
+    assert tw.type == "time_window_risk"
 
 
 def test_market_volume_notification() -> None:
     alerts = build_dashboard_notifications([], market_offers_count=42, now=NOW)
     assert any(alert.id == "market-volume" for alert in alerts)
     market = next(alert for alert in alerts if alert.id == "market-volume")
-    assert market.type == "opportunity"
+    assert market.type == "hot_offer"
     assert "42" in market.body
 
 
@@ -127,7 +127,7 @@ def test_confirmed_empty_does_not_trigger_empty_alert() -> None:
 def test_notification_model_fields() -> None:
     alert = DashboardNotification(
         id="test",
-        type="warning",
+        type="time_window_risk",
         title="Title",
         body="Body",
         link="Link",
