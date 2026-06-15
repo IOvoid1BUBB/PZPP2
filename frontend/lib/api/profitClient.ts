@@ -21,6 +21,17 @@ export interface LegFuelRow {
   fuelConsumption: number;
 }
 
+export interface LegCostRow {
+  legIndex: number;
+  distanceKm: number;
+  durationMinutes: number;
+  weightKgAtLeg: number;
+  loadRatio: number;
+  consumptionL100km: number;
+  liters: number;
+  costEur: number;
+}
+
 export interface OfferRevenueRow {
   offerId: string;
   revenueEur: number;
@@ -43,6 +54,7 @@ export interface ProfitBreakdownData {
     maintenance: CostFormulaMeta;
   };
   legs: LegFuelRow[];
+  legCosts: LegCostRow[];
   offerRevenue: OfferRevenueRow[];
   /** True when data comes from API; false for local demo fallback. */
   fromApi: boolean;
@@ -76,6 +88,16 @@ interface SessionProfitBreakdownApi {
     maintenance: CostFormulaApi;
   };
   legs: Array<{ leg_id: number; fuel_consumption: number }>;
+  leg_costs?: Array<{
+    leg_index: number;
+    distance_km: number;
+    duration_minutes: number;
+    weight_kg_at_leg: number;
+    load_ratio: number;
+    consumption_l100km: number;
+    liters: number;
+    cost_eur: number;
+  }>;
   offer_revenue: Array<{ offer_id: string; revenue_eur: number }>;
 }
 
@@ -112,6 +134,16 @@ export function mapProfitBreakdown(raw: SessionProfitBreakdownApi): ProfitBreakd
     legs: raw.legs.map((leg) => ({
       legId: leg.leg_id,
       fuelConsumption: leg.fuel_consumption,
+    })),
+    legCosts: (raw.leg_costs ?? []).map((leg) => ({
+      legIndex: leg.leg_index,
+      distanceKm: leg.distance_km,
+      durationMinutes: leg.duration_minutes,
+      weightKgAtLeg: leg.weight_kg_at_leg,
+      loadRatio: leg.load_ratio,
+      consumptionL100km: leg.consumption_l100km,
+      liters: leg.liters,
+      costEur: leg.cost_eur,
     })),
     offerRevenue: raw.offer_revenue.map((row) => ({
       offerId: row.offer_id,
