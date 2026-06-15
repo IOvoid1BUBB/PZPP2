@@ -10,6 +10,7 @@
  */
 
 import { normalizePayloadSlots } from "@/lib/load/capacity";
+import { toNumber, toOptionalNumber } from "@/lib/api/coerce";
 import type { VehicleConfig } from "@/lib/types/load";
 import type {
   OfferScore,
@@ -45,11 +46,11 @@ interface VehicleApiRecord {
   id: string;
   name: string;
   type: "master_l2" | "master_l3" | "master_l4" | "man_solo";
-  max_ldm: number;
+  max_ldm: number | string;
   max_weight_kg: number;
   trailer_length_cm: number;
   trailer_width_cm: number;
-  fuel_per_100km_base: number;
+  fuel_per_100km_base: number | string;
   max_stops: number;
   payload_slots: Record<string, unknown>;
 }
@@ -123,6 +124,17 @@ export interface SolverRunResult {
   current_offer_ids: string[];
 }
 
+export interface SolverStatusResponse {
+  status: string;
+  elapsed_ms: number;
+  best_objective: number | null;
+  result: SolverRunResult | null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class AddOfferError extends Error {
   readonly code: string;
   readonly freeLdm?: number;
@@ -143,16 +155,16 @@ export class AddOfferError extends Error {
 
 interface OfferScoreApiRecord {
   offer_id: string;
-  total_score: number;
-  revenue_density_score: number;
-  detour_penalty_score: number;
-  fill_contribution_score: number;
-  time_window_score: number;
-  added_km: number;
-  estimated_added_cost_eur: number;
-  ldm?: number;
-  weight_kg?: number;
-  price_eur?: number;
+  total_score: number | string;
+  revenue_density_score: number | string;
+  detour_penalty_score: number | string;
+  fill_contribution_score: number | string;
+  time_window_score: number | string;
+  added_km: number | string;
+  estimated_added_cost_eur: number | string;
+  ldm?: number | string;
+  weight_kg?: number | string;
+  price_eur?: number | string;
   stackable?: boolean;
   pickup_label?: string;
   delivery_label?: string;
@@ -178,13 +190,13 @@ interface AddOfferErrorBody {
 function mapOfferScore(raw: OfferScoreApiRecord): OfferScore {
   return {
     offer_id: raw.offer_id,
-    total_score: raw.total_score,
-    revenue_density_score: raw.revenue_density_score,
-    detour_penalty_score: raw.detour_penalty_score,
-    fill_contribution_score: raw.fill_contribution_score,
-    time_window_score: raw.time_window_score,
-    added_km: raw.added_km,
-    estimated_added_cost_eur: raw.estimated_added_cost_eur,
+    total_score: toNumber(raw.total_score),
+    revenue_density_score: toNumber(raw.revenue_density_score),
+    detour_penalty_score: toNumber(raw.detour_penalty_score),
+    fill_contribution_score: toNumber(raw.fill_contribution_score),
+    time_window_score: toNumber(raw.time_window_score),
+    added_km: toNumber(raw.added_km),
+    estimated_added_cost_eur: toNumber(raw.estimated_added_cost_eur),
   };
 }
 
@@ -192,13 +204,11 @@ export function enrichRankedOfferRow(
   score: OfferScore,
   raw?: Partial<OfferScoreApiRecord>,
 ): RankedOfferRow {
-  // Backend musi zwracać pełne pola (ldm, weight_kg, price_eur, stackable, labels).
-  // Jeśli brakuje pól — oferta jest niekompletna; zostawiamy undefined, UI pokaże "—".
   return {
     ...score,
-    ldm: raw?.ldm,
-    weight_kg: raw?.weight_kg,
-    price_eur: raw?.price_eur,
+    ldm: toOptionalNumber(raw?.ldm),
+    weight_kg: toOptionalNumber(raw?.weight_kg),
+    price_eur: toOptionalNumber(raw?.price_eur),
     stackable: raw?.stackable,
     pickup_label: raw?.pickup_label,
     delivery_label: raw?.delivery_label,
@@ -210,11 +220,11 @@ function mapVehicle(raw: VehicleApiRecord): VehicleConfig {
     id: raw.id,
     name: raw.name,
     type: raw.type,
-    maxLdm: raw.max_ldm,
+    maxLdm: toNumber(raw.max_ldm),
     maxWeightKg: raw.max_weight_kg,
     trailerLengthCm: raw.trailer_length_cm,
     trailerWidthCm: raw.trailer_width_cm,
-    fuelPer100kmBase: raw.fuel_per_100km_base,
+    fuelPer100kmBase: toNumber(raw.fuel_per_100km_base),
     maxStops: raw.max_stops,
     payloadSlots: normalizePayloadSlots(raw.payload_slots),
   };
@@ -339,7 +349,34 @@ export async function fetchSessionDetail(sessionId: string): Promise<SessionDeta
   if (!response.ok) {
     throw new Error(`Nie udało się pobrać sesji (${response.status})`);
   }
-  return (await response.json()) as SessionDetailResponse;
+  const raw = (await response.json()) as SessionDetailResponse & {
+    metrics: Record<string, unknown>;
+    offers: Array<Record<string, unknown>>;
+  };
+
+  return {
+    ...raw,
+    offers: raw.offers.map((offer) => ({
+      id: String(offer.id),
+      price_eur: toNumber(offer.price_eur),
+      ldm: toNumber(offer.ldm),
+      weight_kg: toNumber(offer.weight_kg),
+    })),
+    metrics: {
+      used_ldm: toNumber(raw.metrics.used_ldm),
+      fill_pct: toNumber(raw.metrics.fill_pct),
+      used_weight_kg: toNumber(raw.metrics.used_weight_kg),
+      weight_pct: toNumber(raw.metrics.weight_pct),
+      total_distance_km: toNumber(raw.metrics.total_distance_km),
+      estimated_net_profit_eur:
+        raw.metrics.estimated_net_profit_eur == null
+          ? null
+          : toNumber(raw.metrics.estimated_net_profit_eur),
+      stop_count: toNumber(raw.metrics.stop_count),
+      client_count: toNumber(raw.metrics.client_count),
+      stop_costs_eur: toNumber(raw.metrics.stop_costs_eur),
+    },
+  };
 }
 
 export async function simulateMarketOffers(
@@ -356,6 +393,18 @@ export async function simulateMarketOffers(
   return (await response.json()) as SimulateOffersResult;
 }
 
+export async function getSessionOptimizeStatus(
+  sessionId: string,
+): Promise<SolverStatusResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/sessions/${sessionId}/optimize/status`,
+  );
+  if (!response.ok) {
+    throw new Error(`Nie udało się odczytać statusu optymalizacji (${response.status})`);
+  }
+  return (await response.json()) as SolverStatusResponse;
+}
+
 export async function runSessionOptimize(
   sessionId: string,
   timeLimitSeconds = 10,
@@ -368,7 +417,30 @@ export async function runSessionOptimize(
   if (!response.ok) {
     throw new Error(`Optymalizacja nie powiodła się (${response.status})`);
   }
-  return (await response.json()) as SolverRunResult;
+
+  const started = (await response.json()) as SolverStatusResponse;
+  if (started.result) {
+    return started.result;
+  }
+
+  const deadline = Date.now() + (timeLimitSeconds + 30) * 1000;
+  while (Date.now() < deadline) {
+    await sleep(300);
+    const status = await getSessionOptimizeStatus(sessionId);
+    if (status.status === "RUNNING") {
+      continue;
+    }
+    if (status.result) {
+      return status.result;
+    }
+    throw new Error(
+      status.status === "UNKNOWN"
+        ? "Optymalizacja zakończona błędem (routing lub solver)."
+        : `Optymalizacja zakończona bez wyniku (status: ${status.status}).`,
+    );
+  }
+
+  throw new Error("Przekroczono czas oczekiwania na wynik optymalizacji.");
 }
 
 export async function cancelSessionOptimize(sessionId: string): Promise<SolverRunResult> {
