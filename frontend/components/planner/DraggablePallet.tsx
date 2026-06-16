@@ -79,7 +79,8 @@ export function DraggablePallet({
   return (
     <div
       ref={setRefs}
-      data-testid="slot"
+      data-testid="slot-occupied"
+      data-offer-id={pallet.offerId}
       draggable={isReadOnly ? false : undefined}
       {...attributes}
       {...restMenuProps}
