@@ -8,12 +8,15 @@ import { useToast } from "@/components/ui/Toast";
 import {
   cancelSessionOptimize,
   createSession,
+  fetchSessionDetail,
   replaceSessionOffers,
   runSessionOptimize,
   type SolverRunResult,
 } from "@/lib/api/sessionClient";
+import { buildCreateSessionParams } from "@/lib/fleet/resolveSessionOrigin";
 import { useLoadStore } from "@/lib/stores/loadStore";
 import { useSessionStore } from "@/lib/stores/sessionStore";
+import { useVehicleStore } from "@/lib/stores/vehicleStore";
 
 interface SolverPanelProps {
   sessionId: string | null;
@@ -22,33 +25,118 @@ interface SolverPanelProps {
   onOffersPlaced?: (offerIds: string[]) => void;
 }
 
-function formatElapsed(ms: number): string {
-  if (ms < 1000) {
-    return `${ms} ms`;
-  }
-  return `${(ms / 1000).toFixed(1)} s`;
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export function SolverPanel({ sessionId, vehicleId, onApplied, onOffersPlaced }: SolverPanelProps) {
+function shortOfferLabel(id: string): string {
+  return `#${id.slice(0, 8).toUpperCase()}`;
+}
+
+interface DiffColumnProps {
+  title: string;
+  ids: string[];
+  testId: string;
+  tone: "added" | "removed" | "unchanged";
+}
+
+const DIFF_TONE: Record<DiffColumnProps["tone"], string> = {
+  added: "text-green-700",
+  removed: "text-red-700 line-through",
+  unchanged: "text-ui-secondary opacity-60",
+};
+
+function DiffColumn({ title, ids, testId, tone }: DiffColumnProps) {
+  return (
+    <div
+      data-testid={testId}
+      data-count={ids.length}
+      className="min-w-0 flex-1 rounded-md border border-[var(--ui-border)] p-2"
+    >
+      <p className="mb-1.5 text-xs font-semibold text-ui-primary">
+        {title} ({ids.length})
+      </p>
+      <ul className="space-y-1">
+        {ids.length === 0 ? (
+          <li className="text-xs text-ui-muted">—</li>
+        ) : (
+          ids.map((id) => (
+            <li
+              key={id}
+              data-testid={`${testId}-row`}
+              data-offer-id={id}
+              className={`truncate font-mono text-xs ${DIFF_TONE[tone]}`}
+            >
+              {shortOfferLabel(id)}
+            </li>
+          ))
+        )}
+      </ul>
+    </div>
+  );
+}
+
+export function SolverPanel({
+  sessionId,
+  vehicleId,
+  onApplied,
+  onOffersPlaced,
+}: SolverPanelProps) {
   const { showToast } = useToast();
+  const sessionOrigin = useVehicleStore((state) => state.sessionOrigin);
+  const fleetVehicleId = useVehicleStore((state) => state.fleetVehicleId);
   const [running, setRunning] = useState(false);
   const [applying, setApplying] = useState(false);
-  const [elapsedMs, setElapsedMs] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [pendingResult, setPendingResult] = useState<SolverRunResult | null>(null);
   const [useFullMarket, setUseFullMarket] = useState(true);
   const [tempSessionId, setTempSessionId] = useState<string | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<string>("draft");
+  const [sessionOfferCount, setSessionOfferCount] = useState(0);
   const timerRef = useRef<number | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const setStoreSessionId = useSessionStore((state) => state.setSessionId);
 
   const activeSessionId = sessionId ?? tempSessionId;
 
+  // Track session status + offer count so we can disable optimisation once the
+  // route is confirmed/dispatched (UX-08: disabled when status !== 'draft').
+  useEffect(() => {
+    if (!sessionId) {
+      setSessionStatus("draft");
+      setSessionOfferCount(0);
+      return;
+    }
+    let cancelled = false;
+    void fetchSessionDetail(sessionId)
+      .then((detail) => {
+        if (cancelled) return;
+        setSessionStatus(detail.status);
+        setSessionOfferCount(detail.offers.length);
+      })
+      .catch(() => {
+        if (!cancelled) setSessionStatus("draft");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, pendingResult]);
+
+  const stopTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
-      if (timerRef.current !== null) {
-        window.clearInterval(timerRef.current);
-      }
+      stopTimer();
+      abortRef.current?.abort();
     };
-  }, []);
+  }, [stopTimer]);
 
   const diff = useMemo(() => {
     if (!pendingResult) {
@@ -58,7 +146,8 @@ export function SolverPanel({ sessionId, vehicleId, onApplied, onOffersPlaced }:
     const after = new Set(pendingResult.selected_offer_ids);
     const added = pendingResult.selected_offer_ids.filter((id) => !before.has(id));
     const removed = pendingResult.current_offer_ids.filter((id) => !after.has(id));
-    return { added, removed };
+    const unchanged = pendingResult.selected_offer_ids.filter((id) => before.has(id));
+    return { added, removed, unchanged };
   }, [pendingResult]);
 
   const statusBadge = useMemo(() => {
@@ -70,17 +159,27 @@ export function SolverPanel({ sessionId, vehicleId, onApplied, onOffersPlaced }:
     return { label: status, cls: "bg-gray-100 text-gray-700" };
   }, [pendingResult]);
 
+  const isReadOnlyStatus =
+    sessionStatus === "confirmed" || sessionStatus === "dispatched";
+  // Need at least 2 candidate offers — relaxed when pulling from the full market.
+  const tooFewOffers = !useFullMarket && Boolean(sessionId) && sessionOfferCount < 2;
+  const canOptimize = !isReadOnlyStatus && !tooFewOffers;
+
   const handleRun = useCallback(async () => {
     let workingSessionId = activeSessionId;
 
-    // Pre-session mode: create a temp session to run the solver
     if (!workingSessionId) {
       if (!vehicleId) {
         showToast({ type: "error", message: "Wybierz pojazd przed uruchomieniem solvera." });
         return;
       }
       try {
-        const session = await createSession({ vehicle_id: vehicleId });
+        const session = await createSession(
+          buildCreateSessionParams(vehicleId, {
+            origin: sessionOrigin ?? undefined,
+            fleetVehicleId: fleetVehicleId ?? undefined,
+          }),
+        );
         workingSessionId = session.id;
         setTempSessionId(session.id);
       } catch (err) {
@@ -92,16 +191,24 @@ export function SolverPanel({ sessionId, vehicleId, onApplied, onOffersPlaced }:
       }
     }
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setRunning(true);
-    setElapsedMs(0);
+    setElapsedSeconds(0);
     setPendingResult(null);
-    const startedAt = Date.now();
+    stopTimer();
     timerRef.current = window.setInterval(() => {
-      setElapsedMs(Date.now() - startedAt);
-    }, 100);
+      setElapsedSeconds((value) => value + 1);
+    }, 1000);
 
     try {
-      const next = await runSessionOptimize(workingSessionId, 10, useFullMarket);
+      const next = await runSessionOptimize(
+        workingSessionId,
+        10,
+        useFullMarket,
+        controller.signal,
+      );
       setPendingResult(next);
       if (next.solver_status === "INFEASIBLE") {
         showToast({
@@ -115,19 +222,33 @@ export function SolverPanel({ sessionId, vehicleId, onApplied, onOffersPlaced }:
         });
       }
     } catch (err) {
+      // Cancellation is not an error — stay in idle.
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return;
+      }
       showToast({
         type: "error",
-        message:
-          err instanceof Error ? err.message : "Optymalizacja nie powiodła się.",
+        message: err instanceof Error ? err.message : "Optymalizacja nie powiodła się.",
       });
     } finally {
-      if (timerRef.current !== null) {
-        window.clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      stopTimer();
+      abortRef.current = null;
       setRunning(false);
     }
-  }, [activeSessionId, vehicleId, showToast, useFullMarket]);
+  }, [activeSessionId, vehicleId, showToast, useFullMarket, stopTimer, sessionOrigin, fleetVehicleId]);
+
+  const handleCancel = useCallback(async () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    stopTimer();
+    setRunning(false);
+    setElapsedSeconds(0);
+    if (activeSessionId) {
+      // Best-effort server-side cancel (DELETE /optimize); ignore failures.
+      await cancelSessionOptimize(activeSessionId).catch(() => undefined);
+    }
+    showToast({ type: "info", message: "Optymalizacja anulowana." });
+  }, [activeSessionId, stopTimer, showToast]);
 
   const handleApply = useCallback(async () => {
     if (!activeSessionId || !pendingResult) {
@@ -147,15 +268,12 @@ export function SolverPanel({ sessionId, vehicleId, onApplied, onOffersPlaced }:
     setApplying(true);
     try {
       if (sessionId) {
-        // Existing session — use normal replace flow
         await replaceSessionOffers(activeSessionId, pendingResult.selected_offer_ids);
         await cancelSessionOptimize(activeSessionId);
         setPendingResult(null);
         showToast({ type: "success", message: "Propozycja solvera zastosowana." });
         onApplied?.();
       } else {
-        // Pre-session mode — apply solver results to canvas via offerIds
-        // Persist temp session id so user can proceed to "Utwórz trasę"
         setStoreSessionId(activeSessionId);
         useLoadStore.getState().setSessionId(activeSessionId);
         setPendingResult(null);
@@ -166,8 +284,7 @@ export function SolverPanel({ sessionId, vehicleId, onApplied, onOffersPlaced }:
     } catch (err) {
       showToast({
         type: "error",
-        message:
-          err instanceof Error ? err.message : "Nie udało się zastosować propozycji.",
+        message: err instanceof Error ? err.message : "Nie udało się zastosować propozycji.",
       });
     } finally {
       setApplying(false);
@@ -190,7 +307,7 @@ export function SolverPanel({ sessionId, vehicleId, onApplied, onOffersPlaced }:
     pendingResult.selected_offer_ids.length > 0;
 
   return (
-    <Card className="grid gap-3 p-4">
+    <Card className="grid gap-3 p-4" data-testid="solver-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <CardTitle>Solver VRP</CardTitle>
@@ -209,48 +326,96 @@ export function SolverPanel({ sessionId, vehicleId, onApplied, onOffersPlaced }:
             />
             Użyj pełnej giełdy
           </label>
-          <Button
-            variant="primary"
-            disabled={running || applying || Boolean(pendingResult)}
-            onClick={() => void handleRun()}
-          >
-            {running ? (
-              <span className="flex items-center gap-2">
-                <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                {`Optymalizacja… ${formatElapsed(elapsedMs)}`}
+          {running ? (
+            <div className="flex items-center gap-2">
+              <span
+                className="font-mono text-sm tabular-nums text-ui-secondary"
+                aria-live="polite"
+                data-testid="solver-timer"
+              >
+                {formatElapsed(elapsedSeconds)}
               </span>
-            ) : (
-              "Optymalizuj trasę"
-            )}
-          </Button>
+              <Button
+                variant="secondary"
+                data-testid="solver-cancel-btn"
+                onClick={() => void handleCancel()}
+              >
+                Anuluj
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="primary"
+              data-testid="solver-optimize-btn"
+              disabled={applying || Boolean(pendingResult) || !canOptimize}
+              onClick={() => void handleRun()}
+              title={
+                isReadOnlyStatus
+                  ? "Trasa jest zatwierdzona — optymalizacja zablokowana."
+                  : tooFewOffers
+                    ? "Dodaj co najmniej 2 oferty lub włącz pełną giełdę."
+                    : undefined
+              }
+            >
+              Optymalizuj załadunek
+            </Button>
+          )}
         </div>
       </div>
 
+      {!canOptimize && !running && !pendingResult ? (
+        <p className="text-xs text-ui-muted">
+          {isReadOnlyStatus
+            ? "Trasa jest zatwierdzona — solver jest dostępny tylko dla wersji roboczej."
+            : "Dodaj co najmniej 2 oferty do sesji lub włącz „Użyj pełnej giełdy”, aby uruchomić solver."}
+        </p>
+      ) : null}
+
       {pendingResult && diff && statusBadge ? (
         <div className="grid gap-2 rounded-md border border-[var(--ui-border)] p-3 text-sm">
-          <p className="font-semibold text-ui-primary">Propozycja solvera</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-semibold text-ui-primary">Propozycja solvera</p>
+            {!pendingResult.is_optimal ? (
+              <span
+                data-testid="solver-approx-badge"
+                className="rounded-full border border-amber-400 bg-amber-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900"
+                title="Wynik może nie być globalnie optymalny"
+              >
+                PRZYBLIŻONY
+              </span>
+            ) : null}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded px-2 py-0.5 text-xs font-semibold ${statusBadge.cls}`}>
               {statusBadge.label}
             </span>
             <span className="text-ui-muted">
-              czas: {formatElapsed(pendingResult.solve_time_ms)} · cel:{" "}
+              czas: {(pendingResult.solve_time_ms / 1000).toFixed(1)} s · cel:{" "}
               {pendingResult.objective_value.toFixed(2)} EUR
             </span>
           </div>
-          <p>
-            Wybrane oferty: {pendingResult.selected_offer_ids.length} · dodane:{" "}
-            {diff.added.length} · usunięte: {diff.removed.length}
-          </p>
-          {pendingResult.stop_sequence && pendingResult.stop_sequence.length > 0 ? (
-            <p className="text-xs text-ui-muted">
-              Przystanki w propozycji: {pendingResult.stop_sequence.length}
-            </p>
-          ) : pendingResult.selected_offer_ids.length > 0 ? (
-            <p className="text-xs text-ui-muted">
-              Szacowane przystanki: {pendingResult.selected_offer_ids.length * 2} (O/Z)
-            </p>
-          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <DiffColumn
+              title="Dodane"
+              ids={diff.added}
+              testId="diff-added"
+              tone="added"
+            />
+            <DiffColumn
+              title="Usunięte"
+              ids={diff.removed}
+              testId="diff-removed"
+              tone="removed"
+            />
+            <DiffColumn
+              title="Bez zmian"
+              ids={diff.unchanged}
+              testId="diff-unchanged"
+              tone="unchanged"
+            />
+          </div>
+
           {pendingResult.solver_status === "INFEASIBLE" && !useFullMarket && (
             <p className="text-xs text-ui-muted">
               💡 Wskazówka: włącz &ldquo;Użyj pełnej giełdy&rdquo; aby rozszerzyć pulę kandydatów.
@@ -258,11 +423,21 @@ export function SolverPanel({ sessionId, vehicleId, onApplied, onOffersPlaced }:
           )}
           <div className="flex flex-wrap gap-2">
             {canApply ? (
-              <Button variant="primary" disabled={applying} onClick={() => void handleApply()}>
-                {applying ? "Stosowanie…" : "Zastosuj propozycję"}
+              <Button
+                variant="primary"
+                data-testid="solver-apply-btn"
+                disabled={applying}
+                onClick={() => void handleApply()}
+              >
+                {applying ? "Stosowanie…" : "Zastosuj sugestię"}
               </Button>
             ) : null}
-            <Button variant="secondary" onClick={handleReject}>
+            <Button
+              variant="secondary"
+              data-testid="solver-reject-btn"
+              disabled={applying}
+              onClick={handleReject}
+            >
               Odrzuć
             </Button>
           </div>
