@@ -3,7 +3,12 @@
  * geometry_coords and weight_kg_at_leg come from the backend (ORS + fuel_calculator).
  */
 
-import type { RouteMapData, RouteStop, StopType } from "@/lib/types/routeMap";
+import type {
+  DriverRestType,
+  RouteMapData,
+  RouteStop,
+  StopType,
+} from "@/lib/types/routeMap";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
@@ -15,10 +20,20 @@ interface GeoPointApi {
 interface RouteMapLegApi {
   leg_id: number;
   weight_kg_at_leg: number;
+  ldm_at_leg?: number;
   geometry_coords: number[][];
   distance_km?: number;
   duration_minutes?: number;
   load_ratio?: number;
+}
+
+interface DriverRestPointApi {
+  lat: number;
+  lon: number;
+  rest_type: DriverRestType;
+  after_driving_minutes: number;
+  leg_id: number;
+  at_route_minute: number;
 }
 
 interface RouteMapStopApi {
@@ -39,6 +54,7 @@ interface RouteMapResponseApi {
   origin: GeoPointApi;
   legs: RouteMapLegApi[];
   stops: RouteMapStopApi[];
+  rest_points?: DriverRestPointApi[];
   vehicle_max_weight_kg: number;
   total_distance_km?: number;
   total_duration_minutes?: number;
@@ -89,6 +105,7 @@ export function mapRouteMapResponse(raw: RouteMapResponseApi): RouteMapData {
     legs: raw.legs.map((leg) => ({
       legId: leg.leg_id,
       weightKgAtLeg: leg.weight_kg_at_leg,
+      ldmAtLeg: leg.ldm_at_leg ?? 0,
       geometryCoords: leg.geometry_coords.map(
         (pair) => [pair[0], pair[1]] as [number, number],
       ),
@@ -97,6 +114,14 @@ export function mapRouteMapResponse(raw: RouteMapResponseApi): RouteMapData {
       loadRatio: leg.load_ratio ?? 0,
     })),
     stops,
+    restPoints: (raw.rest_points ?? []).map((rp) => ({
+      lat: rp.lat,
+      lon: rp.lon,
+      restType: rp.rest_type,
+      afterDrivingMinutes: rp.after_driving_minutes,
+      legId: rp.leg_id,
+      atRouteMinute: rp.at_route_minute,
+    })),
     vehicleMaxWeightKg: raw.vehicle_max_weight_kg,
     totalDistanceKm: raw.total_distance_km ?? 0,
     totalDurationMinutes: raw.total_duration_minutes ?? 0,

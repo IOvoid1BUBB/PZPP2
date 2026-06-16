@@ -8,12 +8,26 @@ export interface GeoPoint {
 export interface RouteMapLeg {
   legId: number;
   weightKgAtLeg: number;
+  /** Loading-meters used on this leg (LDM), from backend packing model */
+  ldmAtLeg: number;
   /** Leaflet Polyline positions: [lat, lon][] */
   geometryCoords: [number, number][];
   distanceKm: number;
   durationMinutes: number;
-  /** cargo weight on leg / vehicle max weight (0..1), from backend fuel model */
+  /** max(weight / max_weight, ldm / max_ldm) on this leg (0..1), from backend */
   loadRatio: number;
+}
+
+export type DriverRestType = "break_45" | "rest_11h";
+
+/** Mandatory driver rest stop (EU 561/2006) projected onto the route geometry. */
+export interface DriverRestPoint {
+  lat: number;
+  lon: number;
+  restType: DriverRestType;
+  afterDrivingMinutes: number;
+  legId: number;
+  atRouteMinute: number;
 }
 
 export interface RouteStop {
@@ -36,6 +50,8 @@ export interface RouteMapData {
   origin: GeoPoint;
   legs: RouteMapLeg[];
   stops: RouteStop[];
+  /** Mandatory driver breaks/overnights along the route (may be empty). */
+  restPoints: DriverRestPoint[];
   vehicleMaxWeightKg: number;
   totalDistanceKm: number;
   totalDurationMinutes: number;
