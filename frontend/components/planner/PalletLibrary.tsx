@@ -7,12 +7,17 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { PackageSearch } from "lucide-react";
 import { List, type RowComponentProps } from "react-window";
 
 import { useToast } from "@/components/ui/Toast";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { OfferLibrarySkeleton } from "@/components/ui/OfferRowSkeleton";
 import {
   AddOfferError,
   addOfferToSession,
@@ -116,6 +121,7 @@ export function OfferRow({
 
   return (
     <article
+      data-testid="offer-row"
       className={[
         "offer-card",
         "offer-card--library",
@@ -184,6 +190,9 @@ export function OfferRow({
 interface DraggableOfferRowProps extends OfferRowProps {
   offer: RankedOfferRow;
   isReadOnly?: boolean;
+  /** Roving tabindex index for keyboard navigation (FEAT-08). */
+  optionIndex?: number;
+  optionTabIndex?: number;
 }
 
 function DraggableOfferRow({
@@ -193,6 +202,8 @@ function DraggableOfferRow({
   isLoaded,
   onAddClick,
   isReadOnly = false,
+  optionIndex,
+  optionTabIndex,
 }: DraggableOfferRowProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `library-${offer.offer_id}`,
@@ -204,11 +215,23 @@ function DraggableOfferRow({
     disabled: isLoading || isLoaded || isReadOnly,
   });
 
+  const a11yProps =
+    optionIndex != null
+      ? {
+          role: "option" as const,
+          "aria-selected": false,
+          "aria-disabled": isLoaded || isLoading || undefined,
+          tabIndex: optionTabIndex,
+          "data-row-index": optionIndex,
+        }
+      : {};
+
   return (
     <div
       ref={setNodeRef}
       {...attributes}
       {...listeners}
+      {...a11yProps}
       style={{ ...style, touchAction: "none", opacity: isDragging ? 0.5 : 1 }}
     >
       <OfferRow
@@ -312,6 +335,8 @@ export function PalletLibrary({
   const [refreshToken, setRefreshToken] = useState(0);
   const [loadingOfferId, setLoadingOfferId] = useState<string | null>(null);
   const [localLoadedIds, setLocalLoadedIds] = useState<Set<string>>(new Set());
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
   /** true = ranked session mode; false = raw market mode */
   const isRankedMode = Boolean(sessionId);
 
@@ -520,7 +545,55 @@ export function PalletLibrary({
     }
   }, [sessionId, showToast]);
 
-  const renderRow = (offer: RankedOfferRow) => (
+  // FEAT-08: keyboard navigation with roving tabindex over the offer list.
+  useEffect(() => {
+    if (focusedIndex > filteredOffers.length - 1) {
+      setFocusedIndex(Math.max(0, filteredOffers.length - 1));
+    }
+  }, [filteredOffers.length, focusedIndex]);
+
+  useEffect(() => {
+    // Only move DOM focus when the list already owns focus (avoid stealing it).
+    const container = listRef.current;
+    if (!container || !container.contains(document.activeElement)) {
+      return;
+    }
+    const target = container.querySelector<HTMLElement>(
+      `[data-row-index="${focusedIndex}"]`,
+    );
+    target?.focus();
+    target?.scrollIntoView({ block: "nearest" });
+  }, [focusedIndex]);
+
+  const handleListKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (filteredOffers.length === 0) return;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setFocusedIndex((i) => Math.min(i + 1, filteredOffers.length - 1));
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setFocusedIndex((i) => Math.max(i - 1, 0));
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        setFocusedIndex(0);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        setFocusedIndex(filteredOffers.length - 1);
+      } else if (event.key === "Enter") {
+        // Stop the Enter from bubbling to any parent form.
+        event.preventDefault();
+        event.stopPropagation();
+        const offer = filteredOffers[focusedIndex];
+        if (offer && !loadedOfferIds.has(offer.offer_id) && !isReadOnly) {
+          void addOffer(offer.offer_id);
+        }
+      }
+    },
+    [addOffer, filteredOffers, focusedIndex, isReadOnly, loadedOfferIds],
+  );
+
+  const renderRow = (offer: RankedOfferRow, index: number) => (
     <DraggableOfferRow
       key={offer.offer_id}
       offer={offer}
@@ -528,6 +601,8 @@ export function PalletLibrary({
       isLoaded={loadedOfferIds.has(offer.offer_id)}
       onAddClick={() => void addOffer(offer.offer_id)}
       isReadOnly={isReadOnly}
+      optionIndex={index}
+      optionTabIndex={index === focusedIndex ? 0 : -1}
     />
   );
 
@@ -595,14 +670,46 @@ export function PalletLibrary({
         </label>
       </div>
 
-      {loading ? (
+      {loading && offers.length === 0 ? (
+        <OfferLibrarySkeleton count={6} />
+      ) : loading ? (
         <p className="pallet-library__status">Wczytywanie ofert…</p>
       ) : fetchError ? (
         <p className="pallet-library__status pallet-library__status--error" role="alert">
           {fetchError}
         </p>
       ) : filteredOffers.length === 0 ? (
-        <p className="pallet-library__status">Brak ofert dla wybranych filtrów.</p>
+        offers.length === 0 ? (
+          <EmptyState
+            icon={PackageSearch}
+            title={
+              isRankedMode
+                ? "Brak ofert w tej sesji"
+                : "Brak ofert spełniających kryteria"
+            }
+            description={
+              isRankedMode
+                ? "Wygeneruj nowe oferty rynkowe albo poluzuj filtry, aby zobaczyć ładunki."
+                : "Zmień filtry lub wygeneruj nowe oferty, aby rozpocząć planowanie."
+            }
+            action={
+              <button
+                type="button"
+                className="button bg-ui-surface hover:bg-gray/20"
+                disabled={simulating || isReadOnly}
+                onClick={() => void handleSimulate()}
+              >
+                {simulating ? "Generowanie…" : "Wygeneruj oferty"}
+              </button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={PackageSearch}
+            title="Brak ofert dla wybranych filtrów."
+            description="Zmień próg score lub wyłącz filtr „tylko stackowalne”."
+          />
+        )
       ) : filteredOffers.length > VIRTUAL_THRESHOLD ? (
         <List
           data-testid="pallet-library-virtual-list"
@@ -619,8 +726,15 @@ export function PalletLibrary({
           className="pallet-library__list"
         />
       ) : (
-        <div className="pallet-library__rows">
-          {filteredOffers.map((offer) => renderRow(offer))}
+        <div
+          ref={listRef}
+          className="pallet-library__rows"
+          role="listbox"
+          aria-label="Lista ofert"
+          aria-orientation="vertical"
+          onKeyDown={handleListKeyDown}
+        >
+          {filteredOffers.map((offer, index) => renderRow(offer, index))}
         </div>
       )}
     </aside>
