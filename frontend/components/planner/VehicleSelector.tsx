@@ -24,8 +24,13 @@ import {
   type KeyboardEvent,
 } from "react";
 
-import { resetDemoLayout } from "@/lib/api/plannerClient";
-import { fetchVehicles, createSession } from "@/lib/api/sessionClient";
+import { fetchSessionLayout } from "@/lib/api/plannerClient";
+import {
+  createSession,
+  fetchDriverProfiles,
+  fetchVehicles,
+  type DriverProfileRecord,
+} from "@/lib/api/sessionClient";
 import { useClientHydrated } from "@/hooks/useClientHydrated";
 import type { VehicleConfig } from "@/lib/types/load";
 import { useVehicleStore } from "@/lib/stores/vehicleStore";
@@ -140,6 +145,8 @@ export function VehicleSelector() {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [driverProfiles, setDriverProfiles] = useState<DriverProfileRecord[]>([]);
+  const [selectedDriverProfileId, setSelectedDriverProfileId] = useState<string>("");
 
   /** Roving tabindex — indeks aktywnej karty w obrębie radiogroup */
   const [rovingIndex, setRovingIndex] = useState(0);
@@ -157,8 +164,20 @@ export function VehicleSelector() {
       })
       .catch(() => {
         if (!cancelled) {
-          setError("Nie udało się pobrać listy pojazdów.");
+          setError("Failed to fetch vehicles.");
         }
+      });
+
+    fetchDriverProfiles()
+      .then((profiles) => {
+        if (cancelled) return;
+        setDriverProfiles(profiles);
+        if (profiles.length > 0) {
+          setSelectedDriverProfileId(profiles[0].id);
+        }
+      })
+      .catch(() => {
+        /* driver profile list optional for vehicle cards */
       });
 
     return () => {
@@ -189,21 +208,21 @@ export function VehicleSelector() {
         clearAllSlots();
 
         // 3. Utwórz nową sesję konsolidacji
-        const session = await createSession({ vehicle_id: vehicle.id });
+        const session = await createSession({
+          vehicle_id: vehicle.id,
+          driver_profile_id: selectedDriverProfileId || undefined,
+        });
         setSessionId(session.id);
 
-        // 4. Pobierz demo paletki dla wybranego pojazdu i nadpisz layout
-        //    (sloty + vehicle atomicznie). Failure tutaj jest miękki — sesja
-        //    została utworzona, więc zostawiamy pustą naczepę.
         try {
-          const demo = await resetDemoLayout(vehicle.type);
+          const layout = await fetchSessionLayout(session.id);
           setLayout({
-            sessionId: demo.sessionId,
-            vehicle: demo.vehicle,
-            slots: demo.slots,
+            sessionId: session.id,
+            vehicle: layout.vehicle,
+            slots: layout.slots,
           });
         } catch {
-          /* pusty layout — użytkownik dograj ręcznie */
+          /* pusty layout — użytkownik dogra ręcznie */
         }
       } catch {
         setError("Nie udało się zainicjować sesji. Spróbuj ponownie.");
@@ -211,7 +230,7 @@ export function VehicleSelector() {
         setLoading(false);
       }
     },
-    [vehicleMap, selectVehicle, clearAllSlots, setLayout, setSessionId],
+    [vehicleMap, selectVehicle, clearAllSlots, setLayout, setSessionId, selectedDriverProfileId],
   );
 
   // ── Roving tabindex keyboard navigation ────────────────────────────────────
@@ -253,6 +272,26 @@ export function VehicleSelector() {
   return (
     <section className="vehicle-selector" aria-label="Wybór pojazdu">
       <h2 className="vehicle-selector__heading">Wybierz pojazd</h2>
+
+      {driverProfiles.length > 0 ? (
+        <label className="mb-4 block text-sm">
+          <span className="mb-1 block text-[var(--ui-text-secondary)]">
+            Profil kierowcy
+          </span>
+          <select
+            className="w-full max-w-md rounded-md border border-[var(--ui-border)] bg-[var(--ui-bg)] px-3 py-2"
+            value={selectedDriverProfileId}
+            onChange={(event) => setSelectedDriverProfileId(event.target.value)}
+            disabled={loading}
+          >
+            {driverProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.name} ({profile.code})
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
 
       {error && (
         <p className="vehicle-selector__error" role="alert">

@@ -8,6 +8,9 @@ import { useLoadStore } from "@/lib/stores/loadStore";
 export interface SessionStore {
   sessionId: string | null;
   setSessionId: (id: string | null) => void;
+  status: string;
+  setStatus: (status: string) => void;
+  isReadOnly: boolean;
 }
 
 export const useSessionStore = create<SessionStore>((set) => ({
@@ -16,10 +19,13 @@ export const useSessionStore = create<SessionStore>((set) => ({
     useLoadStore.getState().setSessionId(id);
     set({ sessionId: id });
   },
+  status: "draft",
+  setStatus: (status) => set({ status }),
+  isReadOnly: false,
 }));
 
 useLoadStore.subscribe((state, previousState) => {
   if (state.sessionId !== previousState.sessionId) {
-    useSessionStore.setState({ sessionId: state.sessionId });
+    useSessionStore.setState({ sessionId: state.sessionId, status: "draft", isReadOnly: false });
   }
 });

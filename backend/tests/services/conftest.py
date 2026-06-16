@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from app.lib.osrm import RouteLeg
+from app.lib.routing import RouteLeg
 
 FUEL_PRICE_EUR_PER_LITER = 1.75
 WEIGHT_FUEL_FACTOR = 0.30

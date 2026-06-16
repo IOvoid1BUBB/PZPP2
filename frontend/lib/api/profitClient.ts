@@ -3,6 +3,8 @@
  * Maps snake_case backend response → camelCase for React components.
  */
 
+import { toNumber, toOptionalNumber } from "@/lib/api/coerce";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 export interface CostFormulaMeta {
@@ -19,6 +21,17 @@ export interface CostFormulaMeta {
 export interface LegFuelRow {
   legId: number;
   fuelConsumption: number;
+}
+
+export interface LegCostRow {
+  legIndex: number;
+  distanceKm: number;
+  durationMinutes: number;
+  weightKgAtLeg: number;
+  loadRatio: number;
+  consumptionL100km: number;
+  liters: number;
+  costEur: number;
 }
 
 export interface OfferRevenueRow {
@@ -43,6 +56,7 @@ export interface ProfitBreakdownData {
     maintenance: CostFormulaMeta;
   };
   legs: LegFuelRow[];
+  legCosts: LegCostRow[];
   offerRevenue: OfferRevenueRow[];
   /** True when data comes from API; false for local demo fallback. */
   fromApi: boolean;
@@ -76,32 +90,42 @@ interface SessionProfitBreakdownApi {
     maintenance: CostFormulaApi;
   };
   legs: Array<{ leg_id: number; fuel_consumption: number }>;
+  leg_costs?: Array<{
+    leg_index: number;
+    distance_km: number;
+    duration_minutes: number;
+    weight_kg_at_leg: number;
+    load_ratio: number;
+    consumption_l100km: number;
+    liters: number;
+    cost_eur: number;
+  }>;
   offer_revenue: Array<{ offer_id: string; revenue_eur: number }>;
 }
 
 function mapFormula(raw: CostFormulaApi): CostFormulaMeta {
   return {
-    litersTotal: raw.liters_total ?? undefined,
-    fuelPrice: raw.fuel_price ?? undefined,
-    distanceKm: raw.distance_km ?? undefined,
-    stopCount: raw.stop_count ?? undefined,
-    perStopCost: raw.per_stop_cost ?? undefined,
-    daysOnRoad: raw.days_on_road ?? undefined,
-    dailyAllowance: raw.daily_allowance ?? undefined,
-    maintRate: raw.maint_rate ?? undefined,
+    litersTotal: toOptionalNumber(raw.liters_total),
+    fuelPrice: toOptionalNumber(raw.fuel_price),
+    distanceKm: toOptionalNumber(raw.distance_km),
+    stopCount: toOptionalNumber(raw.stop_count),
+    perStopCost: toOptionalNumber(raw.per_stop_cost),
+    daysOnRoad: toOptionalNumber(raw.days_on_road),
+    dailyAllowance: toOptionalNumber(raw.daily_allowance),
+    maintRate: toOptionalNumber(raw.maint_rate),
   };
 }
 
 export function mapProfitBreakdown(raw: SessionProfitBreakdownApi): ProfitBreakdownData {
   return {
-    revenueEur: raw.revenue_eur,
-    fuelEur: raw.fuel_eur,
-    tollEur: raw.toll_eur,
-    stopCostsEur: raw.stop_costs_eur,
-    driverEur: raw.driver_eur,
-    maintenanceEur: raw.maintenance_eur,
-    netProfitEur: raw.net_profit_eur,
-    stopCount: raw.stop_count,
+    revenueEur: toNumber(raw.revenue_eur),
+    fuelEur: toNumber(raw.fuel_eur),
+    tollEur: toNumber(raw.toll_eur),
+    stopCostsEur: toNumber(raw.stop_costs_eur),
+    driverEur: toNumber(raw.driver_eur),
+    maintenanceEur: toNumber(raw.maintenance_eur),
+    netProfitEur: toNumber(raw.net_profit_eur),
+    stopCount: toNumber(raw.stop_count),
     formulas: {
       fuel: mapFormula(raw.formulas.fuel),
       toll: mapFormula(raw.formulas.toll),
@@ -111,11 +135,21 @@ export function mapProfitBreakdown(raw: SessionProfitBreakdownApi): ProfitBreakd
     },
     legs: raw.legs.map((leg) => ({
       legId: leg.leg_id,
-      fuelConsumption: leg.fuel_consumption,
+      fuelConsumption: toNumber(leg.fuel_consumption),
+    })),
+    legCosts: (raw.leg_costs ?? []).map((leg) => ({
+      legIndex: leg.leg_index,
+      distanceKm: leg.distance_km,
+      durationMinutes: leg.duration_minutes,
+      weightKgAtLeg: leg.weight_kg_at_leg,
+      loadRatio: leg.load_ratio,
+      consumptionL100km: leg.consumption_l100km,
+      liters: leg.liters,
+      costEur: leg.cost_eur,
     })),
     offerRevenue: raw.offer_revenue.map((row) => ({
       offerId: row.offer_id,
-      revenueEur: row.revenue_eur,
+      revenueEur: toNumber(row.revenue_eur),
     })),
     fromApi: true,
   };
@@ -139,13 +173,13 @@ export async function fetchSessionProfit(
   sessionId: string,
 ): Promise<ProfitBreakdownData> {
   const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/profit`, {
-    method: "POST",
+    method: "GET",
   });
 
   if (!response.ok) {
     throw new ProfitFetchError(
       response.status,
-      `Nie udało się pobrać kalkulacji zysku (${response.status})`,
+      `Failed to fetch profit breakdown (${response.status})`,
     );
   }
 
@@ -203,25 +237,3 @@ export function resolveLegRows(data: ProfitBreakdownData): LegFuelRow[] {
 
   return rows;
 }
-
-/** Demo fallback when session has no route stops yet (planning-lab layout only). */
-export const DEMO_PROFIT_BREAKDOWN: ProfitBreakdownData = {
-  revenueEur: 1260,
-  fuelEur: 380,
-  tollEur: 210,
-  stopCostsEur: 90,
-  driverEur: 150,
-  maintenanceEur: 45,
-  netProfitEur: 385,
-  stopCount: 3,
-  formulas: {
-    fuel: { litersTotal: 95.0, fuelPrice: 4.0 },
-    toll: { distanceKm: 420 },
-    stops: { stopCount: 3, perStopCost: 30 },
-    driver: { daysOnRoad: 2, dailyAllowance: 75 },
-    maintenance: { distanceKm: 420, maintRate: 0.12 },
-  },
-  legs: [],
-  offerRevenue: [],
-  fromApi: false,
-};

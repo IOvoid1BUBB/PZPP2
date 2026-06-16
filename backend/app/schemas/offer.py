@@ -69,7 +69,7 @@ class OfferRead(BaseModel):
 
 
 class OfferScore(BaseModel):
-    """Deterministic multi-criteria score for a market offer."""
+    """Deterministic multi-criteria score for a market offer — includes key offer fields."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -81,12 +81,13 @@ class OfferScore(BaseModel):
     time_window_score: float
     added_km: float
     estimated_added_cost_eur: float
-    pickup_label: str | None = None
-    delivery_label: str | None = None
-    ldm: float | None = None
-    weight_kg: int | None = None
-    price_eur: float | None = None
-    stackable: bool | None = None
+    # Pola oferty — wypełniane przez scorer aby frontend nie potrzebował hash-fallbacków
+    ldm: Decimal = Field(default=Decimal("0"))
+    weight_kg: int = Field(default=0)
+    price_eur: Decimal = Field(default=Decimal("0"))
+    stackable: bool = Field(default=True)
+    pickup_label: str = Field(default="")
+    delivery_label: str = Field(default="")
 
 
 class RankedOffersResponse(BaseModel):

@@ -25,7 +25,14 @@ LOGISTICS_HUBS: dict[str, tuple[float, float]] = {
     "hamburg": (9.99, 53.55),
 }
 
-_LDM_CHOICES: tuple[float, ...] = (0.5, 1.0, 1.5, 2.0, 2.4, 3.0, 4.0, 6.0, 8.0, 13.6)
+# ---------------------------------------------------------------------------
+# ADR: LDM jako wielokrotności 1 palety EUR (1 paleta = 1 slot = 0.4 LDM)
+# Dozwolone wartości: k × 0.4 dla k = 1..34 → max 13.6 LDM (pełna naczepa mega).
+# Gwarantuje, że każda oferta = całkowita liczba palet bez ułamkowych konfliktów.
+# ---------------------------------------------------------------------------
+PALLET_LDM = 0.4
+_LDM_CHOICES: tuple[float, ...] = tuple(round(k * PALLET_LDM, 1) for k in range(1, 11))
+# → (0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.2, 3.6, 4.0)
 _HANDLING_CHOICES: tuple[int, ...] = (15, 30, 45, 60)
 _HANDLING_WEIGHTS: tuple[float, ...] = (0.2, 0.5, 0.2, 0.1)
 
@@ -60,10 +67,10 @@ def generate_single_offer(
     pickup_hub = LOGISTICS_HUBS[pickup_hub_key]
     delivery_hub = LOGISTICS_HUBS[delivery_hub_key]
 
-    pickup_lon = pickup_hub[0] + random.gauss(0, 0.5)
-    pickup_lat = pickup_hub[1] + random.gauss(0, 0.4)
-    delivery_lon = delivery_hub[0] + random.gauss(0, 0.3)
-    delivery_lat = delivery_hub[1] + random.gauss(0, 0.25)
+    pickup_lon = pickup_hub[0] + random.gauss(0, 0.03)
+    pickup_lat = pickup_hub[1] + random.gauss(0, 0.02)
+    delivery_lon = delivery_hub[0] + random.gauss(0, 0.03)
+    delivery_lat = delivery_hub[1] + random.gauss(0, 0.02)
 
     window_open = base_time + timedelta(hours=random.uniform(0, 72))
     window_width = max(2.0, random.gauss(4.0, 1.5))

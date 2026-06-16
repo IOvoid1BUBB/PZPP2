@@ -1,34 +1,474 @@
-const WATERFALL = [
-  { label: "Przychód", value: 1260, type: "positive" as const },
-  { label: "Koszt paliwa", value: -380, type: "negative" as const },
-  { label: "Myto", value: -210, type: "negative" as const },
-  { label: "Koszty stopu", value: -90, type: "negative" as const },
-  { label: "Koszt kierowcy", value: -150, type: "negative" as const },
-  { label: "Zysk", value: 430, type: "profit" as const },
-];
+"use client";
 
-const MAX = 1260;
+import { useEffect, useMemo, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  LabelList,
+  Pie,
+  PieChart,
+  Rectangle,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  type RectangleProps,
+} from "recharts";
+import { useShallow } from "zustand/shallow";
 
-export function ProfitWaterfall() {
+import { useClientHydrated } from "@/hooks/useClientHydrated";
+import { useProfitBreakdown } from "@/hooks/useProfitBreakdown";
+import type { ProfitBreakdownData } from "@/lib/api/profitClient";
+import {
+  buildClientPieData,
+  formatPieTooltipValue,
+  type ClientPieSlice,
+} from "@/lib/analytics/buildClientPieData";
+import {
+  buildWaterfallData,
+  formatEur,
+  getWaterfallYDomain,
+  type WaterfallBarRow,
+} from "@/lib/analytics/buildWaterfallData";
+import {
+  buildLegConsumptionData,
+  formatConsumption,
+  formatLoadRatio,
+  getLegConsumptionYDomain,
+  type LegConsumptionBarRow,
+} from "@/lib/analytics/buildLegConsumptionData";
+import { useClientSummary, useLoadStore } from "@/lib/stores/loadStore";
+
+export interface ProfitWaterfallProps {
+  /** Optional override for tests or storybook; skips live API fetch. */
+  data?: ProfitBreakdownData;
+}
+
+function countLoadedOffers(
+  slots: Record<string, { offerId: string } | null>,
+): number {
+  const ids = new Set<string>();
+  for (const pallet of Object.values(slots)) {
+    if (pallet) {
+      ids.add(pallet.offerId);
+    }
+  }
+  return ids.size;
+}
+
+function useIsDarkMode(): boolean {
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const sync = () => setIsDark(root.classList.contains("dark"));
+    sync();
+
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  return isDark;
+}
+
+interface TooltipPayloadItem {
+  payload?: WaterfallBarRow;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayloadItem[];
+}
+
+function CustomTooltip({ active, payload }: CustomTooltipProps) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const row = payload[0]?.payload;
+  if (!row) {
+    return null;
+  }
+
+  const signed =
+    row.barKind === "profit" || (row.barKind === "revenue" && row.displayValue > 0);
+
+  return (
+    <div className="rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-xs shadow-md">
+      <p className="font-semibold text-[var(--ui-text-primary)]">{row.label}</p>
+      <p className="mt-0.5 font-medium text-[var(--ui-text-primary)]">
+        {formatEur(row.displayValue, signed)}
+      </p>
+      {row.formula ? (
+        <p className="mt-1 font-mono text-[10px] text-[var(--ui-text-secondary)]">
+          {row.formula}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+interface PieTooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload?: ClientPieSlice }>;
+}
+
+function PieTooltip({ active, payload }: PieTooltipProps) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const slice = payload[0]?.payload;
+  if (!slice) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-xs shadow-md">
+      <p className="font-semibold text-[var(--ui-text-primary)]">{slice.name}</p>
+      <p className="mt-0.5 text-[var(--ui-text-secondary)]">
+        {formatPieTooltipValue(slice)}
+      </p>
+    </div>
+  );
+}
+
+function WaterfallBarLabel(props: {
+  x?: number;
+  y?: number;
+  width?: number;
+  payload?: WaterfallBarRow;
+}) {
+  const { x = 0, y = 0, width = 0, payload } = props;
+  if (!payload) {
+    return null;
+  }
+
+  const text =
+    payload.barKind === "cost"
+      ? formatEur(payload.displayValue)
+      : formatEur(payload.displayValue, true);
+
+  return (
+    <text
+      x={x + width / 2}
+      y={y - 6}
+      fill="currentColor"
+      className="fill-[var(--ui-text-primary)]"
+      textAnchor="middle"
+      fontSize={10}
+    >
+      {text}
+    </text>
+  );
+}
+
+function WaterfallBarShape(props: RectangleProps & { payload?: WaterfallBarRow }) {
+  const { payload, ...rectProps } = props;
+  return (
+    <g data-testid="waterfall-bar" data-bar-key={payload?.key}>
+      <Rectangle {...rectProps} fill={payload?.fill ?? rectProps.fill} />
+    </g>
+  );
+}
+
+interface LegTooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload?: LegConsumptionBarRow }>;
+}
+
+function LegConsumptionTooltip({ active, payload }: LegTooltipProps) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  const row = payload[0]?.payload;
+  if (!row) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] px-3 py-2 text-xs shadow-md">
+      <p className="font-semibold text-[var(--ui-text-primary)]">{row.label}</p>
+      <p className="mt-0.5 font-medium text-[var(--ui-text-primary)]">
+        {formatConsumption(row.consumptionL100km)}
+      </p>
+      <p className="mt-1 text-[var(--ui-text-secondary)]">
+        {formatLoadRatio(row.loadRatio)} · {row.distanceKm.toLocaleString("pl-PL")} km
+      </p>
+    </div>
+  );
+}
+
+function LegBarShape(
+  props: RectangleProps & { payload?: LegConsumptionBarRow },
+) {
+  const { payload, ...rectProps } = props;
+  return (
+    <g
+      data-testid="leg-consumption-bar"
+      data-bar-key={payload?.key}
+      data-fill={payload?.fill}
+    >
+      <Rectangle {...rectProps} fill={payload?.fill ?? rectProps.fill} />
+    </g>
+  );
+}
+
+function EmptyState() {
+  return (
+    <section
+      className="profit-waterfall profit-waterfall--empty"
+      aria-label="Brak danych kalkulacji"
+    >
+      <p className="profit-waterfall__empty-text">
+        Add loads to see calculations
+      </p>
+    </section>
+  );
+}
+
+export function ProfitWaterfall({ data: dataOverride }: ProfitWaterfallProps = {}) {
+  const hydrated = useClientHydrated();
+  const isDark = useIsDarkMode();
+  const [perLegView, setPerLegView] = useState(false);
+  const { slots, sessionId } = useLoadStore(
+    useShallow((state) => ({ slots: state.slots, sessionId: state.sessionId })),
+  );
+  const clientSummary = useClientSummary();
+
+  const {
+    data: sessionData,
+    loading,
+    error,
+  } = useProfitBreakdown(dataOverride ? null : sessionId);
+
+  const data = dataOverride ?? sessionData;
+  const offerCount = useMemo(() => countLoadedOffers(slots), [slots]);
+
+  const chartRows = useMemo(
+    () => (data ? buildWaterfallData(data) : []),
+    [data],
+  );
+
+  const legRows = useMemo(
+    () => (data ? buildLegConsumptionData(data.legCosts) : []),
+    [data],
+  );
+
+  const clientSlices = useMemo(
+    () => buildClientPieData(clientSummary, slots, data ?? undefined, isDark),
+    [clientSummary, slots, data, isDark],
+  );
+
+  const { yMin, yMax } = useMemo(() => {
+    if (!data) {
+      return { yMin: 0, yMax: 100 };
+    }
+    if (perLegView) {
+      return getLegConsumptionYDomain(legRows);
+    }
+    return getWaterfallYDomain(chartRows, data.revenueEur, data.netProfitEur);
+  }, [chartRows, data, legRows, perLegView]);
+
+  const gridStroke = isDark ? "#263044" : "#e5e7eb";
+  const tickFill = isDark ? "#94a3b8" : "#64748b";
+  const chartAnimation = {
+    isAnimationActive: true,
+    animationDuration: 400,
+    animationEasing: "ease-in-out" as const,
+  };
+
+  if (!hydrated) {
+    return (
+      <section className="profit-waterfall" aria-hidden>
+        <p className="profit-waterfall__empty-text">Wczytywanie…</p>
+      </section>
+    );
+  }
+
+  if (offerCount === 0) {
+    return <EmptyState />;
+  }
+
+  if (loading) {
+    return (
+      <section className="profit-waterfall" aria-label="Wczytywanie kalkulacji">
+        <p className="profit-waterfall__empty-text">Wczytywanie kalkulacji…</p>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return (
+      <section className="profit-waterfall profit-waterfall--empty" aria-label="Brak danych">
+        {error ? (
+          <p className="profit-waterfall__empty-text profit-waterfall__empty-text--error">
+            {error}
+          </p>
+        ) : (
+          <p className="profit-waterfall__empty-text">
+            Zoptymalizuj trasę, aby zobaczyć kalkulację zysku.
+          </p>
+        )}
+      </section>
+    );
+  }
+
   return (
     <section className="profit-waterfall" aria-label="Podsumowanie finansowe">
-      <div className="profit-waterfall__chart">
-        {WATERFALL.map((item) => {
-          const height = `${Math.max(8, (Math.abs(item.value) / MAX) * 100)}%`;
-          return (
-            <div key={item.label} className="profit-waterfall__column">
-              <div
-                className={`profit-waterfall__bar profit-waterfall__bar--${item.type}`}
-                style={{ height }}
-              />
-              <span className="profit-waterfall__value">
-                {item.value > 0 ? "+" : ""}
-                {item.value} EUR
-              </span>
-              <span className="profit-waterfall__label">{item.label}</span>
+      <header className="profit-waterfall__header">
+        <div>
+          <h2 className="profit-waterfall__title">Kalkulacja zysku</h2>
+          <p className="profit-waterfall__subtitle">
+            {perLegView
+              ? "Spalanie per odcinek (L/100km) — kolor = obciążenie"
+              : "Waterfall kosztów i zysku netto"}
+          </p>
+        </div>
+        <label className="profit-waterfall__toggle">
+          <span>Spalanie per odcinek</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={perLegView}
+            aria-label="Spalanie per odcinek"
+            onClick={() => setPerLegView((prev) => !prev)}
+            className={`profit-waterfall__switch ${
+              perLegView ? "profit-waterfall__switch--on" : ""
+            }`}
+          >
+            <span className="profit-waterfall__switch-thumb" />
+          </button>
+        </label>
+      </header>
+
+      <div className="profit-waterfall__layout">
+        <div className="profit-waterfall__chart">
+          {perLegView && legRows.length === 0 ? (
+            <p className="profit-waterfall__empty-text profit-waterfall__empty-text--inline">
+              Brak danych odcinków — zoptymalizuj trasę, aby zobaczyć spalanie
+              per odcinek.
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart
+                data={(perLegView ? legRows : chartRows) as unknown as Record<string, unknown>[]}
+                margin={{ top: 20, right: 8, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke={gridStroke}
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: tickFill, fontSize: 11 }}
+                  interval={0}
+                  angle={perLegView ? 0 : -18}
+                  textAnchor={perLegView ? "middle" : "end"}
+                  height={perLegView ? 32 : 52}
+                />
+                <YAxis
+                  domain={[yMin, yMax]}
+                  tick={{ fill: tickFill, fontSize: 11 }}
+                  width={48}
+                  label={
+                    perLegView
+                      ? {
+                          value: "L/100km",
+                          angle: -90,
+                          position: "insideLeft",
+                          fill: tickFill,
+                          fontSize: 10,
+                        }
+                      : undefined
+                  }
+                />
+                <Tooltip
+                  content={
+                    perLegView ? <LegConsumptionTooltip /> : <CustomTooltip />
+                  }
+                  cursor={{ fill: "transparent" }}
+                />
+                {perLegView ? (
+                  <Bar
+                    dataKey="consumptionL100km"
+                    radius={[3, 3, 0, 0]}
+                    shape={LegBarShape}
+                    {...chartAnimation}
+                  >
+                    {legRows.map((row) => (
+                      <Cell key={row.key} fill={row.fill} />
+                    ))}
+                  </Bar>
+                ) : (
+                  <Bar
+                    dataKey="range"
+                    radius={[3, 3, 0, 0]}
+                    shape={WaterfallBarShape}
+                    {...chartAnimation}
+                  >
+                    <LabelList content={<WaterfallBarLabel />} />
+                    {chartRows.map((row) => (
+                      <Cell key={row.key} fill={row.fill} />
+                    ))}
+                  </Bar>
+                )}
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {clientSlices.length > 0 ? (
+          <aside className="profit-waterfall__pie" aria-label="Udział klientów w ładunku">
+            <h3 className="profit-waterfall__pie-title">Udział klientów</h3>
+            <div className="profit-waterfall__pie-chart">
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={clientSlices}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={40}
+                    outerRadius={68}
+                    paddingAngle={2}
+                    isAnimationActive={false}
+                  >
+                    {clientSlices.map((slice) => (
+                      <Cell key={slice.clientId} fill={slice.fill} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<PieTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-          );
-        })}
+            <ul className="profit-waterfall__pie-legend">
+              {clientSlices.map((slice) => (
+                <li key={slice.clientId} className="profit-waterfall__pie-legend-item">
+                  <span className="profit-waterfall__pie-legend-label">
+                    <span
+                      className="profit-waterfall__pie-swatch"
+                      style={{ backgroundColor: slice.fill }}
+                      aria-hidden
+                    />
+                    <span className="profit-waterfall__pie-name">{slice.name}</span>
+                  </span>
+                  <span className="profit-waterfall__pie-value">
+                    {slice.valueSource === "revenue"
+                      ? formatEur(slice.value)
+                      : formatPieTooltipValue(slice)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        ) : null}
       </div>
     </section>
   );

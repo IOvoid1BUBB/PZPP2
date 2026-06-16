@@ -135,3 +135,82 @@ export async function moveDemoToFirstFree(
     layout: normalizeLayout(body.layout),
   };
 }
+
+// ─── Session-scoped layout API ───────────────────────────────────────────────
+
+export async function fetchSessionLayout(sessionId: string): Promise<PlannerLayoutState> {
+  const response = await fetch(`${API_BASE}/api/v1/planner/sessions/${sessionId}/layout`);
+  if (!response.ok) {
+    throw new Error(`Failed to load session layout (${response.status})`);
+  }
+  return normalizeLayout(await response.json());
+}
+
+export async function saveSessionLayout(
+  sessionId: string,
+  slots: Record<string, PalletData | null>,
+): Promise<PlannerLayoutState> {
+  const response = await fetch(`${API_BASE}/api/v1/planner/sessions/${sessionId}/layout`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slots }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to save session layout (${response.status})`);
+  }
+  return normalizeLayout(await response.json());
+}
+
+export async function moveSessionPallet(
+  sessionId: string,
+  fromSlot: string,
+  toSlot: string,
+): Promise<{ ok: boolean; layout: PlannerLayoutState; message?: string }> {
+  const params = new URLSearchParams({ fromSlot, toSlot });
+  const response = await fetch(
+    `${API_BASE}/api/v1/planner/sessions/${sessionId}/layout/move?${params}`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to move pallet (${response.status})`);
+  }
+  const body = await response.json();
+  return {
+    ok: body.ok,
+    message: body.message,
+    layout: normalizeLayout(body.layout),
+  };
+}
+
+export async function removeSessionSlot(
+  sessionId: string,
+  slotId: string,
+): Promise<PlannerLayoutState> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/planner/sessions/${sessionId}/layout/slots/${slotId}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to remove slot (${response.status})`);
+  }
+  return normalizeLayout(await response.json());
+}
+
+export async function moveSessionToFirstFree(
+  sessionId: string,
+  slotId: string,
+): Promise<{ ok: boolean; layout: PlannerLayoutState; message?: string }> {
+  const response = await fetch(
+    `${API_BASE}/api/v1/planner/sessions/${sessionId}/layout/slots/${slotId}/move-to-first-free`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to move to first free slot (${response.status})`);
+  }
+  const body = await response.json();
+  return {
+    ok: body.ok,
+    message: body.message,
+    layout: normalizeLayout(body.layout),
+  };
+}

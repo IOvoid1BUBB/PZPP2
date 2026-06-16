@@ -3,6 +3,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -16,6 +17,7 @@ import {
   AddOfferError,
   addOfferToSession,
   fetchRankedOffers,
+  simulateMarketOffers,
   type SessionFullResponse,
 } from "@/lib/api/sessionClient";
 import { getCompanyColorPair } from "@/lib/colors/companyColors";
@@ -180,6 +182,7 @@ export function OfferRow({
 
 interface DraggableOfferRowProps extends OfferRowProps {
   offer: RankedOfferRow;
+  isReadOnly?: boolean;
 }
 
 function DraggableOfferRow({
@@ -188,6 +191,7 @@ function DraggableOfferRow({
   isLoading,
   isLoaded,
   onAddClick,
+  isReadOnly = false,
 }: DraggableOfferRowProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `library-${offer.offer_id}`,
@@ -196,7 +200,7 @@ function DraggableOfferRow({
       offerId: offer.offer_id,
       offer,
     },
-    disabled: isLoading || isLoaded,
+    disabled: isLoading || isLoaded || isReadOnly,
   });
 
   return (
@@ -210,7 +214,7 @@ function DraggableOfferRow({
         offer={offer}
         isLoading={isLoading}
         isLoaded={isLoaded}
-        onAddClick={onAddClick}
+        onAddClick={isReadOnly ? undefined : onAddClick}
       />
     </div>
   );
@@ -251,14 +255,20 @@ export interface PalletLibraryProps {
   sessionId: string;
   loadedOfferIds?: Set<string>;
   onOfferAdded?: (session: SessionFullResponse) => void;
+  onOfferRemoved?: (offerId: string) => void;
   onRegisterAddOffer?: (addOffer: (offerId: string) => Promise<void>) => void;
+  onRegisterRemoveOffer?: (removeOffer: (offerId: string) => void) => void;
+  isReadOnly?: boolean;
 }
 
 export function PalletLibrary({
   sessionId,
   loadedOfferIds: loadedOfferIdsProp,
   onOfferAdded,
+  onOfferRemoved,
   onRegisterAddOffer,
+  onRegisterRemoveOffer,
+  isReadOnly = false,
 }: PalletLibraryProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -268,6 +278,9 @@ export function PalletLibrary({
   const [offers, setOffers] = useState<RankedOfferRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [simulating, setSimulating] = useState(false);
+  const [autoSimulated, setAutoSimulated] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
   const [loadingOfferId, setLoadingOfferId] = useState<string | null>(null);
   const [localLoadedIds, setLocalLoadedIds] = useState<Set<string>>(new Set());
 
@@ -350,6 +363,23 @@ export function PalletLibrary({
     onRegisterAddOffer?.(addOffer);
   }, [addOffer, onRegisterAddOffer]);
 
+  // Expose a callback so SlotEditor can mark an offer as unloaded
+  const removeOfferLocally = useCallback(
+    (offerId: string) => {
+      setLocalLoadedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(offerId);
+        return next;
+      });
+      onOfferRemoved?.(offerId);
+    },
+    [onOfferRemoved],
+  );
+
+  useEffect(() => {
+    onRegisterRemoveOffer?.(removeOfferLocally);
+  }, [onRegisterRemoveOffer, removeOfferLocally]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -379,7 +409,49 @@ export function PalletLibrary({
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [sessionId, refreshToken]);
+
+  // Auto-generate offers the first time the library loads with an empty DB
+  useEffect(() => {
+    if (!loading && !fetchError && offers.length === 0 && !autoSimulated && !simulating) {
+      setAutoSimulated(true);
+      void (async () => {
+        setSimulating(true);
+        try {
+          const result = await simulateMarketOffers(sessionId, 200);
+          showToast({
+            type: "success",
+            message: `Wygenerowano ${result.inserted} ofert testowych.`,
+          });
+          setRefreshToken((t) => t + 1);
+        } catch {
+          // silent — user can click manually
+        } finally {
+          setSimulating(false);
+        }
+      })();
+    }
+  }, [autoSimulated, fetchError, loading, offers.length, sessionId, simulating, showToast]);
+
+  const handleSimulate = useCallback(async () => {
+    setSimulating(true);
+    try {
+      const result = await simulateMarketOffers(sessionId, 200);
+      showToast({
+        type: "success",
+        message: `Wygenerowano ${result.inserted} ofert (pominięto ${result.skipped}).`,
+      });
+      setRefreshToken((token) => token + 1);
+    } catch (err) {
+      showToast({
+        type: "error",
+        message:
+          err instanceof Error ? err.message : "Nie udało się wygenerować ofert.",
+      });
+    } finally {
+      setSimulating(false);
+    }
+  }, [sessionId, showToast]);
 
   const renderRow = (offer: RankedOfferRow) => (
     <DraggableOfferRow
@@ -388,20 +460,34 @@ export function PalletLibrary({
       isLoading={loadingOfferId === offer.offer_id}
       isLoaded={loadedOfferIds.has(offer.offer_id)}
       onAddClick={() => void addOffer(offer.offer_id)}
+      isReadOnly={isReadOnly}
     />
   );
 
   return (
     <aside className="pallet-library offer-sidebar" aria-label="Biblioteka ofert">
       <header className="pallet-library__header">
-        <h2 className="pallet-library__title">Oferty</h2>
+        <h2 className="pallet-library__title">Offers</h2>
         <span className="pallet-library__count">
           {filteredOffers.length} / {offers.length}
         </span>
       </header>
 
+      {(offers.length === 0 && !loading) || simulating ? (
+        <button
+          type="button"
+          className="button bg-ui-surface hover:bg-gray/20 transition-colors mb-3 w-full"
+          disabled={simulating || isReadOnly}
+          onClick={() => void handleSimulate()}
+          title={isReadOnly ? "Sesja potwierdzona" : undefined}
+        >
+          {simulating ? "Generating offers…" : "Generate market offers"}
+        </button>
+      ) : null}
+
       <div className="pallet-library__filters">
-        <label className="pallet-library__filter">
+        <label className="flex gap-2 text-xs">
+        Only stackable
           <input
             type="checkbox"
             checked={filters.stackableOnly}
@@ -413,7 +499,7 @@ export function PalletLibrary({
               )
             }
           />
-          Tylko stackowalne
+          
         </label>
 
         <label className="pallet-library__filter">
@@ -474,5 +560,24 @@ export function PalletLibrary({
         </div>
       )}
     </aside>
+  );
+}
+
+/**
+ * Suspense-wrapped version of PalletLibrary.
+ * Use this anywhere PalletLibrary is rendered inside a client component tree
+ * to satisfy Next.js requirement for useSearchParams() boundaries.
+ */
+export function PalletLibrarySuspense(props: PalletLibraryProps) {
+  return (
+    <Suspense
+      fallback={
+        <aside className="pallet-library offer-sidebar" aria-label="Biblioteka ofert">
+          <p className="pallet-library__status">Wczytywanie ofert…</p>
+        </aside>
+      }
+    >
+      <PalletLibrary {...props} />
+    </Suspense>
   );
 }

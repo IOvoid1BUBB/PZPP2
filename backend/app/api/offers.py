@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.lib.geo import geo_point_from_geometry
-from app.models.offer import MarketOffer
+from app.models import MarketOffer
 from app.schemas.offer import OfferRead
 
 router = APIRouter(prefix="/offers", tags=["offers"])
@@ -38,18 +38,14 @@ def _offer_to_read(offer: MarketOffer) -> OfferRead:
 @router.get(
     "",
     response_model=list[OfferRead],
-    summary="List market offers",
+    summary="List market offers from the database",
 )
 async def list_offers(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> list[OfferRead]:
-    stmt = (
-        select(MarketOffer)
-        .order_by(MarketOffer.id)
-        .offset(offset)
-        .limit(limit)
+    result = await db.execute(
+        select(MarketOffer).order_by(MarketOffer.time_window_open.desc()).limit(limit).offset(offset),
     )
-    result = await db.execute(stmt)
-    return [_offer_to_read(offer) for offer in result.scalars().all()]
+    return [_offer_to_read(row) for row in result.scalars().all()]

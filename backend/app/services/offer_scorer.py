@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import NotFoundError, ValidationAppError
 from app.lib.geo import haversine_km, lat_lon_from_geometry
-from app.lib.osrm import OSRMClient, get_osrm_client
+from app.lib.routing import RoutingProvider, get_routing_provider
 from app.lib.redis_client import get_redis
 from app.lib.regional_p90 import get_regional_p90
 from app.models import ConsolidationSession, MarketOffer, RouteStop, Vehicle
@@ -180,7 +180,7 @@ async def score_offer(
     offer: MarketOffer,
     session: ConsolidationSession,
     vehicle: Vehicle,
-    osrm_client: OSRMClient,
+    routing_client: RoutingProvider,
     *,
     context: SessionScoringContext,
     redis: Redis | None = None,
@@ -211,7 +211,7 @@ async def score_offer(
             added_km = round(detour_km_override, 2)
         else:
             added_km = await calculate_added_detour(
-                osrm_client,
+                routing_client,
                 context.baseline_km,
                 context.waypoints,
                 pickup,
@@ -236,12 +236,12 @@ async def score_offer(
         )
 
         total = compute_total_score(revenue_score, detour_score, fill_score, tw_score)
-        pickup_label = offer.pickup_label
-        delivery_label = offer.delivery_label
+
+        pickup_label = offer.pickup_label or ""
+        delivery_label = offer.delivery_label or ""
         if not pickup_label or not delivery_label:
-            pick_lat, pick_lon = pickup[0], pickup[1]
             del_lat, del_lon = delivery[0], delivery[1]
-            pickup_label = pickup_label or f"Pickup {pick_lat:.2f},{pick_lon:.2f}"
+            pickup_label = pickup_label or f"Pickup {pickup_lat:.2f},{pickup_lon:.2f}"
             delivery_label = delivery_label or f"Delivery {del_lat:.2f},{del_lon:.2f}"
 
         return OfferScore(
@@ -253,12 +253,12 @@ async def score_offer(
             time_window_score=tw_score,
             added_km=added_km,
             estimated_added_cost_eur=round(added_km * COST_PER_KM_EUR, 4),
+            ldm=offer.ldm,
+            weight_kg=int(offer.weight_kg),
+            price_eur=offer.price_eur,
+            stackable=bool(offer.stackable),
             pickup_label=pickup_label,
             delivery_label=delivery_label,
-            ldm=float(offer.ldm),
-            weight_kg=int(offer.weight_kg),
-            price_eur=float(offer.price_eur),
-            stackable=bool(offer.stackable),
         )
     except Exception as exc:
         _logger.exception(
@@ -274,6 +274,10 @@ async def score_offer(
             time_window_score=0.0,
             added_km=0.0,
             estimated_added_cost_eur=0.0,
+            ldm=offer.ldm,
+            weight_kg=int(offer.weight_kg),
+            price_eur=offer.price_eur,
+            stackable=bool(offer.stackable),
         )
 
 
@@ -284,11 +288,11 @@ class OfferScorerService:
         self,
         db: AsyncSession,
         *,
-        osrm: OSRMClient | None = None,
+        routing: RoutingProvider | None = None,
         redis: Redis | None = None,
     ) -> None:
         self._db = db
-        self._osrm = osrm or get_osrm_client()
+        self._routing = routing or get_routing_provider()
         self._redis = redis if redis is not None else get_redis()
 
     async def rank_offers(
@@ -319,7 +323,7 @@ class OfferScorerService:
                     offer,
                     session,
                     vehicle,
-                    self._osrm,
+                    self._routing,
                     context=context,
                     redis=self._redis,
                     db=self._db,
@@ -367,11 +371,11 @@ class OfferScorerService:
         baseline_km = 0.0
         if len(waypoints) >= 2:
             try:
-                route = await self._osrm.get_route_multi(waypoints)
+                route = await self._routing.get_route_multi(waypoints)
                 baseline_km = route.total_distance_km
             except Exception as exc:
                 _logger.warning(
-                    "Baseline route OSRM failed; haversine fallback",
+                    "Baseline route failed; haversine fallback",
                     extra={"event": "scorer:baseline:fallback", "error": str(exc)},
                 )
                 baseline_km = self._haversine_route_km(waypoints)
@@ -425,7 +429,7 @@ class OfferScorerService:
         waypoints: list[tuple[float, float]],
         offers: list[MarketOffer],
     ) -> dict[UUID, float]:
-        """Precompute detour km via haversine to avoid N OSRM calls per request."""
+        """Precompute detour km via haversine to avoid N routing calls per request."""
         overrides: dict[UUID, float] = {}
         for offer in offers:
             pickup = lat_lon_from_geometry(offer.pickup_point)

@@ -27,6 +27,7 @@ interface DraggablePalletProps {
   boxStyle: Pick<CSSProperties, "left" | "top" | "width" | "height">;
   isConflict: boolean;
   isShaking: boolean;
+  isReadOnly?: boolean;
   menuProps?: Record<string, unknown>;
 }
 
@@ -36,6 +37,7 @@ export function DraggablePallet({
   boxStyle,
   isConflict,
   isShaking,
+  isReadOnly = false,
   menuProps,
 }: DraggablePalletProps) {
   const companyColors = getCompanyColorPair(pallet.clientId || pallet.offerId);
@@ -44,6 +46,7 @@ export function DraggablePallet({
     useDraggable({
       id: slotId,
       data: { slotId, pallet },
+      disabled: isReadOnly,
     });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -76,26 +79,29 @@ export function DraggablePallet({
   return (
     <div
       ref={setRefs}
+      data-testid="slot"
+      draggable={isReadOnly ? false : undefined}
       {...attributes}
       {...restMenuProps}
       onPointerDown={chainPointerHandlers(
-        asPointerHandler(listeners?.onPointerDown),
+        isReadOnly ? undefined : asPointerHandler(listeners?.onPointerDown),
         asPointerHandler(menuPointerDown),
       )}
       onPointerUp={chainPointerHandlers(
-        asPointerHandler(listeners?.onPointerUp),
+        isReadOnly ? undefined : asPointerHandler(listeners?.onPointerUp),
         asPointerHandler(menuPointerUp),
       )}
       onPointerCancel={chainPointerHandlers(
-        asPointerHandler(listeners?.onPointerCancel),
+        isReadOnly ? undefined : asPointerHandler(listeners?.onPointerCancel),
         asPointerHandler(menuPointerCancel),
       )}
       onPointerLeave={chainPointerHandlers(
-        asPointerHandler(listeners?.onPointerLeave),
+        isReadOnly ? undefined : asPointerHandler(listeners?.onPointerLeave),
         asPointerHandler(menuPointerLeave),
       )}
       className={[
         "trailer-pallet",
+        isReadOnly ? "trailer-pallet--readonly" : "",
         isConflict ? "trailer-pallet--conflict" : "",
         isShaking ? "trailer-pallet--shake" : "",
         isDragging ? "trailer-pallet--dragging" : "",

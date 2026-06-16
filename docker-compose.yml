@@ -1,4 +1,4 @@
-# Dev stack: PostGIS, Redis, FastAPI API (routing via OSRM — OSRM_HOST, lokalnie :5000).
+# Dev stack: PostGIS, Redis, FastAPI API, Next.js frontend.
 services:
   db:
     image: postgis/postgis:16-3.4-alpine
@@ -21,6 +21,11 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   api:
     build:
@@ -32,12 +37,21 @@ services:
       - ./backend/app:/app/app
       - ./backend/tests:/app/tests
       - ./backend/data:/app/data
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://loadmax:loadmax@db:5432/loadmax}
-      OSRM_HOST: ${OSRM_HOST:-http://host.docker.internal:5000}
+      ORS_API_KEY: ${ORS_API_KEY}
+      ORS_BASE_URL: ${ORS_BASE_URL:-https://api.openrouteservice.org}
+      ORS_PROFILE: ${ORS_PROFILE:-driving-hgv}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       FUEL_PRICE_EUR_PER_LITER: ${FUEL_PRICE_EUR_PER_LITER:-1.75}
       DRIVER_DAILY_ALLOWANCE_EUR: ${DRIVER_DAILY_ALLOWANCE_EUR:-49.0}
@@ -49,7 +63,51 @@ services:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        BACKEND_URL: ${BACKEND_URL:-http://api:8000}
+        NEXT_PUBLIC_API_BASE: ""
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      BACKEND_URL: http://api:8000
+      NEXT_PUBLIC_API_BASE: ""
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/planner').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
 
 volumes:
   pgdata:

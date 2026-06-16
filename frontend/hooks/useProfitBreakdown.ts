@@ -3,35 +3,32 @@
 import { useEffect, useState } from "react";
 
 import {
-  DEMO_PROFIT_BREAKDOWN,
   fetchSessionProfit,
   ProfitFetchError,
   type ProfitBreakdownData,
 } from "@/lib/api/profitClient";
 
 export interface UseProfitBreakdownResult {
-  data: ProfitBreakdownData;
+  data: ProfitBreakdownData | null;
   loading: boolean;
   error: string | null;
-  isDemoFallback: boolean;
   reload: () => void;
 }
 
 /**
- * Loads profit breakdown from POST /sessions/{id}/profit when sessionId is set.
- * Falls back to demo data when session has no route stops (HTTP 422).
+ * Pobiera kalkulację zysku z POST /sessions/{id}/profit.
+ * Gdy brak sesji lub sesja nie ma tras (422) — zwraca null bez danych demo.
+ * Komponent nadrzędny odpowiada za wyświetlenie stanu pustego.
  */
 export function useProfitBreakdown(sessionId: string | null): UseProfitBreakdownResult {
-  const [data, setData] = useState<ProfitBreakdownData>(DEMO_PROFIT_BREAKDOWN);
+  const [data, setData] = useState<ProfitBreakdownData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isDemoFallback, setIsDemoFallback] = useState(true);
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (!sessionId) {
-      setData(DEMO_PROFIT_BREAKDOWN);
-      setIsDemoFallback(true);
+      setData(null);
       setError(null);
       setLoading(false);
       return;
@@ -50,21 +47,19 @@ export function useProfitBreakdown(sessionId: string | null): UseProfitBreakdown
           return;
         }
         setData(breakdown);
-        setIsDemoFallback(false);
       } catch (err) {
         if (cancelled) {
           return;
         }
 
         if (err instanceof ProfitFetchError && err.status === 422) {
-          setData(DEMO_PROFIT_BREAKDOWN);
-          setIsDemoFallback(true);
+          // Sesja nie ma jeszcze tras — to normalny stan, nie błąd.
+          setData(null);
           setError(null);
           return;
         }
 
-        setData(DEMO_PROFIT_BREAKDOWN);
-        setIsDemoFallback(true);
+        setData(null);
         setError(
           err instanceof Error
             ? err.message
@@ -88,7 +83,6 @@ export function useProfitBreakdown(sessionId: string | null): UseProfitBreakdown
     data,
     loading,
     error,
-    isDemoFallback,
     reload: () => setReloadToken((token) => token + 1),
   };
 }

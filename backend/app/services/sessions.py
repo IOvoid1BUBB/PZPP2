@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import Settings, get_settings
 from app.core.exceptions import AppException, NotFoundError, ValidationAppError
 from app.lib.geo import geo_point_from_geometry, lat_lon_from_geometry
-from app.lib.osrm import OSRMClient, get_osrm_client
+from app.lib.routing import RoutingProvider, get_routing_provider
 from app.lib.redis_client import get_redis
 from app.models import ConsolidationSession, DriverProfile, MarketOffer, RouteStop, Vehicle
 from app.schemas.driver_profile import DriverProfileRead
@@ -26,6 +26,8 @@ from app.schemas.session import (
     StopResponse,
     VehicleResponse,
 )
+from app.schemas.solver import StopSequenceEntry
+from app.services.sequence_optimizer import SequenceOptimizerService, Stop
 from app.services.stop_cost_calculator import (
     StopCostRates,
     calculate_stop_cost,
@@ -46,11 +48,11 @@ class SessionService:
         self,
         db: AsyncSession,
         *,
-        osrm: OSRMClient | None = None,
+        routing: RoutingProvider | None = None,
         settings: Settings | None = None,
     ) -> None:
         self._db = db
-        self._osrm = osrm or get_osrm_client()
+        self._routing = routing or get_routing_provider()
         self._settings = settings or get_settings()
 
     async def list_all(self, *, limit: int = 100, offset: int = 0) -> list[ConsolidationSession]:
@@ -142,19 +144,10 @@ class SessionService:
             )
 
         next_sequence = len(existing_offer_ids) * 2
-        pickup_stop = RouteStop(
-            session_id=session_id,
-            offer_id=offer_id,
-            stop_type="pickup",
-            sequence_order=next_sequence,
-            location=offer.pickup_point,
-        )
-        delivery_stop = RouteStop(
-            session_id=session_id,
-            offer_id=offer_id,
-            stop_type="delivery",
-            sequence_order=next_sequence + 1,
-            location=offer.delivery_point,
+        pickup_stop, delivery_stop = self._create_stops_for_offer(
+            session_id,
+            offer,
+            base_sequence=next_sequence,
         )
         self._db.add(pickup_stop)
         self._db.add(delivery_stop)
@@ -185,6 +178,50 @@ class SessionService:
         await self._recalculate_route_stops(session)
         await self._db.refresh(session)
         return await self._build_full_response(session)
+
+    async def replace_offers(
+        self,
+        session_id: UUID,
+        offer_ids: list[UUID],
+    ) -> tuple[SessionFullResponse, list[UUID]]:
+        session = await self.get(session_id)
+        self._ensure_draft(session)
+        vehicle = await self._require_vehicle(session)
+
+        if not offer_ids:
+            raise ValidationAppError("At least one offer_id is required.")
+
+        offers = await self._get_offers(offer_ids)
+        used_ldm = sum(float(o.ldm) for o in offers)
+        used_weight = sum(int(o.weight_kg) for o in offers)
+        max_ldm = float(vehicle.max_ldm)
+        max_weight = int(vehicle.max_weight_kg)
+
+        if used_ldm > max_ldm:
+            raise AppException(
+                detail="Insufficient loading meter capacity.",
+                status_code=409,
+                error_code="insufficient_ldm",
+                context={
+                    "free_ldm": round(max_ldm - 0, 2),
+                    "required_ldm": round(used_ldm, 2),
+                },
+            )
+        if used_weight > max_weight:
+            raise AppException(
+                detail="Insufficient weight capacity.",
+                status_code=409,
+                error_code="insufficient_weight",
+                context={
+                    "free_weight_kg": max_weight,
+                    "required_weight_kg": used_weight,
+                },
+            )
+
+        ordered_stops = await self._apply_offers_and_optimize_route(session_id, offer_ids)
+        await self._db.refresh(session)
+        response = await self._build_full_response(session)
+        return response, [stop.id for stop in ordered_stops]
 
     async def update_status(
         self,
@@ -247,6 +284,132 @@ class SessionService:
         if offer is None:
             raise NotFoundError(f"Offer {offer_id} not found.")
         return offer
+
+    async def _get_offers(self, offer_ids: list[UUID]) -> list[MarketOffer]:
+        stmt = select(MarketOffer).where(MarketOffer.id.in_(offer_ids))
+        result = await self._db.execute(stmt)
+        offers_by_id = {o.id: o for o in result.scalars().all()}
+        missing = [oid for oid in offer_ids if oid not in offers_by_id]
+        if missing:
+            raise NotFoundError(f"Offer {missing[0]} not found.")
+        return [offers_by_id[oid] for oid in offer_ids]
+
+    @staticmethod
+    def _create_stops_for_offer(
+        session_id: UUID,
+        offer: MarketOffer,
+        *,
+        base_sequence: int,
+    ) -> tuple[RouteStop, RouteStop]:
+        pickup_stop = RouteStop(
+            session_id=session_id,
+            offer_id=offer.id,
+            stop_type="pickup",
+            sequence_order=base_sequence,
+            location=offer.pickup_point,
+        )
+        delivery_stop = RouteStop(
+            session_id=session_id,
+            offer_id=offer.id,
+            stop_type="delivery",
+            sequence_order=base_sequence + 1,
+            location=offer.delivery_point,
+        )
+        return pickup_stop, delivery_stop
+
+    async def _apply_offers_and_optimize_route(
+        self,
+        session_id: UUID,
+        offer_ids: list[UUID],
+    ) -> list[RouteStop]:
+        session = await self.get(session_id)
+        if session.origin_lat is None or session.origin_lon is None:
+            raise ValidationAppError("Session origin coordinates are not set.")
+
+        await self._db.execute(
+            delete(RouteStop).where(RouteStop.session_id == session_id),
+        )
+        await self._db.flush()
+
+        offers = await self._get_offers(offer_ids)
+        route_stops: list[RouteStop] = []
+        for index, offer in enumerate(offers):
+            pickup_stop, delivery_stop = self._create_stops_for_offer(
+                session_id,
+                offer,
+                base_sequence=index * 2,
+            )
+            self._db.add(pickup_stop)
+            self._db.add(delivery_stop)
+            route_stops.extend([pickup_stop, delivery_stop])
+        await self._db.flush()
+
+        if not route_stops:
+            return []
+
+        stmt = (
+            select(RouteStop)
+            .where(RouteStop.session_id == session_id)
+            .options(selectinload(RouteStop.offer))
+        )
+        result = await self._db.execute(stmt)
+        db_stops = list(result.scalars().all())
+        stops = self._build_stops_from_route_stops(db_stops)
+
+        origin = (float(session.origin_lat), float(session.origin_lon))
+        waypoints = [origin] + [stop.location for stop in stops]
+        matrix = await self._routing.get_distance_matrix(waypoints)
+
+        optimizer = SequenceOptimizerService()
+        await optimizer.optimize_and_persist(
+            self._db,
+            session_id,
+            stops,
+            matrix=matrix,
+        )
+
+        await self._recalculate_route_stops(session)
+
+        stmt = (
+            select(RouteStop)
+            .where(RouteStop.session_id == session_id)
+            .order_by(RouteStop.sequence_order)
+            .options(selectinload(RouteStop.offer))
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
+    @staticmethod
+    def _build_stops_from_route_stops(route_stops: list[RouteStop]) -> list[Stop]:
+        ordered = sorted(route_stops, key=lambda s: s.sequence_order)
+        stops: list[Stop] = []
+        for stop in ordered:
+            handling = 30
+            if stop.offer is not None and stop.offer.handling_time_minutes is not None:
+                handling = stop.offer.handling_time_minutes
+            stops.append(
+                Stop(
+                    id=str(stop.id),
+                    offer_id=stop.offer_id,
+                    stop_type=stop.stop_type,  # type: ignore[arg-type]
+                    location=lat_lon_from_geometry(stop.location),
+                    handling_time_minutes=handling,
+                ),
+            )
+        return stops
+
+    @staticmethod
+    def serialize_stop_sequence(route_stops: list[RouteStop]) -> list[StopSequenceEntry]:
+        ordered = sorted(route_stops, key=lambda s: s.sequence_order)
+        return [
+            StopSequenceEntry(
+                route_stop_id=stop.id,
+                offer_id=stop.offer_id,
+                stop_type=stop.stop_type,  # type: ignore[arg-type]
+                sequence_order=index,
+            )
+            for index, stop in enumerate(ordered)
+        ]
 
     @staticmethod
     def _ensure_draft(session: ConsolidationSession) -> None:
@@ -322,7 +485,7 @@ class SessionService:
         for stop in stops:
             waypoints.append(lat_lon_from_geometry(stop.location))
 
-        route = await self._osrm.get_route_multi(waypoints)
+        route = await self._routing.get_route_multi(waypoints)
 
         driver_profile = await self._require_driver_profile(session)
         rates = StopCostRates.from_driver_profile(driver_profile)
@@ -427,7 +590,7 @@ class SessionService:
         waypoints: list[tuple[float, float]] = [origin]
         for stop in stops:
             waypoints.append(lat_lon_from_geometry(stop.location))
-        route = await self._osrm.get_route_multi(waypoints)
+        route = await self._routing.get_route_multi(waypoints)
         return route.total_distance_km
 
     def _compute_metrics(

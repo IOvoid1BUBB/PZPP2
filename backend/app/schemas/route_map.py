@@ -21,6 +21,14 @@ class RouteMapLeg(BaseModel):
         ...,
         description="Leaflet positions as [[lat, lon], ...]",
     )
+    distance_km: float = Field(0.0, ge=0)
+    duration_minutes: int = Field(0, ge=0)
+    load_ratio: float = Field(
+        0.0,
+        ge=0,
+        le=1,
+        description="cargo weight on leg / vehicle max weight (0..1)",
+    )
 
 
 class RouteMapStop(BaseModel):
@@ -50,3 +58,5 @@ class RouteMapResponse(BaseModel):
     legs: list[RouteMapLeg]
     stops: list[RouteMapStop]
     vehicle_max_weight_kg: int = Field(..., gt=0)
+    total_distance_km: float = Field(0.0, ge=0)
+    total_duration_minutes: int = Field(0, ge=0)

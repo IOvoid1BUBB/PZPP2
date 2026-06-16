@@ -15,9 +15,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Strongly-typed application settings.
 
-    Field names map 1:1 to env vars (case-insensitive). Extra env vars present
-    in `.env` (e.g. ``ORS_API_KEY``) are silently ignored to keep the type
-    surface minimal.
+    Field names map 1:1 to env vars (case-insensitive).
     """
 
     APP_NAME: str = "LoadMax API"
@@ -26,7 +24,9 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: list[str] = ["*"]
 
     DATABASE_URL: str
-    OSRM_HOST: str = "http://osrm:5000"
+    ORS_API_KEY: str = ""
+    ORS_BASE_URL: str = "https://api.openrouteservice.org"
+    ORS_PROFILE: str = "driving-hgv"
     REDIS_URL: str = "redis://redis:6379/0"
     NOMINATIM_USER_AGENT: str = "LoadMax/1.0 (contact@example.com)"
 
@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     WEIGHT_FUEL_FACTOR: float = 0.30
     MAINTENANCE_EUR_PER_KM: float = 0.08
     MAX_STOPS_PER_ROUTE: int = 12
+    USE_SOLVER_MOCK: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

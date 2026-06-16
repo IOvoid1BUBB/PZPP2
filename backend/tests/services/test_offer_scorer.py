@@ -139,13 +139,13 @@ def test_haversine_added_detour_from_origin() -> None:
 
 
 @pytest.mark.asyncio
-async def test_calculate_added_detour_osrm() -> None:
-    osrm = AsyncMock()
-    osrm.get_route_multi = AsyncMock(
+async def test_calculate_added_detour_routing() -> None:
+    routing = AsyncMock()
+    routing.get_route_multi = AsyncMock(
         return_value=MagicMock(total_distance_km=120.0),
     )
     added = await calculate_added_detour(
-        osrm,
+        routing,
         baseline_km=100.0,
         waypoints=[(52.0, 21.0)],
         pickup=(52.1, 21.1),
@@ -155,13 +155,13 @@ async def test_calculate_added_detour_osrm() -> None:
 
 
 @pytest.mark.asyncio
-async def test_calculate_added_detour_osrm_fallback() -> None:
-    from app.core.exceptions import OSRMUnavailableError
+async def test_calculate_added_detour_routing_fallback() -> None:
+    from app.core.exceptions import RoutingUnavailableError
 
-    osrm = AsyncMock()
-    osrm.get_route_multi = AsyncMock(side_effect=OSRMUnavailableError("down"))
+    routing = AsyncMock()
+    routing.get_route_multi = AsyncMock(side_effect=RoutingUnavailableError("down"))
     added = await calculate_added_detour(
-        osrm,
+        routing,
         baseline_km=0.0,
         waypoints=[(52.0, 21.0)],
         pickup=(52.1, 21.1),
@@ -203,7 +203,7 @@ async def test_score_offer_deterministic() -> None:
     session = MagicMock()
     vehicle = MagicMock()
     vehicle.max_ldm = Decimal("13.6")
-    osrm = AsyncMock()
+    routing = AsyncMock()
     context = SessionScoringContext(
         used_ldm=2.0,
         baseline_km=100.0,
@@ -219,7 +219,7 @@ async def test_score_offer_deterministic() -> None:
         offer,
         session,
         vehicle,
-        osrm,
+        routing,
         context=context,
         redis=redis,
         db=db,
@@ -229,7 +229,7 @@ async def test_score_offer_deterministic() -> None:
         offer,
         session,
         vehicle,
-        osrm,
+        routing,
         context=context,
         redis=redis,
         db=db,
@@ -247,7 +247,7 @@ async def test_score_offer_redis_failure_still_scores() -> None:
     session = MagicMock()
     vehicle = MagicMock()
     vehicle.max_ldm = Decimal("13.6")
-    osrm = AsyncMock()
+    routing = AsyncMock()
     context = SessionScoringContext(
         used_ldm=0.0,
         baseline_km=0.0,
@@ -265,7 +265,7 @@ async def test_score_offer_redis_failure_still_scores() -> None:
         offer,
         session,
         vehicle,
-        osrm,
+        routing,
         context=context,
         redis=redis,
         db=db,

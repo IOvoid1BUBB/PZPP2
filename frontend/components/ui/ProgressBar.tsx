@@ -1,4 +1,4 @@
-type ProgressTone = "green" | "amber" | "red";
+type ProgressTone = "green" | "amber" | "red" | "blue";
 
 interface ProgressBarProps {
   value: number;
@@ -23,16 +23,16 @@ export function ProgressBar({
       ? "bg-emerald-500"
       : tone === "amber"
         ? "bg-amber-500"
-        : "bg-red-500";
+        : tone === "blue"
+          ? "bg-blue-500"
+          : "bg-red-500";
 
   return (
     <div className="w-full">
       {label ? (
-        <div className="mb-1 text-xs text-[var(--ui-text-secondary)]">
-          {label}
-        </div>
+        <div className="mb-1 text-xs text-ui-secondary">{label}</div>
       ) : null}
-      <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--ui-accent-muted)]">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-ui-nav">
         <div
           className={`${fillClass} h-full transition-[width] duration-300`}
           style={{ width: `${percent}%` }}

@@ -41,9 +41,11 @@ frontend/.next/
 frontend/.tmp/
 frontend/.lighthouse-dev.json
 frontend/.tmp/lighthouse.*/
+*docker-compose.override.yml
 
-# Pliki OSRM (lokalne dane map)
+# OSRM
+osrm-data/
+
 *.osrm*
-*.pbf
-
+*.osm.pbf
 *docker-compose.override.yml

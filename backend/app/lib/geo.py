@@ -40,6 +40,6 @@ def geo_point_from_geometry(geometry: Any) -> GeoPoint:
 
 
 def lat_lon_from_geometry(geometry: Any) -> tuple[float, float]:
-    """Return ``(lat, lon)`` for OSRM clients that expect lat-first tuples."""
+    """Return ``(lat, lon)`` for routing clients that expect lat-first tuples."""
     shape = to_shape(geometry)
     return float(shape.y), float(shape.x)

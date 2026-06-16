@@ -11,7 +11,10 @@ import {
 
 import { DraggablePallet } from "@/components/planner/DraggablePallet";
 import { DroppableSlot } from "@/components/planner/DroppableSlot";
-import { getCompanyColorPair } from "@/lib/colors/companyColors";
+import {
+  getCompanyColorHex,
+  getCompanyColorPair,
+} from "@/lib/colors/companyColors";
 import { useClientSummary } from "@/lib/stores/loadStore";
 import type {
   PalletData,
@@ -34,6 +37,7 @@ interface TrailerCanvasProps {
   shakingSlotIds: Set<string>;
   activeSlotId: string | null;
   bindSlotMenu: (slotId: string) => Record<string, unknown>;
+  isReadOnly?: boolean;
 }
 
 interface BedLayout {
@@ -149,6 +153,11 @@ const VEHICLE_OUTLINES: Record<VehicleConfig["type"], FC<BedLayout>> = {
 
 export function getClientColor(offerId: string): string {
   return getCompanyColorPair(offerId).intense;
+}
+
+/** Fixed HEX for Recharts — same palette index as {@link getClientColor}. */
+export function getClientColorHex(offerId: string, isDark = false): string {
+  return getCompanyColorHex(offerId, isDark);
 }
 
 function truncateLabel(name: string, max = 8): string {
@@ -280,6 +289,7 @@ export function TrailerCanvas({
   shakingSlotIds,
   activeSlotId,
   bindSlotMenu,
+  isReadOnly = false,
 }: TrailerCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const clientSummary = useClientSummary();
@@ -449,6 +459,7 @@ export function TrailerCanvas({
                   boxStyle={boxStyle}
                   isConflict={isConflict}
                   isShaking={shakingSlotIds.has(slotId)}
+                  isReadOnly={isReadOnly}
                   menuProps={menuProps}
                 />
               );
@@ -461,6 +472,7 @@ export function TrailerCanvas({
                 boxStyle={boxStyle}
                 isOver={activeSlotId === slotId}
                 isConflict={isConflict}
+                isReadOnly={isReadOnly}
                 menuProps={menuProps}
               />
             );
@@ -493,10 +505,10 @@ export function TrailerCanvas({
 
       <button
         type="button"
-        className="button button--secondary trailer-canvas__export"
+        className="button bg-gray/30 px-4 py-2"
         onClick={handleExportPng}
       >
-        Eksportuj PNG
+        Export png
       </button>
     </div>
   );

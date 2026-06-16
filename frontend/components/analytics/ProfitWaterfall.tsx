@@ -463,11 +463,10 @@ function EmptyState() {
       aria-label="Brak danych analitycznych"
     >
       <p className="text-sm font-medium text-[var(--ui-text-primary)]">
-        Dodaj ładunki, aby zobaczyć kalkulacje
+        Add loads to see calculations
       </p>
       <p className="mt-1 max-w-sm text-xs text-[var(--ui-text-secondary)]">
-        Wykres zysków i udział klientów pojawi się po załadowaniu co najmniej
-        jednej oferty do sesji.
+        The profit chart and client share will appear after loading at least one offer into the session.
       </p>
     </section>
   );
@@ -488,38 +487,39 @@ export function ProfitWaterfall({ data: dataOverride }: ProfitWaterfallProps = {
     data: sessionData,
     loading,
     error,
-    isDemoFallback,
   } = useProfitBreakdown(dataOverride ? null : sessionId);
 
   const data = dataOverride ?? sessionData;
 
   const offerCount = useMemo(() => countLoadedOffers(slots), [slots]);
-  const waterfallRows = useMemo(() => buildWaterfallRows(data), [data]);
-  const expandedRows = useMemo(() => buildExpandedWaterfallRows(data), [data]);
+  const waterfallRows = useMemo(() => (data ? buildWaterfallRows(data) : []), [data]);
+  const expandedRows = useMemo(() => (data ? buildExpandedWaterfallRows(data) : []), [data]);
   const chartRows = perLegView ? expandedRows : waterfallRows;
 
   const clientSlices = useMemo(
-    () => buildClientSlices(clientSummary, slots, data, isDark),
+    () => (data ? buildClientSlices(clientSummary, slots, data, isDark) : []),
     [clientSummary, slots, data, isDark],
   );
 
   const yMax = useMemo(() => {
+    if (!data) return 100;
     const peak = Math.max(
       data.revenueEur,
       ...waterfallRows.map((row) => row.bottom + row.amount),
       ...expandedRows.map((row) => row.bottom + row.amount),
     );
     return Math.ceil((peak * 1.12) / 100) * 100;
-  }, [data.revenueEur, waterfallRows, expandedRows]);
+  }, [data, waterfallRows, expandedRows]);
 
   const yMin = useMemo(() => {
+    if (!data) return 0;
     const floor = Math.min(
       0,
       ...waterfallRows.map((row) => row.bottom),
       data.netProfitEur,
     );
     return floor < 0 ? Math.floor((floor * 1.12) / 100) * 100 : 0;
-  }, [waterfallRows, data.netProfitEur]);
+  }, [data, waterfallRows]);
 
   if (!hydrated) {
     return (
@@ -534,6 +534,39 @@ export function ProfitWaterfall({ data: dataOverride }: ProfitWaterfallProps = {
 
   if (offerCount === 0) {
     return <EmptyState />;
+  }
+
+  if (loading) {
+    return (
+      <section
+        className="flex min-h-[220px] items-center justify-center rounded-xl border border-[var(--ui-border)] bg-[var(--ui-surface)] p-4"
+        aria-label="Wczytywanie kalkulacji"
+      >
+        <p className="text-sm text-[var(--ui-text-secondary)]">Wczytywanie kalkulacji…</p>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return (
+      <section
+        className="flex min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-[var(--ui-border)] bg-[var(--ui-surface)] px-6 py-10 text-center"
+        aria-label="Brak danych kalkulacji"
+      >
+        {error ? (
+          <p className="text-sm font-medium text-[var(--ui-error,#dc2626)]">{error}</p>
+        ) : (
+          <>
+            <p className="text-sm font-medium text-[var(--ui-text-primary)]">
+              Brak danych do kalkulacji
+            </p>
+            <p className="mt-1 max-w-sm text-xs text-[var(--ui-text-secondary)]">
+              Zoptymalizuj trasę, aby zobaczyć kalkulację zysku i podział kosztów.
+            </p>
+          </>
+        )}
+      </section>
+    );
   }
 
   return (
@@ -551,7 +584,6 @@ export function ProfitWaterfall({ data: dataOverride }: ProfitWaterfallProps = {
             {perLegView
               ? `Rozbicie paliwa per odcinek (${resolveLegRows(data).length}) — ta sama skala EUR`
               : "Waterfall kosztów i zysku netto"}
-            {isDemoFallback && !dataOverride ? " · dane demonstracyjne" : null}
           </p>
           {error ? (
             <p className="mt-1 text-xs text-[var(--ui-danger,#dc2f2f)]">{error}</p>

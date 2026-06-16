@@ -9,10 +9,12 @@ from collections.abc import Iterator
 import pytest
 from app.core.logging import JsonFormatter
 from app.services.toll_calculator import (
-    TOLL_RATES,
     _GEOJSON_PATH,
+    ESTIMATE_RATES_EUR_PER_KM,
+    TOLL_RATES,
     calculate_leg_tolls,
     calculate_route_tolls,
+    estimate_toll_eur,
     load_country_geometries,
 )
 from shapely.geometry import LineString, box
@@ -136,3 +138,81 @@ def test_load_real_geojson_has_pl_and_de() -> None:
     countries = load_country_geometries()
     assert "PL" in countries
     assert "DE" in countries
+
+
+# ---------------------------------------------------------------------------
+# estimate_toll_eur (phase-1 API)
+# ---------------------------------------------------------------------------
+
+
+def test_estimate_toll_empty_geometry_returns_zero(mock_countries: dict[str, object]) -> None:
+    for bad_geom in (
+        {},
+        {"type": "LineString", "coordinates": []},
+        {"type": "Point", "coordinates": [0, 0]},
+    ):
+        toll, is_estimated = estimate_toll_eur(bad_geom, "solo", total_distance_km=500.0)
+        assert toll == 0.0
+        assert is_estimated is True
+
+
+def test_estimate_toll_warsaw_to_berlin_positive(
+    mock_countries_disjoint: dict[str, object],
+) -> None:
+    """WAW -> Berlin crosses PL and DE; toll must be positive."""
+    route_geometry = {
+        "type": "LineString",
+        "coordinates": [
+            [21.0122, 52.2297],
+            [13.4050, 52.5200],
+        ],
+    }
+    toll, is_estimated = estimate_toll_eur(route_geometry, "solo", total_distance_km=570.0)
+    assert toll > 0.0
+    assert is_estimated is True
+
+
+@pytest.mark.parametrize(
+    ("country", "lon0", "lat", "length_km"),
+    [
+        ("PL", 21.0, 52.0, 100.0),
+        ("DE", 8.0, 52.0, 100.0),
+        ("CZ", 15.0, 49.5, 80.0),
+    ],
+)
+def test_estimate_toll_per_country_rates(
+    mock_countries_disjoint: dict[str, object],
+    country: str,
+    lon0: float,
+    lat: float,
+    length_km: float,
+) -> None:
+    route_geometry = {
+        "type": "LineString",
+        "coordinates": [
+            [lon0, lat],
+            [lon0 + length_km / 111.0, lat],
+        ],
+    }
+    toll, is_estimated = estimate_toll_eur(
+        route_geometry,
+        "bus",
+        total_distance_km=length_km,
+    )
+    expected = length_km * ESTIMATE_RATES_EUR_PER_KM[country]
+    assert toll == pytest.approx(expected, rel=0.05)
+    assert is_estimated is True
+
+
+@pytest.mark.skipif(not _GEOJSON_PATH.is_file(), reason="GeoJSON not downloaded")
+def test_estimate_toll_warsaw_to_berlin_real_boundaries() -> None:
+    route_geometry = {
+        "type": "LineString",
+        "coordinates": [
+            [21.0122, 52.2297],
+            [13.4050, 52.5200],
+        ],
+    }
+    toll, is_estimated = estimate_toll_eur(route_geometry, "solo", total_distance_km=570.0)
+    assert toll > 0.0
+    assert is_estimated is True

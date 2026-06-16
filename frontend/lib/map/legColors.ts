@@ -1,4 +1,4 @@
-/** Heat-map stroke color from vehicle weight on a leg (ratio vs peak weight). */
+/** Heat-map stroke color from a leg's load ratio (cargo / vehicle max weight). */
 
 const THRESHOLDS = [
   { maxRatio: 0.3, color: "#4E9AF1" },
@@ -7,17 +7,36 @@ const THRESHOLDS = [
   { maxRatio: Infinity, color: "#C0392B" },
 ] as const;
 
-export function getLegColor(weightKg: number, maxWeightKg: number): string {
-  if (maxWeightKg <= 0) {
-    return THRESHOLDS[0].color;
-  }
-  const ratio = weightKg / maxWeightKg;
+/** Map a 0..1 load ratio to a heat-map color. */
+export function getLegColorByRatio(loadRatio: number): string {
+  const ratio = Number.isFinite(loadRatio) ? Math.max(0, loadRatio) : 0;
   for (const entry of THRESHOLDS) {
     if (ratio < entry.maxRatio) {
       return entry.color;
     }
   }
   return THRESHOLDS[THRESHOLDS.length - 1].color;
+}
+
+/**
+ * Resolve a leg's heat-map color.
+ *
+ * Prefers the backend-provided `loadRatio` (cargo / vehicle max weight). Falls
+ * back to `weightKg / maxWeightKg` when the ratio is not available (e.g. older
+ * payloads or demo data without an explicit ratio).
+ */
+export function getLegColor(
+  weightKg: number,
+  maxWeightKg: number,
+  loadRatio?: number,
+): string {
+  if (loadRatio != null && loadRatio > 0) {
+    return getLegColorByRatio(loadRatio);
+  }
+  if (maxWeightKg <= 0) {
+    return THRESHOLDS[0].color;
+  }
+  return getLegColorByRatio(weightKg / maxWeightKg);
 }
 
 export function getMaxLegWeightKg(legs: { weightKgAtLeg: number }[]): number {
