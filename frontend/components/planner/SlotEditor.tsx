@@ -474,18 +474,11 @@ export function SlotEditor() {
         <aside className="offer-sidebar rounded-2xl border border-ui-border/70 bg-ui-surface p-5" aria-label="Biblioteka ofert">
           <p className="text-sm font-semibold text-ui-primary">Oferty</p>
           <p className="mt-3 text-sm text-ui-secondary">
-            Wybierz pojazd powyżej, aby załadować dostępne oferty z giełdy.
+            Wybierz pojazd, aby załadować dostępne oferty z giełdy.
           </p>
         </aside>
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-ui-border/70 bg-ui-border/40 sm:grid-cols-3 lg:grid-cols-6">
-            {["Vehicle", "Driver", "Items", "Weight", "Profit", "LFIL"].map((label) => (
-              <div key={label} className="bg-ui-surface p-4">
-                <p className="text-xs text-ui-muted">{label}</p>
-                <p className="mt-1 text-sm font-semibold text-ui-primary">—</p>
-              </div>
-            ))}
-          </div>
+          <VehicleHeader />
           <div className="rounded-2xl border border-ui-border/70 bg-ui-surface p-5">
             <div className="rounded-xl bg-ui-raised p-4">
               <div className="grid grid-cols-8 gap-2">
@@ -511,10 +504,6 @@ export function SlotEditor() {
       ? getCompanyColorPair(draggingLibraryOffer.offer_id)
       : null;
 
-  const displayVehicleName = vehicle.name.replace(
-    "Bus 8m",
-    "Renault master (8EP)",
-  );
 
   const usedWeightKg = getUsedWeight(slots);
 
@@ -553,7 +542,6 @@ export function SlotEditor() {
 
           <div className="flex min-w-0 flex-col gap-5">
             <VehicleHeader
-              name={displayVehicleName}
               driverName={driverName}
               itemsCount={loadedCount}
               usedWeightKg={usedWeightKg}

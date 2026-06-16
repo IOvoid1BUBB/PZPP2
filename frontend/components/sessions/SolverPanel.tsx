@@ -361,7 +361,7 @@ export function SolverPanel({
 
   return (
     <section
-      className="flex flex-col gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm"
+      className="flex flex-col gap-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
       aria-label="Optymalizator VRP"
     >
       <header className="flex flex-wrap items-start justify-between gap-3">

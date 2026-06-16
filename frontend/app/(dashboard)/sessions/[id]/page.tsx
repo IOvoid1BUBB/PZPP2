@@ -108,7 +108,7 @@ export default function SessionPage() {
       </Card>
 
       <Card>
-        <CardTitle>Plan dla kierowcy</CardTitle>
+        <CardTitle>Driver briefing</CardTitle>
         <CardDescription>
           Podsumowanie trasy z GPS, ETA i linkami do map — gotowe do wysłania.
         </CardDescription>

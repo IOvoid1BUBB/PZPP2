@@ -179,7 +179,7 @@ export async function fetchSessionProfit(
   if (!response.ok) {
     throw new ProfitFetchError(
       response.status,
-      `Nie udało się pobrać kalkulacji zysku (${response.status})`,
+      `Failed to fetch profit breakdown (${response.status})`,
     );
   }
 

@@ -26,7 +26,7 @@ export interface DashboardResponse {
 export async function fetchDashboard(): Promise<DashboardResponse> {
   const response = await fetch(`${API_BASE}/api/v1/dashboard`);
   if (!response.ok) {
-    throw new Error(`Nie udało się pobrać dashboardu (${response.status})`);
+    throw new Error(`Failed to fetch dashboard (${response.status})`);
   }
   return (await response.json()) as DashboardResponse;
 }

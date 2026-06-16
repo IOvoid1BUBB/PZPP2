@@ -68,7 +68,7 @@ export async function fetchOffers(limit = 50, offset = 0): Promise<MarketOffer[]
     `${API_BASE}/api/v1/offers?limit=${limit}&offset=${offset}`,
   );
   if (!response.ok) {
-    throw new Error(`Nie udało się pobrać ofert giełdy (${response.status})`);
+    throw new Error(`Failed to fetch offers (${response.status})`);
   }
   const raw = (await response.json()) as OfferApiRecord[];
   return raw.map(mapOffer);

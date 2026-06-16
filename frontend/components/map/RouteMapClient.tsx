@@ -299,7 +299,7 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
             {error ?? "Brak danych trasy"}
           </p>
           <p className="mt-2 text-xs text-[var(--ui-text-secondary)]">
-            Dodaj oferty do sesji i uruchom optymalizację, aby zobaczyć mapę trasy.
+            Add offers to the session and run optimization to see the route map.
           </p>
         </div>
       </Card>

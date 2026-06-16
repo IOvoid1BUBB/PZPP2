@@ -29,7 +29,7 @@ export async function fetchDriverCompliance(
   );
   if (!response.ok) {
     throw new Error(
-      `Nie udało się pobrać walidacji czasu pracy (${response.status})`,
+      `Failed to fetch driver compliance (${response.status})`,
     );
   }
   return (await response.json()) as DriverComplianceResult;
