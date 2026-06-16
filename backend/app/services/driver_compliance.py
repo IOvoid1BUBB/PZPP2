@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from itertools import pairwise
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -135,7 +137,11 @@ def evaluate_events(*, leg_minutes: list[int], stop_minutes: list[int]) -> Compl
         event_index += 1
         if idx < len(stop_minutes):
             events.append(
-                _DrivingEvent(kind="stop", minutes=max(0, stop_minutes[idx]), event_index=event_index),
+                _DrivingEvent(
+                    kind="stop",
+                    minutes=max(0, stop_minutes[idx]),
+                    event_index=event_index,
+                ),
             )
             event_index += 1
 
@@ -217,3 +223,117 @@ def evaluate_events(*, leg_minutes: list[int], stop_minutes: list[int]) -> Compl
         violations=all_violations,
         recommended_overnight_stops=recommended_overnight_stops,
     )
+
+
+def _interpolate_on_geometry(
+    geometry: list[list[float]], fraction: float
+) -> tuple[float, float]:
+    """Interpolate a [lat, lon] point at ``fraction`` of the polyline length.
+
+    ``geometry`` is a list of ``[lat, lon]`` vertices. Segment lengths use plain
+    euclidean distance in degree space, which is accurate enough for placing a
+    rest marker on a single leg.
+    """
+    if not geometry:
+        return (0.0, 0.0)
+    if len(geometry) == 1:
+        return (float(geometry[0][0]), float(geometry[0][1]))
+
+    fraction = min(1.0, max(0.0, fraction))
+
+    segments = list(pairwise(geometry))
+    seg_lengths: list[float] = []
+    total = 0.0
+    for start, end in segments:
+        length = math.dist((start[0], start[1]), (end[0], end[1]))
+        seg_lengths.append(length)
+        total += length
+
+    if total <= 0:
+        return (float(geometry[0][0]), float(geometry[0][1]))
+
+    target = fraction * total
+    accumulated = 0.0
+    for (start, end), length in zip(segments, seg_lengths, strict=True):
+        if accumulated + length >= target:
+            t = (target - accumulated) / length if length > 0 else 0.0
+            lat = start[0] + (end[0] - start[0]) * t
+            lon = start[1] + (end[1] - start[1]) * t
+            return (float(lat), float(lon))
+        accumulated += length
+
+    last = geometry[-1]
+    return (float(last[0]), float(last[1]))
+
+
+def compute_rest_points(
+    leg_minutes: list[float],
+    stop_minutes: list[float],
+    leg_geometries: list[list[list[float]]],
+) -> list[dict[str, object]]:
+    """Locate mandatory breaks/rests geographically along a multi-leg route.
+
+    Walks the route leg by leg, accumulating continuous driving (reset by a
+    >= ``MIN_BREAK_MINUTES`` stop) and daily driving. When a leg crosses the
+    4.5h continuous threshold a ``break_45`` point is emitted; when it crosses
+    the 9h daily threshold a ``rest_11h`` point is emitted. Each point is
+    interpolated onto that leg's geometry by the fraction of leg duration
+    elapsed before the threshold.
+    """
+    break_threshold = MIN_BREAK_AFTER_HOURS * 60.0
+    day_threshold = MAX_DAILY_DRIVING_HOURS * 60.0
+
+    rest_points: list[dict[str, object]] = []
+    continuous_driving = 0.0
+    day_driving = 0.0
+    route_minute = 0.0
+
+    for index, raw_leg in enumerate(leg_minutes):
+        leg_min = max(0.0, float(raw_leg))
+        geometry = leg_geometries[index] if index < len(leg_geometries) else []
+        leg_start_minute = route_minute
+
+        events: list[tuple[float, str, float]] = []
+        if leg_min > 0:
+            if continuous_driving < break_threshold <= continuous_driving + leg_min:
+                minutes_into_leg = break_threshold - continuous_driving
+                events.append((minutes_into_leg, "break_45", break_threshold))
+            if day_driving < day_threshold <= day_driving + leg_min:
+                minutes_into_leg = day_threshold - day_driving
+                events.append((minutes_into_leg, "rest_11h", day_threshold))
+
+        events.sort(key=lambda item: item[0])
+
+        new_continuous = continuous_driving + leg_min
+        new_day = day_driving + leg_min
+        for minutes_into_leg, rest_type, after_driving in events:
+            fraction = minutes_into_leg / leg_min if leg_min > 0 else 0.0
+            lat, lon = _interpolate_on_geometry(geometry, fraction)
+            rest_points.append(
+                {
+                    "lat": lat,
+                    "lon": lon,
+                    "rest_type": rest_type,
+                    "after_driving_minutes": round(after_driving),
+                    "leg_id": index + 1,
+                    "at_route_minute": round(leg_start_minute + minutes_into_leg),
+                }
+            )
+            remaining = leg_min - minutes_into_leg
+            if rest_type == "break_45":
+                new_continuous = remaining
+            elif rest_type == "rest_11h":
+                new_day = remaining
+                new_continuous = remaining
+
+        continuous_driving = new_continuous
+        day_driving = new_day
+        route_minute += leg_min
+
+        if index < len(stop_minutes):
+            stop_min = max(0.0, float(stop_minutes[index]))
+            route_minute += stop_min
+            if stop_min >= MIN_BREAK_MINUTES:
+                continuous_driving = 0.0
+
+    return rest_points
