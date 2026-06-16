@@ -213,7 +213,6 @@ function VehiclesView({
   onRefresh,
 }: {
   vehicles: FleetVehicle[];
-  sessionsByVehicle: Map<string, ActiveSessionSummary>;
   onRefresh: () => void;
 }) {
   const router = useRouter();
@@ -651,49 +650,24 @@ function FleetPageInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-useEffect(() => {
-  let cancelled = false;
-
-  async function loadFleet() {
+  const loadFleet = async () => {
     try {
       const [vehicleList, driverList] = await Promise.all([
-        fetchFleetVehicles(),   // z main
+        fetchFleetVehicles(),
         fetchDriverProfiles(),
       ]);
-      if (cancelled) return;
       setFleetVehicles(vehicleList);
       setDrivers(driverList);
-
-      try {
-        const dashboard = await fetchDashboard();
-        if (!cancelled) setRecentSessions(dashboard.recent_sessions); // nie active_sessions!
-      } catch {
-        /* statystyki opcjonalne */
-      }
     } catch (err) {
-      if (!cancelled) {
-        setError(err instanceof Error ? err.message : "Nie udało się wczytać floty.");
-      }
+      setError(err instanceof Error ? err.message : "Nie udało się wczytać floty.");
     } finally {
-      if (!cancelled) setLoading(false);
-    }
-  }
-
-  void loadFleet();
-  return () => { cancelled = true; };
-}, []);;
+      setLoading(false);
     }
   };
 
-  const sessionsByVehicle = useMemo(() => {
-    const map = new Map<string, ActiveSessionSummary>();
-    for (const session of recentSessions) {
-      if (session.vehicle_name && !map.has(session.vehicle_name)) {
-        map.set(session.vehicle_name, session);
-      }
-    }
-    return map;
-  }, [recentSessions]);
+  useEffect(() => {
+    void loadFleet();
+  }, []);
 
   function handleTab(next: Tab) {
     setTab(next);

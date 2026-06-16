@@ -8,103 +8,94 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.config import Settings, get_settings
 from app.models import ConsolidationSession, MarketOffer, RouteStop
-from app.schemas.dashboard import DashboardResponse
-from app.services.dashboard_helpers import (
-    build_active_session_summary,
-    compute_lfil_pct,
-    compute_session_profit_eur,
-    compute_time_window_risk,
-    session_offer_count,
-    today_bounds,
-)
-from app.services.dashboard_notifications import (
-    SessionNotificationContext,
-    build_dashboard_notifications,
-    is_active_status,
-)
+from app.schemas.dashboard import DashboardKpi, DashboardResponse, DashboardSessionSummary
 
 
 class DashboardService:
-    """Build operational KPIs, active sessions, and notifications in one pass."""
+    """Build operational KPIs and recent session summaries."""
 
-    def __init__(
-        self,
-        db: AsyncSession,
-        *,
-        settings: Settings | None = None,
-    ) -> None:
+    def __init__(self, db: AsyncSession) -> None:
         self._db = db
-        self._settings = settings or get_settings()
 
-    async def get_dashboard(self) -> DashboardResponse:
-        day_start, day_end = today_bounds(self._settings.APP_TIMEZONE)
-
+    async def get_dashboard(self, *, recent_limit: int = 10) -> DashboardResponse:
+        total_sessions = int(
+            await self._db.scalar(select(func.count()).select_from(ConsolidationSession)) or 0,
+        )
+        active_sessions = int(
+            await self._db.scalar(
+                select(func.count())
+                .select_from(ConsolidationSession)
+                .where(ConsolidationSession.status.in_(("draft", "optimizing"))),
+            )
+            or 0,
+        )
         market_offers_count = int(
             await self._db.scalar(select(func.count()).select_from(MarketOffer)) or 0,
         )
 
         stmt = (
             select(ConsolidationSession)
-            .where(
-                ConsolidationSession.created_at >= day_start,
-                ConsolidationSession.created_at < day_end,
-            )
             .options(
                 selectinload(ConsolidationSession.vehicle),
                 selectinload(ConsolidationSession.route_stops).selectinload(RouteStop.offer),
             )
             .order_by(ConsolidationSession.created_at.desc())
+            .limit(recent_limit)
         )
         result = await self._db.execute(stmt)
-        today_sessions = list(result.scalars().all())
+        sessions = list(result.scalars().all())
 
-        profit_total = 0.0
+        # KPI profit: only sum confirmed/dispatched sessions created today (UTC).
+        # Excludes draft/optimizing — those are planning artifacts, not realized revenue.
+        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        profit_values: list[float] = []
         fill_values: list[float] = []
-        empty_count = 0
+        summaries: list[DashboardSessionSummary] = []
 
-        for session in today_sessions:
-            offer_count = session_offer_count(session)
-            if offer_count == 0:
-                empty_count += 1
-            else:
-                fill_values.append(compute_lfil_pct(session))
-            profit_total += compute_session_profit_eur(session)
+        for session in sessions:
+            offers = [stop.offer for stop in session.route_stops if stop.offer is not None]
+            unique_offer_ids = {stop.offer_id for stop in session.route_stops}
+            vehicle = session.vehicle
+            used_ldm = sum(float(o.ldm) for o in offers)
+            max_ldm = float(vehicle.max_ldm) if vehicle else 0.0
+            fill_pct = round((used_ldm / max_ldm) * 100, 2) if max_ldm > 0 else 0.0
+            revenue = sum(float(o.price_eur) for o in offers)
+            stop_costs = sum(float(s.stop_cost_eur or 0) for s in session.route_stops)
+            estimated_profit = round(revenue - stop_costs, 2) if offers else None
 
-        total_today = len(today_sessions)
-        empty_runs_pct = round((empty_count / total_today) * 100, 2) if total_today else 0.0
-        avg_lfill_pct = round(sum(fill_values) / len(fill_values), 2) if fill_values else 0.0
+            # Only include in KPI aggregation: confirmed/dispatched and created today
+            is_realized = session.status in ("confirmed", "dispatched")
+            created_at = session.created_at
+            if created_at and created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=UTC)
+            is_today = created_at is not None and created_at >= today_start
 
-        active_sessions = [
-            build_active_session_summary(session)
-            for session in today_sessions
-            if is_active_status(session.status)
-        ]
+            if estimated_profit is not None and is_realized and is_today:
+                profit_values.append(estimated_profit)
+            if offers:
+                fill_values.append(fill_pct)
 
-        notification_contexts = [
-            SessionNotificationContext(
-                session_id=session.id,
-                status=session.status,
-                created_at=session.created_at,
-                vehicle_name=session.vehicle.name if session.vehicle else None,
-                offer_count=session_offer_count(session),
-                has_time_window_risk=compute_time_window_risk(session),
+            summaries.append(
+                DashboardSessionSummary(
+                    id=session.id,
+                    status=session.status,  # type: ignore[arg-type]
+                    created_at=session.created_at,
+                    vehicle_name=vehicle.name if vehicle else None,
+                    stop_count=len(session.route_stops),
+                    offer_count=len(unique_offer_ids),
+                    estimated_net_profit_eur=estimated_profit,
+                ),
             )
-            for session in today_sessions
-        ]
 
-        notifications = build_dashboard_notifications(
-            notification_contexts,
-            market_offers_count=market_offers_count,
-        )
-
-        eur_to_pln = self._settings.EUR_TO_PLN
         return DashboardResponse(
-            today_net_profit_eur=round(profit_total, 2),
-            today_net_profit_pln=round(profit_total * eur_to_pln, 2),
-            avg_lfill_pct=avg_lfill_pct,
-            empty_runs_pct=empty_runs_pct,
-            active_sessions=active_sessions,
-            notifications=notifications,
+            kpis=DashboardKpi(
+                active_sessions=active_sessions,
+                total_sessions=total_sessions,
+                total_estimated_profit_eur=round(sum(profit_values), 2),
+                average_fill_pct=round(sum(fill_values) / len(fill_values), 2) if fill_values else 0.0,
+                market_offers_count=market_offers_count,
+            ),
+            recent_sessions=summaries,
         )

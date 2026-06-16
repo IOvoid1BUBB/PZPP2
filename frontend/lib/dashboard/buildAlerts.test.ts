@@ -1,29 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { buildAlerts } from "@/lib/dashboard/buildAlerts";
+import type {
+  DashboardKpi,
+  DashboardSessionSummary,
+} from "@/lib/api/dashboardClient";
 import type { RankedOfferRow } from "@/lib/types/offers";
 
 const NOW = new Date("2026-06-15T12:00:00Z").getTime();
 
-interface LegacyDashboardKpi {
-  active_sessions: number;
-  total_sessions: number;
-  total_estimated_profit_eur: number;
-  average_fill_pct: number;
-  market_offers_count: number;
-}
-
-interface LegacyDashboardSessionSummary {
-  id: string;
-  status: string;
-  created_at: string;
-  vehicle_name: string | null;
-  stop_count: number;
-  offer_count: number;
-  estimated_net_profit_eur: number | null;
-}
-
-function kpi(overrides: Partial<LegacyDashboardKpi> = {}): LegacyDashboardKpi {
+function kpi(overrides: Partial<DashboardKpi> = {}): DashboardKpi {
   return {
     active_sessions: 0,
     total_sessions: 0,
@@ -35,8 +21,8 @@ function kpi(overrides: Partial<LegacyDashboardKpi> = {}): LegacyDashboardKpi {
 }
 
 function session(
-  overrides: Partial<LegacyDashboardSessionSummary> = {},
-): LegacyDashboardSessionSummary {
+  overrides: Partial<DashboardSessionSummary> = {},
+): DashboardSessionSummary {
   return {
     id: "11112222-3333-4444-5555-666677778888",
     status: "draft",
