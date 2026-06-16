@@ -7,6 +7,7 @@ import { CalendarDays, Clock, DollarSign } from "lucide-react";
 import { Card, ProgressBar } from "@/components/loadmax/ui";
 import { EuropeMap } from "@/components/loadmax/EuropeMap";
 import { SquareMarker } from "@/components/loadmax/MapMarkers";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { fetchDashboard, type DashboardResponse } from "@/lib/api/dashboardClient";
 import {
   fetchRankedOffers,
@@ -379,9 +380,25 @@ export default function DashboardPage() {
 
       {/* Prawa: feed alertów */}
       <Card className="max-h-[720px] overflow-y-auto p-0">
-        {alerts.map((alert) => (
-          <AlertItem key={alert.id} alert={alert} />
-        ))}
+        {alerts.length === 0 ? (
+          <div className="p-5">
+            <EmptyState
+              icon={CalendarDays}
+              title="Brak aktywnych tras dziś"
+              description="Zaplanuj pierwszą trasę, aby zobaczyć alerty i podpowiedzi rynkowe."
+              action={
+                <Link
+                  href="/planner"
+                  className="inline-block rounded-full bg-ui-black px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+                >
+                  Zaplanuj trasę
+                </Link>
+              }
+            />
+          </div>
+        ) : (
+          alerts.map((alert) => <AlertItem key={alert.id} alert={alert} />)
+        )}
       </Card>
     </div>
   );

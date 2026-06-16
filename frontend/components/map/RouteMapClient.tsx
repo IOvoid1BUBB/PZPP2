@@ -49,6 +49,15 @@ function formatEur(value: number | null): string {
   return `${value.toLocaleString("pl-PL", { maximumFractionDigits: 2 })} EUR`;
 }
 
+function createOriginIcon(): L.DivIcon {
+  return L.divIcon({
+    className: "route-map-pin-wrapper",
+    html: `<div class="route-map-pin route-map-pin--origin" style="border-color:#1a38f5;background:#1a38f5" aria-label="Baza"><span class="route-map-pin-kind" style="color:#fff">⌂</span></div>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+  });
+}
+
 function createStopIcon(pinLabel: string, borderColor: string): L.DivIcon {
   const kind = pinLabel.startsWith("P") ? "P" : "D";
   return L.divIcon({
@@ -400,6 +409,11 @@ export default function RouteMapClient({
           >
             <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
             <MapFlyBridge onMapReady={handleMapReady} bounds={mapBounds} />
+            <Marker
+              position={[routeData.origin.lat, routeData.origin.lon]}
+              icon={createOriginIcon()}
+              data-testid="route-origin-marker"
+            />
             {routeData.legs.map((leg) => (
               <Polyline
                 key={leg.legId}

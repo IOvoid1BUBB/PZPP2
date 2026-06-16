@@ -11,12 +11,10 @@
 
 import { normalizePayloadSlots } from "@/lib/load/capacity";
 import { toNumber, toOptionalNumber } from "@/lib/api/coerce";
+import { ApiError, errorFromResponse } from "@/lib/api/errors";
+import { fetchWithRetry } from "@/lib/api/fetchWithRetry";
 import type { VehicleConfig } from "@/lib/types/load";
-import type {
-  BulkSessionOffersPayload,
-  SolverResult,
-  UUID,
-} from "@/lib/types/solver";
+import type { UUID } from "@/lib/types/solver";
 import type {
   OfferScore,
   RankedOfferRow,
@@ -38,6 +36,12 @@ const DEFAULT_DRIVER_PROFILE_ID = "11111111-1111-4111-8111-111111110001";
  */
 const DEFAULT_ORIGIN_LON = 21.01;
 const DEFAULT_ORIGIN_LAT = 52.22;
+
+/** Default session start (Warsaw) when no fleet home base is configured. */
+export const DEFAULT_SESSION_ORIGIN = {
+  lat: DEFAULT_ORIGIN_LAT,
+  lon: DEFAULT_ORIGIN_LON,
+} as const;
 
 /**
  * Bounding box docelowego regionu: Polska / środkowa Europa.
@@ -66,6 +70,8 @@ export interface CreateSessionParams {
   origin_lon?: number;
   origin_lat?: number;
   target_region_bbox?: [number, number, number, number];
+  /** When set, backend uses the fleet vehicle home city as route origin. */
+  fleet_vehicle_id?: string;
 }
 
 export interface SessionResponse {
@@ -146,19 +152,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export class AddOfferError extends Error {
-  readonly code: string;
+export class AddOfferError extends ApiError {
   readonly freeLdm?: number;
   readonly requiredLdm?: number;
 
   constructor(
     message: string,
     code: string,
-    options?: { freeLdm?: number; requiredLdm?: number },
+    options?: { freeLdm?: number; requiredLdm?: number; status?: number },
   ) {
-    super(message);
+    super(options?.status ?? 409, code, message);
     this.name = "AddOfferError";
-    this.code = code;
     this.freeLdm = options?.freeLdm;
     this.requiredLdm = options?.requiredLdm;
   }
@@ -248,9 +252,9 @@ function mapVehicle(raw: VehicleApiRecord): VehicleConfig {
  * Wynik jest cache'owany przez komponent — nie wykonuj wielokrotnie bez potrzeby.
  */
 export async function fetchVehicles(): Promise<VehicleConfig[]> {
-  const response = await fetch(`${API_BASE}/api/v1/vehicles`);
+  const response = await fetchWithRetry(`${API_BASE}/api/v1/vehicles`);
   if (!response.ok) {
-    throw new Error(`Failed to fetch vehicles (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się pobrać pojazdów.");
   }
   const raw = (await response.json()) as VehicleApiRecord[];
   return raw.map(mapVehicle);
@@ -271,6 +275,7 @@ export async function createSession(
     origin_lon: params.origin_lon ?? DEFAULT_ORIGIN_LON,
     origin_lat: params.origin_lat ?? DEFAULT_ORIGIN_LAT,
     target_region_bbox: params.target_region_bbox ?? DEFAULT_BBOX,
+    ...(params.fleet_vehicle_id ? { fleet_vehicle_id: params.fleet_vehicle_id } : {}),
   };
 
   const response = await fetch(`${API_BASE}/api/v1/sessions`, {
@@ -280,91 +285,13 @@ export async function createSession(
   });
 
   if (!response.ok) {
-    throw new Error(`Nie udało się utworzyć sesji (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się utworzyć sesji.");
   }
 
   return (await response.json()) as SessionResponse;
 }
 
-// ─── Solver / offers bulk ─────────────────────────────────────────────────────
-
-interface SolverApiResponse {
-  session_id: string;
-  solver_run_id: string;
-  status: SolverResult["status"];
-  objective_value?: number | null;
-  solve_time_ms?: number | null;
-  selected_offer_ids: string[];
-  is_optimal?: boolean;
-}
-
-function mapSolverResponse(raw: SolverApiResponse): SolverResult {
-  return {
-    sessionId: raw.session_id,
-    solverRunId: raw.solver_run_id,
-    status: raw.status,
-    selectedOfferIds: raw.selected_offer_ids,
-    isOptimal: raw.is_optimal ?? raw.status === "ok",
-    objectiveValue: raw.objective_value ?? null,
-    solveTimeMs: raw.solve_time_ms ?? null,
-  };
-}
-
-function optimizeUrl(sessionId: string): string {
-  return `${API_BASE}/api/v1/sessions/${sessionId}/optimize`;
-}
-
-/**
- * Uruchom optymalizator VRP dla sesji (POST /optimize).
- */
-export async function runSolverOptimize(
-  sessionId: string,
-  candidateOfferIds: UUID[],
-  signal?: AbortSignal,
-): Promise<SolverResult> {
-  const response = await fetch(optimizeUrl(sessionId), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal,
-    body: JSON.stringify({ candidate_offer_ids: candidateOfferIds }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Optymalizacja nie powiodła się (${response.status})`);
-  }
-
-  const raw = (await response.json()) as SolverApiResponse;
-  return mapSolverResponse(raw);
-}
-
-/**
- * Anuluj bieżące żądanie optymalizacji (DELETE /optimize).
- */
-export async function cancelSolverOptimize(sessionId: string): Promise<void> {
-  const response = await fetch(optimizeUrl(sessionId), { method: "DELETE" });
-  if (!response.ok && response.status !== 204) {
-    throw new Error(`Anulowanie optymalizacji nie powiodło się (${response.status})`);
-  }
-}
-
-/**
- * Zastąp listę ofert w sesji (PUT /offers, bulk).
- */
-export async function bulkUpdateSessionOffers(
-  sessionId: string,
-  offerIds: UUID[],
-): Promise<void> {
-  const body: BulkSessionOffersPayload = { offer_ids: offerIds };
-  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/offers`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Aktualizacja ofert sesji nie powiodła się (${response.status})`);
-  }
-}
+// ─── Offers ───────────────────────────────────────────────────────────────────
 
 /**
  * Pobierz oferty posortowane malejąco wg total_score.
@@ -373,14 +300,12 @@ export async function fetchRankedOffers(
   sessionId: string,
   limit = 50,
 ): Promise<RankedOffersResponse> {
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `${API_BASE}/api/v1/sessions/${sessionId}/ranked-offers?limit=${limit}`,
   );
 
   if (!response.ok) {
-    throw new Error(
-      `Failed to fetch offers (${response.status})`,
-    );
+    throw await errorFromResponse(response, "Nie udało się pobrać ofert.");
   }
 
   const raw = (await response.json()) as RankedOffersApiResponse;
@@ -421,6 +346,7 @@ export async function addOfferToSession(
     throw new AddOfferError(
       body.detail ?? `Błąd dodawania (${response.status})`,
       body.error ?? "unknown",
+      { status: response.status },
     );
   }
 
@@ -428,17 +354,69 @@ export async function addOfferToSession(
 }
 
 export async function fetchDriverProfiles(): Promise<DriverProfileRecord[]> {
-  const response = await fetch(`${API_BASE}/api/v1/driver-profiles`);
+  const response = await fetchWithRetry(`${API_BASE}/api/v1/driver-profiles`);
   if (!response.ok) {
-    throw new Error(`Failed to fetch driver profiles (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się pobrać profili kierowców.");
   }
   return (await response.json()) as DriverProfileRecord[];
 }
 
-export async function fetchSessionDetail(sessionId: string): Promise<SessionDetailResponse> {
-  const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}`);
+export interface DriverProfilePayload {
+  name: string;
+  code: string;
+  hourly_cost_eur: number;
+  idle_fuel_l_per_hour: number;
+  stop_admin_fee_eur: number;
+}
+
+/**
+ * Create a driver cost profile (FEAT-05).
+ * NOTE: requires the backend POST /driver-profiles endpoint (Agent-A).
+ */
+export async function createDriverProfile(
+  payload: DriverProfilePayload,
+): Promise<DriverProfileRecord> {
+  const response = await fetch(`${API_BASE}/api/v1/driver-profiles`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
   if (!response.ok) {
-    throw new Error(`Failed to fetch session (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się utworzyć profilu kierowcy.");
+  }
+  return (await response.json()) as DriverProfileRecord;
+}
+
+/** Update a driver cost profile (PATCH /driver-profiles/{id}; requires Agent-A). */
+export async function updateDriverProfile(
+  id: string,
+  patch: Partial<DriverProfilePayload>,
+): Promise<DriverProfileRecord> {
+  const response = await fetch(`${API_BASE}/api/v1/driver-profiles/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) {
+    throw await errorFromResponse(response, "Nie udało się zapisać profilu kierowcy.");
+  }
+  return (await response.json()) as DriverProfileRecord;
+}
+
+/** Delete a driver cost profile (DELETE /driver-profiles/{id}; requires Agent-A). */
+export async function deleteDriverProfile(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/v1/driver-profiles/${id}`, {
+    method: "DELETE",
+  });
+  if (!response.ok && response.status !== 204) {
+    throw await errorFromResponse(response, "Nie udało się usunąć profilu kierowcy.");
+  }
+}
+
+export async function fetchSessionDetail(sessionId: string): Promise<SessionDetailResponse> {
+  const response = await fetchWithRetry(`${API_BASE}/api/v1/sessions/${sessionId}`);
+  if (!response.ok) {
+    throw await errorFromResponse(response, "Nie udało się pobrać sesji.");
   }
   const raw = (await response.json()) as SessionDetailResponse & {
     metrics: Record<string, unknown>;
@@ -479,7 +457,7 @@ export async function simulateMarketOffers(
     { method: "POST" },
   );
   if (!response.ok) {
-    throw new Error(`Nie udało się wygenerować ofert (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się wygenerować ofert.");
   }
   return (await response.json()) as SimulateOffersResult;
 }
@@ -487,11 +465,14 @@ export async function simulateMarketOffers(
 export async function getSessionOptimizeStatus(
   sessionId: string,
 ): Promise<SolverStatusResponse> {
-  const response = await fetch(
+  const response = await fetchWithRetry(
     `${API_BASE}/api/v1/sessions/${sessionId}/optimize/status`,
   );
   if (!response.ok) {
-    throw new Error(`Nie udało się odczytać statusu optymalizacji (${response.status})`);
+    throw await errorFromResponse(
+      response,
+      "Nie udało się odczytać statusu optymalizacji.",
+    );
   }
   return (await response.json()) as SolverStatusResponse;
 }
@@ -500,10 +481,12 @@ export async function runSessionOptimize(
   sessionId: string,
   timeLimitSeconds = 10,
   useFullMarket = false,
+  signal?: AbortSignal,
 ): Promise<SolverRunResult> {
   const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/optimize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal,
     body: JSON.stringify({
       candidate_offer_ids: [],
       time_limit_seconds: timeLimitSeconds,
@@ -511,7 +494,7 @@ export async function runSessionOptimize(
     }),
   });
   if (!response.ok) {
-    throw new Error(`Optymalizacja nie powiodła się (${response.status})`);
+    throw await errorFromResponse(response, "Optymalizacja nie powiodła się.");
   }
 
   const started = (await response.json()) as SolverStatusResponse;
@@ -521,6 +504,9 @@ export async function runSessionOptimize(
 
   const deadline = Date.now() + (timeLimitSeconds + 30) * 1000;
   while (Date.now() < deadline) {
+    if (signal?.aborted) {
+      throw new DOMException("Optimization aborted", "AbortError");
+    }
     await sleep(300);
     const status = await getSessionOptimizeStatus(sessionId);
     if (status.status === "RUNNING") {
@@ -544,7 +530,10 @@ export async function cancelSessionOptimize(sessionId: string): Promise<SolverRu
     method: "DELETE",
   });
   if (!response.ok) {
-    throw new Error(`Anulowanie optymalizacji nie powiodło się (${response.status})`);
+    throw await errorFromResponse(
+      response,
+      "Anulowanie optymalizacji nie powiodło się.",
+    );
   }
   return (await response.json()) as SolverRunResult;
 }
@@ -559,7 +548,7 @@ export async function replaceSessionOffers(
     body: JSON.stringify({ offer_ids: offerIds }),
   });
   if (!response.ok) {
-    throw new Error(`Nie udało się zaktualizować ofert (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się zaktualizować ofert.");
   }
   return (await response.json()) as SessionDetailResponse;
 }
@@ -577,7 +566,7 @@ export async function removeOfferFromSession(
     { method: "DELETE" },
   );
   if (!response.ok) {
-    throw new Error(`Nie udało się usunąć oferty z sesji (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się usunąć oferty z sesji.");
   }
   return (await response.json()) as SessionDetailResponse;
 }
@@ -599,7 +588,7 @@ export async function updateSessionStatus(
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new Error(`Nie udało się zmienić statusu sesji (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się zmienić statusu sesji.");
   }
   return (await response.json()) as SessionDetailResponse;
 }

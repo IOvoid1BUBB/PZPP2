@@ -80,13 +80,31 @@ class SessionService:
         _ = vehicle
         driver_profile = await self._get_driver_profile(payload.driver_profile_id)
         _ = driver_profile
+
+        origin_lon = payload.origin_lon
+        origin_lat = payload.origin_lat
+        fleet_vehicle_id = payload.fleet_vehicle_id
+
+        if fleet_vehicle_id is not None:
+            fv = await self._db.get(FleetVehicle, fleet_vehicle_id)
+            if fv is None:
+                raise NotFoundError(f"Fleet vehicle {fleet_vehicle_id} not found.")
+            if fv.type_id != vehicle.id:
+                raise ValidationAppError(
+                    "Fleet vehicle type does not match the selected vehicle type.",
+                )
+            if fv.home_lat is not None and fv.home_lon is not None:
+                origin_lat = float(fv.home_lat)
+                origin_lon = float(fv.home_lon)
+
         instance = ConsolidationSession(
             vehicle_id=payload.vehicle_id,
             driver_profile_id=payload.driver_profile_id,
             status="draft",
-            origin_lon=payload.origin_lon,
-            origin_lat=payload.origin_lat,
+            origin_lon=origin_lon,
+            origin_lat=origin_lat,
             target_region_bbox=payload.target_region_bbox,
+            fleet_vehicle_id=fleet_vehicle_id,
         )
         self._db.add(instance)
         await self._db.flush()

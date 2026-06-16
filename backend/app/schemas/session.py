@@ -38,6 +38,13 @@ class SessionCreate(BaseModel):
         max_length=4,
         description="Bounding box [minLon, minLat, maxLon, maxLat].",
     )
+    fleet_vehicle_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Optional fleet instance — when set, session origin is taken from "
+            "the vehicle home base (home_lat/home_lon) if configured."
+        ),
+    )
 
 
 class SessionCreatedResponse(BaseModel):
