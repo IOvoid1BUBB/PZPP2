@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, DateTime, Index, Integer, Numeric, SmallInteger, text
+from sqlalchemy import Boolean, DateTime, Index, Integer, Numeric, SmallInteger, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -59,5 +59,8 @@ class MarketOffer(Base):
         Boolean,
         server_default=text("false"),
     )
+    pickup_label: Mapped[str | None] = mapped_column(String(200))
+    delivery_label: Mapped[str | None] = mapped_column(String(200))
+    shipper_company: Mapped[str | None] = mapped_column(String(100))
 
     route_stops: Mapped[list[RouteStop]] = relationship(back_populates="offer")
