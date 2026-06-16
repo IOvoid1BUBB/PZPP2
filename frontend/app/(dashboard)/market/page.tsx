@@ -3,7 +3,7 @@
 import { Suspense, type CSSProperties } from "react";
 import nextDynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, PlusIcon } from "lucide-react";
 import {
   Bar,
@@ -30,6 +30,8 @@ import {
   getCompanyColorPair,
 } from "@/lib/colors/companyColors";
 import { aggregateWeeklyEurLdm } from "@/lib/market/aggregateWeeklyEurLdm";
+import { aggregateDestinations, type HeatCluster } from "@/lib/market/aggregateDestinations";
+import { coordToLabel } from "@/lib/geo/majorHubs";
 import { cn } from "@/lib/utils";
 
 // Leaflet map loaded only client-side
@@ -60,8 +62,14 @@ function shortId(id: string): string {
   return `#${id.slice(-4).toUpperCase()}`;
 }
 
-function coordLabel(lat: number, lon: number): string {
-  return `${lat.toFixed(1)}°, ${lon.toFixed(1)}°`;
+/** Resolve a human-readable label for a point. */
+function resolveLabel(
+  lat: number,
+  lon: number,
+  apiLabel?: string | null,
+): string {
+  if (apiLabel) return apiLabel;
+  return coordToLabel(lat, lon);
 }
 
 export default function MarketPage() {
@@ -76,17 +84,12 @@ export default function MarketPage() {
   );
 }
 
-/** Point for heatmap: [lat, lon, intensity 0‥1] */
-export interface HeatPoint {
-  lat: number;
-  lon: number;
-  intensity: number;
-  offerId: string;
-  label: string;
-}
+/** Cluster point for heatmap — re-exported for MarketHeatMap */
+export type { HeatCluster };
 
 function MarketPageInner() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const sessionId = useHydratedSessionId();
   const { showToast } = useToast();
 
@@ -106,7 +109,8 @@ function MarketPageInner() {
     setLoading(true);
     setError(null);
     try {
-      const list = await fetchOffers(100);
+      // Fetch up to 500 offers (M1.T1)
+      const list = await fetchOffers(500);
       setOffers(list);
       const queryOfferId = searchParams.get("offerId");
       setSelectedId(
@@ -133,7 +137,7 @@ function MarketPageInner() {
       return;
     }
     let cancelled = false;
-    void fetchRankedOffers(sessionId, 100)
+    void fetchRankedOffers(sessionId, 200)
       .then((response) => {
         if (cancelled) return;
         const scores = new Map<string, number>();
@@ -213,49 +217,23 @@ function MarketPageInner() {
   }
 
   /**
-   * Heat points: każda oferta wnosi dwa punkty (pickup + delivery).
-   * Intensywność = score (gdy sesja aktywna) ALBO eurPerLdm znormalizowany.
-   * Wyższy score/cena = jaśniejszy punkt na heatmapie.
+   * Destination-density heatmap clusters (M1.T2):
+   * Delivery points primary, pickup points secondary (intensity × 0.6).
    */
-  const heatPoints = useMemo<HeatPoint[]>(() => {
-    if (offers.length === 0) return [];
-    const maxEur = Math.max(...offers.map((o) => o.eurPerLdm), 0.01);
-    return offers.flatMap((offer) => {
-      const rawScore = scoreById.get(offer.id) ?? offer.eurPerLdm / maxEur;
-      const intensity = Math.min(1, Math.max(0.05, rawScore));
-      const pickupLabel =
-        labelById.get(offer.id)?.pickup ??
-        coordLabel(offer.pickup.lat, offer.pickup.lon);
-      const deliveryLabel =
-        labelById.get(offer.id)?.delivery ??
-        coordLabel(offer.delivery.lat, offer.delivery.lon);
-      return [
-        {
-          lat: offer.pickup.lat,
-          lon: offer.pickup.lon,
-          intensity,
-          offerId: offer.id,
-          label: pickupLabel,
-        },
-        {
-          lat: offer.delivery.lat,
-          lon: offer.delivery.lon,
-          intensity: intensity * 0.7, // delivery slightly less intense
-          offerId: offer.id,
-          label: deliveryLabel,
-        },
-      ];
-    });
-  }, [offers, scoreById, labelById]);
+  const { deliveryClusters, pickupClusters } = useMemo(
+    () => aggregateDestinations(offers),
+    [offers],
+  );
 
   async function handleAddToPlan() {
-    if (!sessionId || !selectedOffer) {
-      showToast({
-        type: "error",
-        message: "Brak aktywnej sesji. Utwórz sesję w plannerze.",
-      });
+    if (!selectedOffer) return;
+
+    // M5.T4 — navigate to planner with pre-selected offer when no session
+    if (!sessionId) {
+      router.push(`/planner?offerId=${selectedOffer.id}`);
       return;
     }
+
     setAdding(true);
     try {
       await addOfferToSession(sessionId, selectedOffer.id);
@@ -334,18 +312,24 @@ function MarketPageInner() {
   return (
     <div className="grid grid-cols-1 h-[calc(100dvh-12rem)] mb-6 max-h-screen gap-6 lg:grid-cols-[300px_1fr]">
       {/* ── Lewa: lista ofert ──────────────────────────────────────── */}
-      <aside className="flex flex-col px-2 overflow-y-auto gap-4 bg-ui-surface py-2 roudned-2xl">
-        <h2 className="px-1 text-lg font-semibold text-ui-primary">Offers</h2>
-        {sortedOffers.slice(0, 20).map((offer) => {
+      <aside className="flex flex-col px-2 overflow-y-auto gap-4 bg-ui-surface py-2 rounded-2xl">
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-lg font-semibold text-ui-primary">
+            Oferty
+            <span className="ml-2 text-sm font-normal text-ui-muted">
+              ({sortedOffers.length})
+            </span>
+          </h2>
+        </div>
+        {sortedOffers.map((offer) => {
           const selected = selectedId === offer.id;
           const colors = getCompanyColorPair(offer.id);
           const score = scoreById.get(offer.id);
           const labels = labelById.get(offer.id);
-          const pickupLabel =
-            labels?.pickup ?? coordLabel(offer.pickup.lat, offer.pickup.lon);
-          const deliveryLabel =
-            labels?.delivery ??
-            coordLabel(offer.delivery.lat, offer.delivery.lon);
+          const pickupLabel = labels?.pickup
+            ?? resolveLabel(offer.pickup.lat, offer.pickup.lon, offer.pickupLabel);
+          const deliveryLabel = labels?.delivery
+            ?? resolveLabel(offer.delivery.lat, offer.delivery.lon, offer.deliveryLabel);
           const route = `${pickupLabel} → ${deliveryLabel}`;
           return (
             <button
@@ -444,7 +428,12 @@ function MarketPageInner() {
                 onClick={() => void handleAddToPlan()}
                 className="flex items-center gap-2"
               >
-                {adding ? "Adding..." : "Add to plan"} <PlusIcon className="size-4" aria-hidden="true" />
+                {adding
+                  ? "Dodawanie..."
+                  : sessionId
+                    ? "Add to plan"
+                    : "Planuj trasę"}{" "}
+                <PlusIcon className="size-4" aria-hidden="true" />
               </Button>
             </>
           )}
@@ -518,15 +507,16 @@ function MarketPageInner() {
         </Card>
 
         {/*
-         * Leaflet heatmap — CartoDB Positron tiles (pasujący motyw do UI).
-         * Punkty = pickup + delivery wszystkich ofert, intensywność = score.
+         * Leaflet heatmap — destination-density clusters (M1.T2).
+         * Primary = delivery destinations, secondary = pickup origins.
          * Wybrany punkt zaznaczony pinem.
          */}
         <Card className="h-[460px] overflow-hidden p-0">
           <MarketHeatMap
-            heatPoints={heatPoints}
+            deliveryClusters={deliveryClusters}
+            pickupClusters={pickupClusters}
             selectedOffer={selectedOffer}
-            onMarkerClick={(offerId) => setSelectedId(offerId)}
+            onClusterClick={(offerId) => offerId && setSelectedId(offerId)}
           />
         </Card>
       </div>

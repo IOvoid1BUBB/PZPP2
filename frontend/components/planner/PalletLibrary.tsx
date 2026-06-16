@@ -20,6 +20,8 @@ import {
   simulateMarketOffers,
   type SessionFullResponse,
 } from "@/lib/api/sessionClient";
+import { fetchOffers, simulateMarketOffersGlobal, type MarketOffer } from "@/lib/api/marketClient";
+import { coordToLabel } from "@/lib/geo/majorHubs";
 import { getCompanyColorPair } from "@/lib/colors/companyColors";
 import type { OfferScore, RankedOfferRow } from "@/lib/types/offers";
 
@@ -30,7 +32,6 @@ const FETCH_LIMIT = 50;
 
 const FILTER_DEFAULTS = {
   stackable: false,
-  maxDetour: 200,
   minScore: 0,
 } as const;
 
@@ -252,20 +253,48 @@ function VirtualOfferRow({
 }
 
 export interface PalletLibraryProps {
-  sessionId: string;
+  /** When provided — ranked mode (session-aware scoring). When null/undefined — market mode. */
+  sessionId?: string | null;
+  /** Vehicle type UUID — enables lazy session creation on add (click). */
+  vehicleId?: string | null;
   loadedOfferIds?: Set<string>;
   onOfferAdded?: (session: SessionFullResponse) => void;
   onOfferRemoved?: (offerId: string) => void;
+  onLocalOfferAdd?: (offer: RankedOfferRow) => void;
   onRegisterAddOffer?: (addOffer: (offerId: string) => Promise<void>) => void;
   onRegisterRemoveOffer?: (removeOffer: (offerId: string) => void) => void;
   isReadOnly?: boolean;
 }
 
+/** Convert a raw MarketOffer (no session) into a RankedOfferRow shape for rendering. */
+function marketOfferToRow(offer: MarketOffer): RankedOfferRow {
+  return {
+    offer_id: offer.id,
+    total_score: 0,
+    revenue_density_score: 0,
+    detour_penalty_score: 0,
+    fill_contribution_score: 0,
+    time_window_score: 0,
+    added_km: 0,
+    estimated_added_cost_eur: 0,
+    ldm: offer.ldm,
+    weight_kg: offer.weightKg,
+    price_eur: offer.priceEur,
+    stackable: offer.stackable,
+    pickup_label: offer.pickupLabel
+      ?? coordToLabel(offer.pickup.lat, offer.pickup.lon),
+    delivery_label: offer.deliveryLabel
+      ?? coordToLabel(offer.delivery.lat, offer.delivery.lon),
+  };
+}
+
 export function PalletLibrary({
   sessionId,
+  vehicleId,
   loadedOfferIds: loadedOfferIdsProp,
   onOfferAdded,
   onOfferRemoved,
+  onLocalOfferAdd,
   onRegisterAddOffer,
   onRegisterRemoveOffer,
   isReadOnly = false,
@@ -283,11 +312,12 @@ export function PalletLibrary({
   const [refreshToken, setRefreshToken] = useState(0);
   const [loadingOfferId, setLoadingOfferId] = useState<string | null>(null);
   const [localLoadedIds, setLocalLoadedIds] = useState<Set<string>>(new Set());
+  /** true = ranked session mode; false = raw market mode */
+  const isRankedMode = Boolean(sessionId);
 
   const filters = useMemo(
     () => ({
       stackableOnly: searchParams.get("stackable") === "true",
-      maxDetourKm: Number(searchParams.get("max_detour") ?? FILTER_DEFAULTS.maxDetour),
       minScore: Number(searchParams.get("min_score") ?? FILTER_DEFAULTS.minScore),
     }),
     [searchParams],
@@ -322,9 +352,6 @@ export function PalletLibrary({
       if (offer.total_score < filters.minScore) {
         return false;
       }
-      if (offer.added_km > filters.maxDetourKm) {
-        return false;
-      }
       if (filters.stackableOnly && offer.stackable !== true) {
         return false;
       }
@@ -334,9 +361,26 @@ export function PalletLibrary({
 
   const addOffer = useCallback(
     async (offerId: string) => {
+      const activeSessionId = sessionId;
+
+      if (!activeSessionId) {
+        // Pre-session mode: find the offer and call local placement callback
+        const offer = offers.find((o) => o.offer_id === offerId);
+        if (offer && onLocalOfferAdd) {
+          onLocalOfferAdd(offer);
+          setLocalLoadedIds((prev) => new Set(prev).add(offerId));
+        } else if (!onLocalOfferAdd) {
+          showToast({
+            type: "info",
+            message: "Wybierz pojazd i przeciągnij ładunek na naczepę.",
+          });
+        }
+        return;
+      }
+
       setLoadingOfferId(offerId);
       try {
-        const response = await addOfferToSession(sessionId, offerId);
+        const response = await addOfferToSession(activeSessionId, offerId);
         setLocalLoadedIds((prev) => new Set(prev).add(offerId));
         onOfferAdded?.(response);
       } catch (err) {
@@ -360,7 +404,7 @@ export function PalletLibrary({
         setLoadingOfferId(null);
       }
     },
-    [onOfferAdded, sessionId, showToast],
+    [onOfferAdded, onLocalOfferAdd, offers, sessionId, showToast],
   );
 
   useEffect(() => {
@@ -391,11 +435,18 @@ export function PalletLibrary({
       setLoading(true);
       setFetchError(null);
       try {
-        const response = await fetchRankedOffers(sessionId, FETCH_LIMIT);
-        if (cancelled) {
-          return;
+        if (sessionId) {
+          // Ranked mode — session-aware scoring
+          const response = await fetchRankedOffers(sessionId, FETCH_LIMIT);
+          if (cancelled) return;
+          setOffers(response.offers);
+        } else {
+          // Market mode — fallback to all market offers sorted by EUR/LDM
+          const raw = await fetchOffers(200);
+          if (cancelled) return;
+          const sorted = [...raw].sort((a, b) => b.priceEur / b.ldm - a.priceEur / a.ldm);
+          setOffers(sorted.map(marketOfferToRow));
         }
-        setOffers(response.offers);
       } catch (err) {
         if (!cancelled) {
           setFetchError(
@@ -422,11 +473,19 @@ export function PalletLibrary({
       void (async () => {
         setSimulating(true);
         try {
-          const result = await simulateMarketOffers(sessionId, 200);
-          showToast({
-            type: "success",
-            message: `Wygenerowano ${result.inserted} ofert testowych.`,
-          });
+          if (sessionId) {
+            const result = await simulateMarketOffers(sessionId, 200);
+            showToast({
+              type: "success",
+              message: `Wygenerowano ${result.inserted} ofert testowych.`,
+            });
+          } else {
+            const result = await simulateMarketOffersGlobal(200);
+            showToast({
+              type: "success",
+              message: `Wygenerowano ${result.inserted} ofert testowych.`,
+            });
+          }
           setRefreshToken((t) => t + 1);
         } catch {
           // silent — user can click manually
@@ -440,11 +499,19 @@ export function PalletLibrary({
   const handleSimulate = useCallback(async () => {
     setSimulating(true);
     try {
-      const result = await simulateMarketOffers(sessionId, 200);
-      showToast({
-        type: "success",
-        message: `Wygenerowano ${result.inserted} ofert (pominięto ${result.skipped}).`,
-      });
+      if (sessionId) {
+        const result = await simulateMarketOffers(sessionId, 200);
+        showToast({
+          type: "success",
+          message: `Wygenerowano ${result.inserted} ofert (pominięto ${result.skipped}).`,
+        });
+      } else {
+        const result = await simulateMarketOffersGlobal(200);
+        showToast({
+          type: "success",
+          message: `Wygenerowano ${result.inserted} ofert (pominięto ${result.skipped}).`,
+        });
+      }
       setRefreshToken((token) => token + 1);
     } catch (err) {
       showToast({
@@ -472,9 +539,20 @@ export function PalletLibrary({
     <aside className="pallet-library offer-sidebar" aria-label="Biblioteka ofert">
       <header className="pallet-library__header">
         <h2 className="pallet-library__title">Offers</h2>
-        <span className="pallet-library__count">
-          {filteredOffers.length} / {offers.length}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="pallet-library__count">
+            {filteredOffers.length} / {offers.length}
+          </span>
+          <span
+            className={`rounded px-2 py-0.5 text-[10px] font-semibold ${
+              isRankedMode
+                ? "bg-ui-accent/10 text-ui-accent"
+                : "bg-ui-muted/20 text-ui-secondary"
+            }`}
+          >
+            {isRankedMode ? "Oferty z rankingiem" : "Oferty rynkowe"}
+          </span>
+        </div>
       </header>
 
       {(offers.length === 0 && !loading) || simulating ? (
@@ -504,20 +582,6 @@ export function PalletLibrary({
             }
           />
           
-        </label>
-
-        <label className="pallet-library__filter">
-          <span>Max detour: {filters.maxDetourKm} km</span>
-          <input
-            type="range"
-            min={0}
-            max={500}
-            step={10}
-            value={filters.maxDetourKm}
-            onChange={(event) =>
-              updateFilter("max_detour", event.target.value, String(FILTER_DEFAULTS.maxDetour))
-            }
-          />
         </label>
 
         <label className="pallet-library__filter">

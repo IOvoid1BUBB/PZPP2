@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from app.schemas.planner import PalletData, PalletDims, PayloadSlotConfig, PlannerVehicle
 from app.services.planner_layout import (
-    build_demo_slots,
     can_assign,
     detect_conflicts,
     empty_slots,
@@ -96,56 +95,31 @@ def test_can_assign_respects_capacity() -> None:
     assert can_assign(slots, vehicle, pallet, "r0_c0") is False
 
 
-def test_build_demo_slots_populates_known_ids() -> None:
+
+
+def test_can_assign_rejects_overlapping_target() -> None:
+    """Two slots at the same physical position block assignment."""
     payload_slots = {
-        "s0": PayloadSlotConfig(
+        "base": PayloadSlotConfig(
             row=0, col=0, ldmPerSlot=0.4, xOffsetCm=0, yOffsetCm=0, widthCm=80, depthCm=120,
         ),
-        "s3": PayloadSlotConfig(
-            row=0, col=1, ldmPerSlot=0.4, xOffsetCm=80, yOffsetCm=0, widthCm=120, depthCm=80,
+        "stacked": PayloadSlotConfig(
+            row=0, col=0, ldmPerSlot=0.4, xOffsetCm=0, yOffsetCm=0, widthCm=80, depthCm=120,
         ),
     }
-    slots = build_demo_slots(payload_slots)
-    # Demo lands on positions 0 and 1 in iteration order — both known ids should be filled.
-    assert slots["s0"] is not None
-    assert slots["s3"] is not None
-
-
-def test_build_demo_slots_adapts_to_arbitrary_slot_ids() -> None:
-    payload_slots = {
-        f"r{row}_c{col}": PayloadSlotConfig(
-            row=row,
-            col=col,
-            ldmPerSlot=0.4,
-            xOffsetCm=col * 120,
-            yOffsetCm=row * 80,
-            widthCm=120,
-            depthCm=80,
-        )
-        for row in range(3)
-        for col in range(2)
-    }
-    slots = build_demo_slots(payload_slots)
-    filled = [slot_id for slot_id, pallet in slots.items() if pallet is not None]
-    # Demo positions are [0, 1, 3, 4] — slot at position 2 must remain empty.
-    iteration_order = list(payload_slots)
-    assert iteration_order[0] in filled
-    assert iteration_order[1] in filled
-    assert iteration_order[2] not in filled
-    assert iteration_order[3] in filled
-    assert iteration_order[4] in filled
-
-
-def test_build_demo_slots_skips_when_layout_smaller_than_demo_positions() -> None:
-    # Only two slots — demo positions 3 and 4 must be silently skipped.
-    payload_slots = {
-        "s0": PayloadSlotConfig(row=0, col=0, ldmPerSlot=0.4, xOffsetCm=0, yOffsetCm=0),
-        "s1": PayloadSlotConfig(row=1, col=0, ldmPerSlot=0.4, xOffsetCm=0, yOffsetCm=120),
-    }
-    slots = build_demo_slots(payload_slots)
-    assert slots["s0"] is not None
-    assert slots["s1"] is not None
-    assert len(slots) == 2
+    vehicle = PlannerVehicle(
+        id="overlap",
+        name="Overlap test",
+        type="master_l2",
+        maxLdm=1.6,
+        maxWeightKg=3500,
+        trailerLengthCm=420,
+        trailerWidthCm=220,
+        payloadSlots=payload_slots,
+    )
+    slots = empty_slots(payload_slots)
+    slots["base"] = _pallet("bottom")
+    assert can_assign(slots, vehicle, _pallet("top"), "stacked") is False
 
 
 def _master_l4_payload_slots() -> dict[str, PayloadSlotConfig]:
@@ -181,72 +155,6 @@ def _master_l4_payload_slots() -> dict[str, PayloadSlotConfig]:
             row=4, col=1, ldmPerSlot=0.4, xOffsetCm=120, yOffsetCm=360, widthCm=80, depthCm=120,
         ),
     }
-
-
-def test_build_demo_slots_l2_uses_non_overlapping_rear_slots() -> None:
-    payload_slots = {
-        "s0": PayloadSlotConfig(
-            row=0, col=0, ldmPerSlot=0.4, xOffsetCm=0, yOffsetCm=0, widthCm=80, depthCm=120,
-        ),
-        "s1": PayloadSlotConfig(
-            row=1, col=0, ldmPerSlot=0.4, xOffsetCm=0, yOffsetCm=120, widthCm=80, depthCm=120,
-        ),
-        "s2": PayloadSlotConfig(
-            row=2, col=0, ldmPerSlot=0.4, xOffsetCm=0, yOffsetCm=240, widthCm=80, depthCm=120,
-        ),
-        "s3": PayloadSlotConfig(
-            row=0, col=1, ldmPerSlot=0.4, xOffsetCm=80, yOffsetCm=0, widthCm=120, depthCm=80,
-        ),
-        "s6": PayloadSlotConfig(
-            row=3, col=1, ldmPerSlot=0.4, xOffsetCm=80, yOffsetCm=240, widthCm=120, depthCm=80,
-        ),
-        "s7": PayloadSlotConfig(
-            row=4, col=1, ldmPerSlot=0.4, xOffsetCm=80, yOffsetCm=320, widthCm=120, depthCm=80,
-        ),
-    }
-    slots = build_demo_slots(payload_slots)
-    assert slots["s0"] is not None
-    assert slots["s3"] is not None
-    assert slots["s2"] is not None
-    assert slots["s6"] is not None
-    assert slots["s1"] is None
-    assert "s4" not in slots or slots["s4"] is None
-
-
-def test_build_demo_slots_l4_uses_non_overlapping_rear_slots() -> None:
-    payload_slots = _master_l4_payload_slots()
-    slots = build_demo_slots(payload_slots)
-    assert slots["s0"] is not None
-    assert slots["s5"] is not None
-    assert slots["s2"] is not None
-    assert slots["s7"] is not None
-    assert slots["s3"] is None
-    assert slots["s6"] is None
-
-
-def test_can_assign_rejects_overlapping_target() -> None:
-    """Two slots at the same physical position block assignment."""
-    payload_slots = {
-        "base": PayloadSlotConfig(
-            row=0, col=0, ldmPerSlot=0.4, xOffsetCm=0, yOffsetCm=0, widthCm=80, depthCm=120,
-        ),
-        "stacked": PayloadSlotConfig(
-            row=0, col=0, ldmPerSlot=0.4, xOffsetCm=0, yOffsetCm=0, widthCm=80, depthCm=120,
-        ),
-    }
-    vehicle = PlannerVehicle(
-        id="overlap",
-        name="Overlap test",
-        type="master_l2",
-        maxLdm=1.6,
-        maxWeightKg=3500,
-        trailerLengthCm=420,
-        trailerWidthCm=220,
-        payloadSlots=payload_slots,
-    )
-    slots = empty_slots(payload_slots)
-    slots["base"] = _pallet("bottom")
-    assert can_assign(slots, vehicle, _pallet("top"), "stacked") is False
 
 
 def test_can_assign_allows_adjacent_non_overlapping_l4_slots() -> None:

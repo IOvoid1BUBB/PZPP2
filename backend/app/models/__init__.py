@@ -9,19 +9,22 @@ from __future__ import annotations
 from app.models.base import Base
 from app.models.cost import CostEvent
 from app.models.driver_profile import DriverProfile
+from app.models.fleet_vehicle import FleetVehicle
 from app.models.offer import MarketOffer
 from app.models.session import ConsolidationSession
 from app.models.solver import SolverResult
 from app.models.stop import RouteStop
-from app.models.vehicle import Vehicle
+from app.models.vehicle import Vehicle, VehicleType
 
 __all__ = [
     "Base",
     "ConsolidationSession",
     "CostEvent",
     "DriverProfile",
+    "FleetVehicle",
     "MarketOffer",
     "RouteStop",
     "SolverResult",
     "Vehicle",
+    "VehicleType",
 ]

@@ -145,6 +145,12 @@ export interface SolverRunResult {
   is_optimal: boolean;
   solve_time_ms: number;
   current_offer_ids: string[];
+  stop_sequence?: Array<{
+    route_stop_id: string;
+    offer_id: string;
+    stop_type: string;
+    sequence_order: number;
+  }>;
 }
 
 export interface SolverStatusResponse {
@@ -533,11 +539,16 @@ export async function getSessionOptimizeStatus(
 export async function runSessionOptimize(
   sessionId: string,
   timeLimitSeconds = 10,
+  useFullMarket = false,
 ): Promise<SolverRunResult> {
   const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/optimize`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ candidate_offer_ids: [], time_limit_seconds: timeLimitSeconds }),
+    body: JSON.stringify({
+      candidate_offer_ids: [],
+      time_limit_seconds: timeLimitSeconds,
+      use_full_market: useFullMarket,
+    }),
   });
   if (!response.ok) {
     throw new Error(`Optymalizacja nie powiodła się (${response.status})`);
@@ -614,11 +625,18 @@ export async function removeOfferFromSession(
 export async function updateSessionStatus(
   sessionId: string,
   status: SessionDetailResponse["status"],
+  fleetVehicleId?: string,
 ): Promise<SessionDetailResponse> {
+  const body: { status: SessionDetailResponse["status"]; fleet_vehicle_id?: string } = {
+    status,
+  };
+  if (fleetVehicleId) {
+    body.fleet_vehicle_id = fleetVehicleId;
+  }
   const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/status`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     throw new Error(`Nie udało się zmienić statusu sesji (${response.status})`);

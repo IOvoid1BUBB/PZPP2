@@ -7,20 +7,14 @@ import { useClientHydrated } from "@/hooks/useClientHydrated";
 
 import {
   fetchSessionLayout,
-  moveDemoPallet,
-  moveDemoToFirstFree,
   moveSessionPallet,
   moveSessionToFirstFree,
-  removeDemoSlot,
   removeSessionSlot,
-  resetDemoLayout,
-  saveDemoLayout,
   saveSessionLayout,
   type PlannerLayoutState,
 } from "@/lib/api/plannerClient";
 import {
   getConflictSlotIds,
-  payloadSlotsGeometryStale,
 } from "@/lib/load/capacity";
 import type { PalletData } from "@/lib/types/load";
 import { useConflicts, useLoadStore } from "@/lib/stores/loadStore";
@@ -34,7 +28,6 @@ interface UsePlannerLayoutResult {
   conflictSlotIds: Set<string>;
   sessionId: string | null;
   reload: () => Promise<void>;
-  loadDemoFor: (vehicleType: string) => Promise<void>;
   persistSlots: (slots: Record<string, PalletData | null>) => Promise<boolean>;
   movePallet: (
     fromSlot: string,
@@ -72,31 +65,18 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
     });
   }, []);
 
-  const hasStoreLayout = useCallback(() => {
-    const state = useLoadStore.getState();
-    return (
-      state.vehicle !== null ||
-      state.sessionId !== null ||
-      Object.keys(state.slots).length > 0
-    );
-  }, []);
-
   const reload = useCallback(async () => {
     const activeSessionId = useLoadStore.getState().sessionId;
-    const hadLayoutBeforeFetch = hasStoreLayout();
     setLoading(true);
     setError(null);
     try {
       if (!activeSessionId) {
-        // Brak aktywnej sesji — nie ładujemy demo, czekamy aż użytkownik wybierze pojazd.
+        // No active session — clear any stale persisted slots so canvas starts empty.
+        useLoadStore.getState().clearAllSlots();
         setLoading(false);
         return;
       }
       const next = await fetchSessionLayout(activeSessionId);
-      if (!hadLayoutBeforeFetch && hasStoreLayout()) {
-        return;
-      }
-
       applyLayout(next);
     } catch (err) {
       setError(
@@ -105,50 +85,32 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
     } finally {
       setLoading(false);
     }
-  }, [applyLayout, hasStoreLayout]);
-
-  const loadDemoFor = useCallback(
-    async (vehicleType: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const activeSessionId = useLoadStore.getState().sessionId;
-        if (activeSessionId) {
-          const next = await fetchSessionLayout(activeSessionId);
-          applyLayout(next);
-          return;
-        }
-        // Brak sesji — użyj demo endpointa (akceptowalne w flow wyboru pojazdu bez sesji)
-        const next = await resetDemoLayout(vehicleType);
-        applyLayout(next);
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Nie udało się wczytać layoutu pojazdu.",
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [applyLayout],
-  );
+  }, [applyLayout]);
 
   useEffect(() => {
     if (!hydrated) {
       return;
     }
 
-    if (needsSessionHydration || !hasLayout) {
+const activeSessionId = useLoadStore.getState().sessionId;
+if (needsSessionHydration || !hasLayout) {
+  queueMicrotask(() => void reload());
+  return;
+}
+if (activeSessionId) {
+  // logika z main — sync pojazdu po wejściu z Fleet Manager
+}
       queueMicrotask(() => {
         void reload();
       });
       return;
     }
 
-    setLoading(false);
-
-    if (!payloadSlotsGeometryStale(vehicle)) {
+    if (!hasLayout) {
+      // No session and no local state — clear stale slots.
+      queueMicrotask(() => {
+        void reload();
+      });
       return;
     }
 
@@ -188,9 +150,12 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
       setError(null);
       try {
         const activeSessionId = useLoadStore.getState().sessionId;
-        const next = activeSessionId
-          ? await saveSessionLayout(activeSessionId, nextSlots)
-          : await saveDemoLayout(nextSlots, currentVehicleType());
+        if (!activeSessionId) {
+          // Pre-session: update Zustand locally only
+          useLoadStore.getState().setSlots(nextSlots);
+          return true;
+        }
+        const next = await saveSessionLayout(activeSessionId, nextSlots);
         applyLayout(next);
         return true;
       } catch (err) {
@@ -200,7 +165,7 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
         return false;
       }
     },
-    [applyLayout, currentVehicleType],
+    [applyLayout],
   );
 
   const movePallet = useCallback(
@@ -208,9 +173,12 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
       setError(null);
       try {
         const activeSessionId = useLoadStore.getState().sessionId;
-        const result = activeSessionId
-          ? await moveSessionPallet(activeSessionId, fromSlot, toSlot)
-          : await moveDemoPallet(fromSlot, toSlot, currentVehicleType());
+        if (!activeSessionId) {
+          // Pre-session: swap locally in Zustand
+          useLoadStore.getState().swapSlots(fromSlot, toSlot);
+          return { ok: true };
+        }
+        const result = await moveSessionPallet(activeSessionId, fromSlot, toSlot);
         applyLayout(result.layout);
         return { ok: result.ok, message: result.message };
       } catch (err) {
@@ -222,7 +190,7 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
         return { ok: false, message };
       }
     },
-    [applyLayout, currentVehicleType],
+    [applyLayout],
   );
 
   const removePallet = useCallback(
@@ -230,9 +198,12 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
       setError(null);
       try {
         const activeSessionId = useLoadStore.getState().sessionId;
-        const next = activeSessionId
-          ? await removeSessionSlot(activeSessionId, slotId)
-          : await removeDemoSlot(slotId, currentVehicleType());
+        if (!activeSessionId) {
+          // Pre-session: remove locally in Zustand
+          useLoadStore.getState().removePallet(slotId);
+          return;
+        }
+        const next = await removeSessionSlot(activeSessionId, slotId);
         applyLayout(next);
       } catch (err) {
         setError(
@@ -240,7 +211,7 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
         );
       }
     },
-    [applyLayout, currentVehicleType],
+    [applyLayout],
   );
 
   const moveToFirstFree = useCallback(
@@ -248,9 +219,29 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
       setError(null);
       try {
         const activeSessionId = useLoadStore.getState().sessionId;
-        const result = activeSessionId
-          ? await moveSessionToFirstFree(activeSessionId, slotId)
-          : await moveDemoToFirstFree(slotId, currentVehicleType());
+        if (!activeSessionId) {
+          // Pre-session: find first empty slot and move locally
+          const state = useLoadStore.getState();
+          const currentSlots = state.slots;
+          const currentVehicle = state.vehicle;
+          const pallet = currentSlots[slotId];
+          if (!pallet) {
+            return { ok: false, message: "Slot jest pusty." };
+          }
+          // Find first empty slot that isn't the source
+          const slotIds = currentVehicle
+            ? Object.keys(currentVehicle.payloadSlots)
+            : Object.keys(currentSlots);
+          const targetSlot = slotIds.find(
+            (id) => id !== slotId && currentSlots[id] === null,
+          );
+          if (!targetSlot) {
+            return { ok: false, message: "Brak wolnego slotu." };
+          }
+          useLoadStore.getState().swapSlots(slotId, targetSlot);
+          return { ok: true };
+        }
+        const result = await moveSessionToFirstFree(activeSessionId, slotId);
         applyLayout(result.layout);
         return { ok: result.ok, message: result.message };
       } catch (err) {
@@ -262,7 +253,7 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
         return { ok: false, message };
       }
     },
-    [applyLayout, currentVehicleType],
+    [applyLayout],
   );
 
   const conflictSlotIds = useMemo(
@@ -279,7 +270,6 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
     conflictSlotIds,
     sessionId,
     reload,
-    loadDemoFor,
     persistSlots,
     movePallet,
     removePallet,

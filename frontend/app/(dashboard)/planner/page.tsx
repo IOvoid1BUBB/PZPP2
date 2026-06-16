@@ -1,34 +1,24 @@
 "use client";
 
 /**
- * Planning lab — v0 layout
- *
- * lg: grid [280px | 1fr]
- *   left:  VehicleSelector (compact) + offer sidebar (PalletLibrary / ranked-offers)
- *   right: metrics strip + trailer canvas (DnD) + profit waterfall + inline route map
- *
- * SlotEditor внутри уже рендерит PalletLibrary (left) + trailer (right) в
- * собственном DnDContext. Мы просто помещаем VehicleSelector и SolverPanel
- * над ним и открываем drawer для "Send to driver".
+ * Planning lab — layout with debounced route refresh
  */
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { DriverHoursWarning } from "@/components/planner/DriverHoursWarning";
 import { SlotEditor } from "@/components/planner/SlotEditor";
 import { SolverPanel } from "@/components/planner/SolverPanel";
-import { DriverRouteBriefing } from "@/components/driver/DriverRouteBriefing";
-import { Button } from "@/components/ui/Button";
-import { Drawer } from "@/components/ui/Drawer";
-import { useToast } from "@/components/ui/Toast";
+import { VehicleSelector } from "@/components/planner/VehicleSelector";
 import { useHydratedSessionId } from "@/hooks/useHydratedSessionId";
 import { usePlannerLayout } from "@/hooks/usePlannerLayout";
 import { updateSessionStatus } from "@/lib/api/sessionClient";
 import { usePlannerActionStore } from "@/lib/stores/plannerActionStore";
 import { useSessionStore } from "@/lib/stores/sessionStore";
+import { useVehicleStore } from "@/lib/stores/vehicleStore";
+import { useLoadStore } from "@/lib/stores/loadStore";
 
-// Leaflet loaded only client-side
 const RouteMapClient = dynamic(
   () => import("@/components/map/RouteMapClient"),
   {
@@ -40,6 +30,8 @@ const RouteMapClient = dynamic(
     ),
   },
 );
+
+const ROUTE_DEBOUNCE_MS = 800;
 
 export default function PlannerPage() {
   return (
@@ -58,14 +50,38 @@ function PlannerPageInner() {
   const setSessionId = useSessionStore((state) => state.setSessionId);
   const sessionId = useHydratedSessionId();
   const { reload } = usePlannerLayout();
-  const { showToast } = useToast();
-  const register = usePlannerActionStore((s) => s.register);
-  const setBusy = usePlannerActionStore((s) => s.setBusy);
-  const resetAction = usePlannerActionStore((s) => s.reset);
+  const selectedVehicle = useVehicleStore((state) => state.selectedVehicle);
+  const storeVehicle = useLoadStore((state) => state.vehicle);
+  const hasVehicle = Boolean(selectedVehicle ?? storeVehicle);
+  // vehicleDbId for SolverPanel pre-session temp session creation
+  const vehicleDbId = selectedVehicle?.id ?? storeVehicle?.id ?? null;
 
-  const [briefingOpen, setBriefingOpen] = useState(false);
-  const [dispatching, setDispatching] = useState(false);
   const [mapKey, setMapKey] = useState(0);
+  const [isRefreshingRoute, setIsRefreshingRoute] = useState(false);
+  const [confirmedBanner, setConfirmedBanner] = useState(false);
+  // mapSessionId: the session to show on the route map (may be temp preview session from SlotEditor)
+  const [mapSessionId, setMapSessionId] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keep mapSessionId synced with the real sessionId
+  useEffect(() => {
+    if (sessionId) setMapSessionId(sessionId);
+  }, [sessionId]);
+
+  /**
+   * Called by SlotEditor whenever an offer is added or removed.
+   * Debounces 800ms then triggers map re-render.
+   */
+  const handleOfferChange = useCallback(() => {
+    const activeSessionId = useSessionStore.getState().sessionId ?? sessionId;
+    if (!activeSessionId) return;
+    setIsRefreshingRoute(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setMapKey((k) => k + 1);
+      setIsRefreshingRoute(false);
+    }, ROUTE_DEBOUNCE_MS);
+  }, [sessionId]);
 
   useEffect(() => {
     const querySessionId = searchParams.get("session");
@@ -76,107 +92,105 @@ function PlannerPageInner() {
 
   // Wire AppShell header "Send to driver" button
   useEffect(() => {
-    register(() => setBriefingOpen(true), Boolean(sessionId));
-    return () => resetAction();
-  }, [register, resetAction, sessionId]);
-
-  const handleDispatch = useCallback(async () => {
-    if (!sessionId) return;
-    setDispatching(true);
-    setBusy(true);
-    try {
-      await updateSessionStatus(sessionId, "dispatched");
-      showToast({ type: "success", message: "Trasa wysłana do kierowcy." });
-      setBriefingOpen(false);
-      void reload();
-    } catch (err) {
-      showToast({
-        type: "error",
-        message: err instanceof Error ? err.message : "Nie udało się wysłać.",
-      });
-    } finally {
-      setDispatching(false);
-      setBusy(false);
-    }
-  }, [reload, sessionId, setBusy, showToast]);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   const handleSolverApplied = useCallback(() => {
     void reload();
     setMapKey((k) => k + 1);
+    setIsRefreshingRoute(false);
   }, [reload]);
+
+  const handleRouteConfirmed = useCallback(() => {
+    setConfirmedBanner(true);
+    void reload();
+  }, [reload]);
+
+  // Show VehicleSelector only when no vehicle AND no active session.
+  // A session from Fleet already implies a vehicle — the layout hook will load it.
+  if (!hasVehicle && !sessionId) {
+    return (
+      <div className="flex flex-col gap-6">
+        <DriverHoursWarning />
+        <VehicleSelector />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
 
-      {/* ── Alerty czasu pracy ────────────────────────────────────── */}
-      <DriverHoursWarning />
-
-
-      {/* ── Krok 2: Solver VRP (tylko gdy sesja istnieje) ─────────── */}
-      {sessionId && (
-        <details className="rounded-2xl  bg-ui-surface">
-          <summary className="cursor-pointer select-none px-5 py-3 text-sm font-semibold text-ui-primary">
-            ⚙ Solver VRP — AI optimization
-          </summary>
-          <div className=" px-4 pb-4 pt-3">
-            <SolverPanel sessionId={sessionId} onApplied={handleSolverApplied} />
-          </div>
-        </details>
+      {/* ── Post-confirm success banner ───────────────────────── */}
+      {confirmedBanner && (
+        <div className="flex items-start justify-between gap-3 rounded-2xl border border-green-500/30 bg-green-50/50 px-5 py-4">
+          <p className="text-sm text-ui-primary">
+            ✅ Trasa zatwierdzona — widoczna w{" "}
+            <a href="/fleet" className="font-medium text-ui-accent hover:underline">
+              Fleet Manager
+            </a>
+            .
+          </p>
+          <button
+            type="button"
+            className="shrink-0 text-xs text-ui-muted hover:text-ui-primary"
+            onClick={() => setConfirmedBanner(false)}
+          >
+            ✕
+          </button>
+        </div>
       )}
 
-      {/*
-       * ── Krok 3: Główny edytor ──────────────────────────────────
-       *
-       * SlotEditor renderuje wewnętrznie:
-       *   lg: grid [minmax(220px,280px) | 1fr]
-       *     left:  PalletLibrary (ranked-offers z API)
-       *     right: VehicleHeader + TrailerCanvas (DnD) + ProfitWaterfall
-       *
-       * Gdy brak pojazdu → komunikat "Brak przypisanego pojazdu"
-       * Gdy brak ofert w DB → PalletLibrary pokazuje "Generuj oferty rynkowe"
-       */}
-      <SlotEditor />
+      {/* ── Driver hours warnings ─────────────────────────────── */}
+      <DriverHoursWarning />
 
-      {/* ── Krok 4: Mapa trasy (Leaflet + ORS, inline) ───────────── */}
-      {sessionId && (
+      {/* ── Main editor: library + canvas ────────────────────── */}
+      <SlotEditor
+        onOfferAdded={handleOfferChange}
+        onOfferRemoved={handleOfferChange}
+        onRouteConfirmed={handleRouteConfirmed}
+      />
+
+      {/* ── Solver VRP — always available once vehicle is selected */}
+      <details className="rounded-2xl bg-ui-surface">
+        <summary className="cursor-pointer select-none px-5 py-3 text-sm font-semibold text-ui-primary">
+          ⚙ Solver VRP — AI optimization
+        </summary>
+        <div className="px-4 pb-4 pt-3">
+          <SolverPanel
+            sessionId={sessionId}
+            vehicleId={vehicleDbId}
+            onApplied={handleSolverApplied}
+          />
+        </div>
+      </details>
+
+      {/* ── Route map — shown when any session (real or preview) exists */}
+      {mapSessionId && (
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold text-ui-primary">
               Route map
+              {isRefreshingRoute && (
+                <span className="ml-2 inline-flex items-center gap-1 text-xs font-normal text-ui-muted">
+                  <span className="inline-block size-3 animate-spin rounded-full border border-ui-muted border-t-transparent" />
+                  Aktualizuję trasę…
+                </span>
+              )}
             </h2>
             <p className="text-xs text-ui-muted">
-              Real roads from OpenRouteService (HGV profile).
-              Updates after adding offers and running the solver.
+              OpenRouteService HGV · aktualizuje się po zmianie ładunków
             </p>
           </div>
           <RouteMapClient
-            key={`${sessionId}-${mapKey}`}
-            sessionId={sessionId}
+            key={`${mapSessionId}-${mapKey}`}
+            sessionId={mapSessionId}
+            isPreview
+            isRefreshing={isRefreshingRoute}
           />
         </section>
       )}
-
-      {/* ── Drawer: Send to driver ────────────────────────────────── */}
-      <Drawer
-        open={briefingOpen}
-        title="Wyślij trasę do kierowcy"
-        onClose={() => setBriefingOpen(false)}
-      >
-        {sessionId ? (
-          <div className="flex flex-col gap-4">
-            <DriverRouteBriefing sessionId={sessionId} variant="full" />
-            <Button
-              variant="primary"
-              disabled={dispatching}
-              onClick={() => void handleDispatch()}
-            >
-              {dispatching ? "Wysyłanie…" : "Potwierdź i wyślij (dispatched)"}
-            </Button>
-          </div>
-        ) : (
-          <p className="text-sm text-ui-secondary">Brak aktywnej sesji.</p>
-        )}
-      </Drawer>
     </div>
   );
 }

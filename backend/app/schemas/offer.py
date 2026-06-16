@@ -8,6 +8,21 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# ─── Static city lookup for labels ──────────────────────────────────────────
+# Maps hub_key → human-readable city name (mirrors LOGISTICS_HUBS in market_simulator)
+HUB_LABELS: dict[str, str] = {
+    "warszawa": "Warszawa",
+    "lodz": "Łódź",
+    "wroclaw": "Wrocław",
+    "poznan": "Poznań",
+    "katowice": "Katowice",
+    "gdansk": "Gdańsk",
+    "berlin": "Berlin",
+    "prague": "Praha",
+    "vienna": "Wien",
+    "hamburg": "Hamburg",
+}
+
 
 class GeoPoint(BaseModel):
     """WGS84 longitude/latitude pair."""

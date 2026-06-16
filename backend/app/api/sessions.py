@@ -184,7 +184,11 @@ async def update_session_status(
     routing: RoutingProvider = Depends(get_routing_provider),
 ) -> SessionFullResponse:
     service = _service(db, routing)
-    response = await service.update_status(session_id, payload.status)
+    response = await service.update_status(
+        session_id,
+        payload.status,
+        fleet_vehicle_id=payload.fleet_vehicle_id,
+    )
     await db.commit()
     return response
 

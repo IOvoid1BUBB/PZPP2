@@ -52,6 +52,91 @@ def _ensure_env() -> None:
             return
 
 
+async def _count_existing(session: AsyncSession) -> int:
+    result = await session.scalar(select(func.count()).select_from(MarketOffer))
+    return int(result or 0)
+
+
+async def _insert_offers(session: AsyncSession, count: int) -> int:
+    """Wygeneruj i wstaw ``count`` ofert. Zwraca faktycznie wstawioną liczbę."""
+    if count <= 0:
+        return 0
+
+    base_time = datetime.now(UTC)
+    batch = generate_batch(count, base_time=base_time)
+
+    inserted = 0
+    for item in batch:
+        offer_data = item.offer
+        offer = MarketOffer(
+            pickup_point=text(  # type: ignore[call-arg]
+                f"ST_GeomFromText('{offer_data.pickup_point.replace('SRID=4326;', '')}', 4326)"
+            ),
+            delivery_point=text(  # type: ignore[call-arg]
+                f"ST_GeomFromText('{offer_data.delivery_point.replace('SRID=4326;', '')}', 4326)"
+            ),
+            ldm=offer_data.ldm,
+            weight_kg=offer_data.weight_kg,
+            price_eur=offer_data.price_eur,
+            time_window_open=offer_data.time_window_open,
+            time_window_close=offer_data.time_window_close,
+            handling_time_minutes=offer_data.handling_time_minutes,
+            stackable=offer_data.stackable,
+        )
+        session.add(offer)
+        inserted += 1
+
+    await session.flush()
+    return inserted
+
+
+async def _insert_offers_raw(session: AsyncSession, count: int) -> int:
+    """Wstaw oferty przez parametryzowane INSERT (PostGIS ST_GeomFromText)."""
+    if count <= 0:
+        return 0
+
+    base_time = datetime.now(UTC)
+    batch = generate_batch(count, base_time=base_time)
+
+    inserted = 0
+    for item in batch:
+        o = item.offer
+        # Wyciągnij WKT z formatu EWKT "SRID=4326;POINT(lon lat)"
+        pickup_wkt = o.pickup_point.split(";", 1)[1]
+        delivery_wkt = o.delivery_point.split(";", 1)[1]
+        await session.execute(
+            text(
+                """
+                INSERT INTO market_offers
+                    (pickup_point, delivery_point, ldm, weight_kg, price_eur,
+                     time_window_open, time_window_close, handling_time_minutes,
+                     stackable, pickup_label, delivery_label)
+                VALUES
+                    (ST_GeomFromText(:pickup, 4326),
+                     ST_GeomFromText(:delivery, 4326),
+                     :ldm, :weight_kg, :price_eur,
+                     :tw_open, :tw_close, :handling, :stackable,
+                     :pickup_label, :delivery_label)
+                """
+            ),
+            {
+                "pickup": pickup_wkt,
+                "delivery": delivery_wkt,
+                "ldm": float(o.ldm),
+                "weight_kg": o.weight_kg,
+                "price_eur": float(o.price_eur),
+                "tw_open": o.time_window_open,
+                "tw_close": o.time_window_close,
+                "handling": o.handling_time_minutes,
+                "stackable": o.stackable,
+                "pickup_label": o.pickup_label,
+                "delivery_label": o.delivery_label,
+            },
+        )
+        inserted += 1
+
+    return inserted
+
 async def seed_market_offers(target_count: int = DEFAULT_SEED_COUNT) -> dict[str, int]:
     """Upewnij się, że w tabeli market_offers jest co najmniej ``target_count`` wierszy."""
     session_factory = get_sessionmaker()

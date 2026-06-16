@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.lib.geo import geo_point_from_geometry
 from app.models import MarketOffer
-from app.schemas.offer import OfferRead
+from app.schemas.offer import OfferRead, SimulateOffersResponse
+from app.services.market_offers import bulk_insert_offers
+from app.services.market_simulator import generate_batch
 
 router = APIRouter(prefix="/offers", tags=["offers"])
 
@@ -49,3 +51,20 @@ async def list_offers(
         select(MarketOffer).order_by(MarketOffer.time_window_open.desc()).limit(limit).offset(offset),
     )
     return [_offer_to_read(row) for row in result.scalars().all()]
+
+
+@router.post(
+    "/simulate",
+    response_model=SimulateOffersResponse,
+    summary="Generate synthetic market offers (no session required)",
+)
+async def simulate_offers(
+    db: AsyncSession = Depends(get_db),
+    count: int = Query(200, ge=1, le=500),
+) -> SimulateOffersResponse:
+    """Seed the market_offers table with synthetic data without needing a session."""
+    generated = generate_batch(count)
+    offer_creates = [item.offer for item in generated]
+    inserted, skipped = await bulk_insert_offers(db, offer_creates)
+    await db.commit()
+    return SimulateOffersResponse(requested=count, inserted=inserted, skipped=skipped)
