@@ -68,10 +68,17 @@ def get_routing_provider() -> RoutingProvider:
     global _provider
     if _provider is None:
         from app.core.config import get_settings
+
+        settings = get_settings()
+        if settings.USE_ROUTING_MOCK:
+            from app.lib.mock_routing import MockRoutingProvider
+
+            _provider = MockRoutingProvider()
+            return _provider
+
         from app.lib.ors import ORSRoutingClient
         from app.lib.redis_client import get_redis
 
-        settings = get_settings()
         _provider = ORSRoutingClient(
             api_key=settings.ORS_API_KEY,
             base_url=settings.ORS_BASE_URL,
