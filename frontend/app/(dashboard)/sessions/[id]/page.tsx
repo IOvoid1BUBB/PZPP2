@@ -58,7 +58,7 @@ export default function SessionPage() {
         <div>
           <h1 className="text-2xl font-semibold">Sesja {session.id.slice(0, 8)}…</h1>
           <p className="text-sm text-[var(--ui-text-secondary)]">
-            Utworzono: {new Date(session.created_at).toLocaleString("pl-PL")}
+            Created at: {new Date(session.created_at).toLocaleString("pl-PL")}
           </p>
         </div>
         <Badge variant={session.status === "confirmed" ? "success" : "info"}>
@@ -68,15 +68,15 @@ export default function SessionPage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
-          <CardTitle>Oferty</CardTitle>
+          <CardTitle>Offers</CardTitle>
           <CardDescription>{session.metrics.client_count}</CardDescription>
         </Card>
         <Card>
-          <CardTitle>Postoje</CardTitle>
+          <CardTitle>Stops</CardTitle>
           <CardDescription>{session.metrics.stop_count}</CardDescription>
         </Card>
         <Card>
-          <CardTitle>Szacowany zysk</CardTitle>
+          <CardTitle>Estimated profit</CardTitle>
           <CardDescription>
             {session.metrics.estimated_net_profit_eur != null
               ? `${session.metrics.estimated_net_profit_eur.toLocaleString("pl-PL")} EUR`
