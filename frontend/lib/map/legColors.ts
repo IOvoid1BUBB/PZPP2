@@ -21,16 +21,17 @@ export function getLegColorByRatio(loadRatio: number): string {
 /**
  * Resolve a leg's heat-map color.
  *
- * Prefers the backend-provided `loadRatio` (cargo / vehicle max weight). Falls
- * back to `weightKg / maxWeightKg` when the ratio is not available (e.g. older
- * payloads or demo data without an explicit ratio).
+ * Prefers the backend-provided `loadRatio` — already computed as
+ * `max(weight / max_weight, ldm / max_ldm)`. A ratio of `0` is a valid value
+ * (empty leg) and must be honored, so we only fall back when it is missing.
+ * The fallback uses `weightKg / maxWeightKg` for older payloads or demo data.
  */
 export function getLegColor(
   weightKg: number,
   maxWeightKg: number,
   loadRatio?: number,
 ): string {
-  if (loadRatio != null && loadRatio > 0) {
+  if (loadRatio != null) {
     return getLegColorByRatio(loadRatio);
   }
   if (maxWeightKg <= 0) {
@@ -47,8 +48,8 @@ export function getMaxLegWeightKg(legs: { weightKgAtLeg: number }[]): number {
 }
 
 export const HEAT_MAP_LEGEND = [
-  { label: "< 30% obciążenia", color: "#4E9AF1" },
-  { label: "30–60%", color: "#F5A623" },
-  { label: "60–85%", color: "#E8564A" },
-  { label: "≥ 85%", color: "#C0392B" },
+  { label: "< 30% pojemności", color: "#4E9AF1" },
+  { label: "30–60% pojemności", color: "#F5A623" },
+  { label: "60–85% pojemności", color: "#E8564A" },
+  { label: "≥ 85% pojemności", color: "#C0392B" },
 ] as const;

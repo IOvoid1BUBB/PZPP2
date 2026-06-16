@@ -12,6 +12,7 @@ function makeRouteMap(overrides: Partial<RouteMapData> = {}): RouteMapData {
     totalDurationMinutes: 142,
     fromApi: true,
     legs: [],
+    restPoints: [],
     stops: [
       {
         id: "s1",

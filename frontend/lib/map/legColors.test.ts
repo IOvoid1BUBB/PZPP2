@@ -47,8 +47,9 @@ describe("getLegColor", () => {
     expect(getLegColor(1000, 24000)).toBe(BLUE); // ~0.04
   });
 
-  it("falls back when ratio is zero", () => {
-    expect(getLegColor(23000, 24000, 0)).toBe(DARK_RED); // ~0.96
+  it("honors an explicit zero ratio as an empty leg (blue)", () => {
+    // loadRatio === 0 is a real value (empty leg); it must NOT fall back to weight.
+    expect(getLegColor(23000, 24000, 0)).toBe(BLUE);
   });
 
   it("returns blue when maxWeight is non-positive and no ratio", () => {

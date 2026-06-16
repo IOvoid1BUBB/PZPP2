@@ -3,22 +3,35 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
+import {
+  MapContainer,
+  Marker,
+  Polyline,
+  Popup,
+  TileLayer,
+  useMap,
+} from "react-leaflet";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/Card";
 import { DriverRouteBriefing } from "@/components/driver/DriverRouteBriefing";
+import { RouteTimeline } from "@/components/planner/RouteTimeline";
 import {
   fetchSessionRouteMap,
 } from "@/lib/api/mapClient";
 import { getCompanyColorHex } from "@/lib/colors/companyColors";
 import {
   getLegColor,
-  getMaxLegWeightKg,
   HEAT_MAP_LEGEND,
 } from "@/lib/map/legColors";
-import type { RouteMapData, RouteStop } from "@/lib/types/routeMap";
+import type {
+  DriverRestType,
+  RouteMapData,
+  RouteStop,
+} from "@/lib/types/routeMap";
+
+const REST_PIN_COLOR = "#7B2D8B";
 
 // CartoDB Positron — jasny minimalistyczny motyw pasujący do UI (#e6e7ef tło)
 const TILE_URL =
@@ -66,6 +79,22 @@ function createStopIcon(pinLabel: string, borderColor: string): L.DivIcon {
     iconSize: [34, 34],
     iconAnchor: [17, 17],
   });
+}
+
+function createRestIcon(restType: DriverRestType): L.DivIcon {
+  const glyph = restType === "break_45" ? "☕" : "🌙";
+  const label = restType === "break_45" ? "Przerwa 45 min" : "Nocleg 11h";
+  return L.divIcon({
+    className: "route-map-pin-wrapper",
+    html: `<div class="route-map-pin route-map-pin--rest" style="border-color:${REST_PIN_COLOR};background:${REST_PIN_COLOR}" aria-label="${label}"><span class="route-map-pin-kind" style="color:#fff">${glyph}</span></div>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+  });
+}
+
+function formatRestHours(afterDrivingMinutes: number): string {
+  const hours = Math.round((afterDrivingMinutes / 60) * 10) / 10;
+  return hours.toLocaleString("pl-PL", { maximumFractionDigits: 1 });
 }
 
 function boundsFromData(data: RouteMapData): L.LatLngBoundsExpression {
@@ -116,6 +145,13 @@ function HeatMapLegend() {
           {item.label}
         </span>
       ))}
+      <span className="inline-flex items-center gap-1.5">
+        <span
+          className="inline-block h-3 w-3 rounded-full"
+          style={{ backgroundColor: REST_PIN_COLOR }}
+        />
+        Przerwa kierowcy
+      </span>
     </div>
   );
 }
@@ -248,8 +284,9 @@ export default function RouteMapClient({
   }, []);
 
   const routeData = data;
+  // Fallback denominator only — backend now always provides a ready loadRatio.
   const maxWeightKg = useMemo(
-    () => (routeData ? getMaxLegWeightKg(routeData.legs) : 0),
+    () => routeData?.vehicleMaxWeightKg ?? 0,
     [routeData],
   );
 
@@ -422,7 +459,7 @@ export default function RouteMapClient({
                   color: getLegColor(
                     leg.weightKgAtLeg,
                     maxWeightKg,
-                    leg.loadRatio,
+                    leg.loadRatio ?? undefined,
                   ),
                   weight: 4,
                   opacity: 0.85,
@@ -439,29 +476,61 @@ export default function RouteMapClient({
                 )}
               />
             ))}
+            {(routeData.restPoints ?? []).map((rest, index) => (
+              <Marker
+                key={`rest-${rest.legId}-${rest.atRouteMinute}-${index}`}
+                position={[rest.lat, rest.lon]}
+                icon={createRestIcon(rest.restType)}
+              >
+                <Popup>
+                  {rest.restType === "break_45"
+                    ? `Przerwa obowiązkowa 45 min (po ${formatRestHours(rest.afterDrivingMinutes)} h jazdy)`
+                    : `Nocleg 11h (po ${formatRestHours(rest.afterDrivingMinutes)} h jazdy)`}
+                </Popup>
+              </Marker>
+            ))}
           </MapContainer>
         </div>
 
         <HeatMapLegend />
       </Card>
 
-      <Card className="flex min-h-[480px] flex-col overflow-hidden p-0">
-        <div className="border-b border-[var(--ui-border)] px-4 py-3">
-          <CardTitle>Stop Timeline</CardTitle>
-          <CardDescription>
-            Kliknij wiersz, aby przelecieć do punktu na mapie.
-          </CardDescription>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          {routeData.stops.length === 0 ? (
-            <p className="p-4 text-sm text-[var(--ui-text-secondary)]">
-              Brak zaplanowanych postojów.
-            </p>
-          ) : (
-            <StopTimeline stops={routeData.stops} onStopClick={flyToStop} />
-          )}
-        </div>
-      </Card>
+      <div className="flex min-h-[480px] flex-col gap-4">
+        <Card className="flex flex-1 flex-col overflow-hidden p-0">
+          <div className="border-b border-[var(--ui-border)] px-4 py-3">
+            <CardTitle>Stop Timeline</CardTitle>
+            <CardDescription>
+              Kliknij wiersz, aby przelecieć do punktu na mapie.
+            </CardDescription>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {routeData.stops.length === 0 ? (
+              <p className="p-4 text-sm text-[var(--ui-text-secondary)]">
+                Brak zaplanowanych postojów.
+              </p>
+            ) : (
+              <StopTimeline stops={routeData.stops} onStopClick={flyToStop} />
+            )}
+          </div>
+        </Card>
+
+        <Card className="flex flex-col overflow-hidden p-0">
+          <div className="border-b border-[var(--ui-border)] px-4 py-3">
+            <CardTitle>Oś czasu trasy</CardTitle>
+            <CardDescription>
+              Baza, postoje oraz obowiązkowe przerwy w kolejności
+              chronologicznej.
+            </CardDescription>
+          </div>
+          <div className="overflow-y-auto">
+            <RouteTimeline
+              stops={routeData.stops}
+              restPoints={routeData.restPoints ?? []}
+              totalDurationMinutes={routeData.totalDurationMinutes}
+            />
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
