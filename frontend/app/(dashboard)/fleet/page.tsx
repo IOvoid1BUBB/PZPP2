@@ -11,6 +11,7 @@ import {
   MapPin,
   MoreVertical,
   Navigation,
+  Pencil,
   Plus,
   Ruler,
   Trash2,
@@ -26,16 +27,20 @@ import { SquareMarker } from "@/components/loadmax/MapMarkers";
 import { TruckIllustration } from "@/components/loadmax/TruckIllustration";
 import { SegmentedToggle } from "@/components/loadmax/SegmentedToggle";
 import { AddVehicleModal } from "@/components/fleet/AddVehicleModal";
+import { DriverProfileModal } from "@/components/fleet/DriverProfileModal";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useToast } from "@/components/ui/Toast";
 import { Button } from "@/components/ui/Button";
 import {
   createSession,
+  deleteDriverProfile,
   fetchDriverProfiles,
   fetchSessionDetail,
   updateSessionStatus,
   type DriverProfileRecord,
   type SessionDetailResponse,
 } from "@/lib/api/sessionClient";
+import { buildCreateSessionParams } from "@/lib/fleet/resolveSessionOrigin";
 import {
   fetchFleetVehicles,
   deleteFleetVehicle,
@@ -218,11 +223,13 @@ function VehiclesView({
   const router = useRouter();
   const { showToast } = useToast();
   const setSessionId = useSessionStore((state) => state.setSessionId);
+  const setSessionContext = useVehicleStore((state) => state.setSessionContext);
   const clearAllSlots = useLoadStore((state) => state.clearAllSlots);
   const [selected, setSelected] = useState(0);
   const [detail, setDetail] = useState<SessionDetailResponse | null>(null);
   const [planning, setPlanning] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [editVehicle, setEditVehicle] = useState<FleetVehicle | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -250,8 +257,20 @@ function VehiclesView({
     if (!vehicle) return;
     setPlanning(true);
     try {
-      // Create session with vehicle_id pointing to the type (vehicle_types table)
-      const session = await createSession({ vehicle_id: vehicle.typeId });
+      const origin =
+        vehicle.homeLat != null && vehicle.homeLon != null
+          ? { lat: vehicle.homeLat, lon: vehicle.homeLon }
+          : undefined;
+      const session = await createSession(
+        buildCreateSessionParams(vehicle.typeId, {
+          origin,
+          fleetVehicleId: vehicle.id,
+        }),
+      );
+      setSessionContext({
+        origin: origin ?? { lat: 52.22, lon: 21.01 },
+        fleetVehicleId: vehicle.id,
+      });
       // Clear any stale slots/vehicle from the previous session before navigating.
       // The planner's usePlannerLayout will fetch the correct vehicle from the session.
       clearAllSlots();
@@ -287,12 +306,18 @@ function VehiclesView({
 
   if (vehicles.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-16">
-        <p className="text-sm text-ui-secondary">Brak pojazdów w flocie.</p>
-        <Button variant="primary" onClick={() => setAddModalOpen(true)}>
-          <Plus className="mr-1 size-4" />
-          Dodaj pierwszy pojazd
-        </Button>
+      <div className="py-16">
+        <EmptyState
+          icon={Truck}
+          title="Brak pojazdów w flocie"
+          description="Dodaj pierwszy pojazd do floty, aby rozpocząć planowanie tras."
+          action={
+            <Button variant="primary" onClick={() => setAddModalOpen(true)}>
+              <Plus className="mr-1 size-4" />
+              Dodaj pierwszy pojazd
+            </Button>
+          }
+        />
         <AddVehicleModal
           open={addModalOpen}
           onClose={() => setAddModalOpen(false)}
@@ -373,6 +398,14 @@ function VehiclesView({
               {/* Context menu */}
               {menuOpenId === v.id && (
                 <div className="absolute right-2 top-10 z-10 rounded-xl border border-ui-border bg-ui-bg p-1 shadow-lg">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-ui-primary hover:bg-ui-raised"
+                    onClick={() => { setEditVehicle(v); setMenuOpenId(null); }}
+                  >
+                    <Pencil className="size-4" />
+                    Edytuj pojazd
+                  </button>
                   <button
                     type="button"
                     className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-ui-error hover:bg-ui-raised"
@@ -499,6 +532,14 @@ function VehiclesView({
         onCreated={() => { setAddModalOpen(false); onRefresh(); }}
       />
 
+      {/* Edit vehicle modal (FEAT-06) */}
+      <AddVehicleModal
+        open={editVehicle !== null}
+        vehicle={editVehicle ?? undefined}
+        onClose={() => setEditVehicle(null)}
+        onCreated={() => { setEditVehicle(null); onRefresh(); }}
+      />
+
       {/* Delete confirmation dialog */}
       {confirmDeleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -535,12 +576,91 @@ function VehiclesView({
   );
 }
 
-function DriversView({ drivers }: { drivers: DriverProfileRecord[] }) {
+function DriversView({
+  drivers,
+  onRefresh,
+}: {
+  drivers: DriverProfileRecord[];
+  onRefresh: () => void;
+}) {
+  const { showToast } = useToast();
   const [selected, setSelected] = useState(0);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editProfile, setEditProfile] = useState<DriverProfileRecord | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete(id: string) {
+    setDeleting(true);
+    try {
+      await deleteDriverProfile(id);
+      showToast({ type: "success", message: "Profil kierowcy usunięty." });
+      setConfirmDeleteId(null);
+      setSelected(0);
+      onRefresh();
+    } catch (err) {
+      showToast({
+        type: "error",
+        message: err instanceof Error ? err.message : "Nie udało się usunąć profilu.",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const driver = drivers[selected];
 
+  const driverHeader = (
+    <DriverProfileModal
+      open={modalOpen || editProfile !== null}
+      profile={editProfile ?? undefined}
+      onClose={() => {
+        setModalOpen(false);
+        setEditProfile(null);
+      }}
+      onSaved={() => {
+        setModalOpen(false);
+        setEditProfile(null);
+        onRefresh();
+      }}
+    />
+  );
+
+  const deleteDialog = confirmDeleteId ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="w-80 rounded-2xl bg-ui-bg p-6 shadow-xl">
+        <h3 className="text-base font-semibold text-ui-primary">Usuń profil kierowcy?</h3>
+        <p className="mt-2 text-sm text-ui-secondary">
+          Tej operacji nie można cofnąć.
+        </p>
+        <div className="mt-4 flex justify-end gap-3">
+          <Button variant="secondary" onClick={() => setConfirmDeleteId(null)}>
+            Anuluj
+          </Button>
+          <Button
+            variant="primary"
+            disabled={deleting}
+            onClick={() => void handleDelete(confirmDeleteId)}
+            className="bg-ui-error hover:bg-ui-error/90"
+          >
+            {deleting ? "Usuwanie…" : "Usuń"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   if (!driver) {
-    return <p className="text-sm text-ui-secondary">Brak profili kierowców.</p>;
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 py-16">
+        <p className="text-sm text-ui-secondary">Brak profili kierowców.</p>
+        <Button variant="primary" onClick={() => setModalOpen(true)}>
+          <Plus className="mr-1 size-4" />
+          Dodaj pierwszy profil
+        </Button>
+        {driverHeader}
+      </div>
+    );
   }
 
   const initials = driver.name
@@ -556,39 +676,59 @@ function DriversView({ drivers }: { drivers: DriverProfileRecord[] }) {
       <aside className="flex h-full min-h-0 flex-col gap-3 rounded-2xl bg-ui-surface p-3">
         <button
           type="button"
-          disabled
-          className="flex w-full shrink-0 items-center justify-center gap-1.5 rounded-lg bg-ui-nav py-2 text-xs font-semibold text-ui-muted opacity-70"
+          onClick={() => setModalOpen(true)}
+          className="flex w-full shrink-0 items-center justify-center gap-1.5 rounded-lg bg-ui-accent py-2 text-xs font-semibold text-white hover:opacity-90"
         >
           <Plus className="size-3.5" aria-hidden="true" />
-          Add driver
+          Dodaj profil
         </button>
         <div className="min-h-0 flex-1 space-y-2 p-2 overflow-y-auto pr-1">
           {drivers.map((d, i) => (
-            <button
-              type="button"
+            <div
               key={d.id}
-              onClick={() => setSelected(i)}
               className={cn(
                 "flex w-full items-center gap-3 rounded-2xl bg-transparent px-4 py-3 text-left transition-colors",
                 selected === i ? "ring-1 ring-ui-accent" : "hover:bg-ui-nav/50",
               )}
             >
-              <span className="flex size-10 items-center justify-center rounded-full bg-ui-raised text-ui-secondary">
-                <User className="size-5" aria-hidden="true" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setSelected(i)}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              >
+                <span className="flex size-10 items-center justify-center rounded-full bg-ui-raised text-ui-secondary">
+                  <User className="size-5" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
                   <p className="font-semibold text-ui-primary">{d.name}</p>
+                  <div className="mt-1 flex items-center gap-3 text-sm text-ui-secondary">
+                    <span className="flex items-center gap-1">
+                      <IdCard className="size-3.5 text-ui-muted" aria-hidden="true" />
+                      {d.code}
+                    </span>
+                    <span className="text-ui-muted">{d.hourly_cost_eur} EUR/h</span>
+                  </div>
                 </div>
-                <div className="mt-1 flex items-center gap-3 text-sm text-ui-secondary">
-                  <span className="flex items-center gap-1">
-                    <IdCard className="size-3.5 text-ui-muted" aria-hidden="true" />
-                    {d.code}
-                  </span>
-                  <span className="text-ui-muted">{d.hourly_cost_eur} EUR/h</span>
-                </div>
+              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  aria-label={`Edytuj profil ${d.name}`}
+                  onClick={() => setEditProfile(d)}
+                  className="text-ui-muted hover:text-ui-primary"
+                >
+                  <Pencil className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Usuń profil ${d.name}`}
+                  onClick={() => setConfirmDeleteId(d.id)}
+                  className="text-ui-muted hover:text-ui-error"
+                >
+                  <Trash2 className="size-4" />
+                </button>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       </aside>
@@ -626,6 +766,9 @@ function DriversView({ drivers }: { drivers: DriverProfileRecord[] }) {
           </EuropeMap>
         </Card>
       </div>
+
+      {driverHeader}
+      {deleteDialog}
     </div>
   );
 }
@@ -698,7 +841,7 @@ function FleetPageInner() {
       {tab === "Vehicles" ? (
         <VehiclesView vehicles={fleetVehicles} onRefresh={() => void loadFleet()} />
       ) : (
-        <DriversView drivers={drivers} />
+        <DriversView drivers={drivers} onRefresh={() => void loadFleet()} />
       )}
     </div>
   );

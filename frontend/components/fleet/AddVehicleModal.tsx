@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { VehicleTypeCard, type VehicleTypeSummary } from "@/components/fleet/VehicleTypeCard";
 import { fetchVehicles } from "@/lib/api/sessionClient";
-import { createFleetVehicle } from "@/lib/api/fleetClient";
+import { createFleetVehicle, updateFleetVehicle } from "@/lib/api/fleetClient";
 import type { FleetVehicle } from "@/lib/api/fleetClient";
 
 // Top 10 Polish/DE/FR/NL cities for home location picker
@@ -25,9 +25,27 @@ interface AddVehicleModalProps {
   open: boolean;
   onClose: () => void;
   onCreated: (vehicle: FleetVehicle) => void;
+  /** When provided the modal switches to edit mode (PUT /fleet/{id}). */
+  vehicle?: FleetVehicle;
 }
 
-export function AddVehicleModal({ open, onClose, onCreated }: AddVehicleModalProps) {
+/** Closest city option for a home coordinate (used to pre-fill edit mode). */
+function cityIndexFor(lat: number | null, lon: number | null): number {
+  if (lat == null || lon == null) return 0;
+  let best = 0;
+  let bestDist = Number.POSITIVE_INFINITY;
+  CITY_OPTIONS.forEach((city, i) => {
+    const d = (city.lat - lat) ** 2 + (city.lon - lon) ** 2;
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
+export function AddVehicleModal({ open, onClose, onCreated, vehicle }: AddVehicleModalProps) {
+  const isEdit = Boolean(vehicle);
   const [vehicleTypes, setVehicleTypes] = useState<VehicleTypeSummary[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState<string>("");
   const [registration, setRegistration] = useState("");
@@ -48,13 +66,25 @@ export function AddVehicleModal({ open, onClose, onCreated }: AddVehicleModalPro
       }));
       setVehicleTypes(types);
       if (types.length > 0 && !selectedTypeId) {
-        setSelectedTypeId(types[0].id);
+        setSelectedTypeId(vehicle?.typeId ?? types[0].id);
       }
     });
-  }, [open, selectedTypeId]);
+  }, [open, selectedTypeId, vehicle?.typeId]);
+
+  // Pre-fill form fields when (re)opening in edit mode.
+  useEffect(() => {
+    if (!open) return;
+    if (vehicle) {
+      setSelectedTypeId(vehicle.typeId);
+      setRegistration(vehicle.registration);
+      setDisplayName(vehicle.displayName);
+      setSelectedCity(cityIndexFor(vehicle.homeLat, vehicle.homeLon));
+    }
+    setError(null);
+  }, [open, vehicle]);
 
   const handleSubmit = useCallback(async () => {
-    if (!selectedTypeId || !registration.trim() || !displayName.trim()) {
+    if (!registration.trim() || !displayName.trim() || (!isEdit && !selectedTypeId)) {
       setError("Wypełnij wszystkie wymagane pola.");
       return;
     }
@@ -62,24 +92,40 @@ export function AddVehicleModal({ open, onClose, onCreated }: AddVehicleModalPro
     setError(null);
     try {
       const city = CITY_OPTIONS[selectedCity];
-      const vehicle = await createFleetVehicle({
-        type_id: selectedTypeId,
-        registration: registration.trim(),
-        display_name: displayName.trim(),
-        home_lat: city?.lat ?? null,
-        home_lon: city?.lon ?? null,
-      });
-      onCreated(vehicle);
-      // Reset form
-      setRegistration("");
-      setDisplayName("");
-      setSelectedCity(0);
+      let saved: FleetVehicle;
+      if (vehicle) {
+        saved = await updateFleetVehicle(vehicle.id, {
+          registration: registration.trim(),
+          display_name: displayName.trim(),
+          home_lat: city?.lat ?? null,
+          home_lon: city?.lon ?? null,
+        });
+      } else {
+        saved = await createFleetVehicle({
+          type_id: selectedTypeId,
+          registration: registration.trim(),
+          display_name: displayName.trim(),
+          home_lat: city?.lat ?? null,
+          home_lon: city?.lon ?? null,
+        });
+        // Reset form only after a successful create.
+        setRegistration("");
+        setDisplayName("");
+        setSelectedCity(0);
+      }
+      onCreated(saved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Błąd tworzenia pojazdu.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEdit
+            ? "Błąd zapisu pojazdu."
+            : "Błąd tworzenia pojazdu.",
+      );
     } finally {
       setSaving(false);
     }
-  }, [selectedTypeId, registration, displayName, selectedCity, onCreated]);
+  }, [selectedTypeId, registration, displayName, selectedCity, onCreated, vehicle, isEdit]);
 
   if (!open) return null;
 
@@ -88,12 +134,14 @@ export function AddVehicleModal({ open, onClose, onCreated }: AddVehicleModalPro
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       role="dialog"
       aria-modal="true"
-      aria-label="Dodaj pojazd"
+      aria-label={isEdit ? "Edytuj pojazd" : "Dodaj pojazd"}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-y-auto rounded-2xl bg-ui-bg p-6 shadow-xl">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-ui-primary">Dodaj pojazd</h2>
+          <h2 className="text-lg font-semibold text-ui-primary">
+            {isEdit ? "Edytuj pojazd" : "Dodaj pojazd"}
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -104,16 +152,28 @@ export function AddVehicleModal({ open, onClose, onCreated }: AddVehicleModalPro
           </button>
         </div>
 
-        {/* Vehicle type selector */}
+        {/* Vehicle type selector — locked in edit mode (type is immutable). */}
         <section className="mt-4">
-          <h3 className="mb-2 text-sm font-semibold text-ui-secondary">Typ pojazdu</h3>
-          <div className="grid grid-cols-2 gap-3">
+          <h3 className="mb-2 text-sm font-semibold text-ui-secondary">
+            Typ pojazdu
+            {isEdit ? (
+              <span className="ml-2 text-xs font-normal text-ui-muted">
+                (typu nie można zmienić)
+              </span>
+            ) : null}
+          </h3>
+          <div
+            className={`grid grid-cols-2 gap-3 ${isEdit ? "pointer-events-none opacity-60" : ""}`}
+            aria-disabled={isEdit}
+          >
             {vehicleTypes.map((vt) => (
               <VehicleTypeCard
                 key={vt.id}
                 vehicle={vt}
                 selected={selectedTypeId === vt.id}
-                onSelect={() => setSelectedTypeId(vt.id)}
+                onSelect={() => {
+                  if (!isEdit) setSelectedTypeId(vt.id);
+                }}
               />
             ))}
           </div>
@@ -176,7 +236,13 @@ export function AddVehicleModal({ open, onClose, onCreated }: AddVehicleModalPro
             disabled={saving}
             onClick={() => void handleSubmit()}
           >
-            {saving ? "Tworzenie…" : "Dodaj pojazd"}
+            {saving
+              ? isEdit
+                ? "Zapisywanie…"
+                : "Tworzenie…"
+              : isEdit
+                ? "Zapisz zmiany"
+                : "Dodaj pojazd"}
           </Button>
         </div>
       </div>
