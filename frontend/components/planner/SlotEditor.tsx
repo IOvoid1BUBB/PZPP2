@@ -47,6 +47,7 @@ import {
   updateSessionStatus,
   removeOfferFromSession,
 } from "@/lib/api/sessionClient";
+import { buildCreateSessionParams } from "@/lib/fleet/resolveSessionOrigin";
 
 import { getCompanyColorPair } from "@/lib/colors/companyColors";
 import {
@@ -194,6 +195,7 @@ export function SlotEditor({
   const [saving, setSaving] = useState(false);
   const [driverName, setDriverName] = useState("—");
   const [sessionStatus, setSessionStatus] = useState<string>("draft");
+  const [driverProfileId, setDriverProfileId] = useState<string | undefined>(undefined);
   const { data: profitData } = useProfitBreakdown(sessionId);
 
   useEffect(() => {
@@ -211,6 +213,7 @@ export function SlotEditor({
         }
         setDriverName(detail.driver_profile.name);
         setSessionStatus(detail.status);
+        setDriverProfileId(detail.driver_profile.id);
       })
       .catch(() => {
         if (!cancelled) {
@@ -222,6 +225,23 @@ export function SlotEditor({
       cancelled = true;
     };
   }, [sessionId]);
+
+  // BUG-06: driver profile selection. For an active session there is no backend
+  // endpoint to re-assign the profile, so the change is applied at session
+  // creation time (pre-session) and surfaced as info for an existing session.
+  const handleDriverProfileChange = useCallback(
+    (profileId: string) => {
+      setDriverProfileId(profileId);
+      if (sessionId) {
+        showToast({
+          type: "info",
+          message:
+            "Profil kierowcy ustawiany jest przy tworzeniu trasy — utwórz nową trasę, aby przeliczyć koszty.",
+        });
+      }
+    },
+    [sessionId, showToast],
+  );
 
   const computedReadOnly =
     sessionStatus === "confirmed" || sessionStatus === "dispatched";
@@ -495,11 +515,14 @@ export function SlotEditor({
       return;
     }
     if (loadedCount === 0) {
-      showToast({ type: "error", message: "Dodaj co najmniej jedną ofertę przed wysłaniem." });
+      showToast({ type: "error", message: "Naczepa jest pusta — dodaj co najmniej jedną ofertę." });
       return;
     }
     if (conflicts.length > 0) {
-      showToast({ type: "error", message: "Usuń konflikty layoutu przed wysłaniem." });
+      showToast({
+        type: "error",
+        message: `Usuń konflikty slotów przed wysłaniem (${conflicts.length}).`,
+      });
       return;
     }
 
@@ -533,6 +556,8 @@ export function SlotEditor({
 
   const setSessionId = useSessionStore((state) => state.setSessionId);
   const selectedVehicle = useVehicleStore((state) => state.selectedVehicle);
+  const sessionOrigin = useVehicleStore((state) => state.sessionOrigin);
+  const fleetVehicleId = useVehicleStore((state) => state.fleetVehicleId);
   const vehicleDbId = selectedVehicle?.id ?? storeVehicle?.id ?? null;
 
   /**
@@ -565,7 +590,13 @@ export function SlotEditor({
 
     setCreatingRoute(true);
     try {
-      const session = await createSession({ vehicle_id: vehicleDbId });
+      const session = await createSession(
+        buildCreateSessionParams(vehicleDbId, {
+          driverProfileId,
+          origin: sessionOrigin ?? undefined,
+          fleetVehicleId: fleetVehicleId ?? undefined,
+        }),
+      );
       for (const offerId of pendingOfferIds) {
         try {
           await addOfferToSession(session.id, offerId);
@@ -582,7 +613,7 @@ export function SlotEditor({
     } finally {
       setCreatingRoute(false);
     }
-  }, [vehicleDbId, pendingOfferIds, showToast]);
+  }, [vehicleDbId, pendingOfferIds, driverProfileId, sessionOrigin, fleetVehicleId, showToast]);
 
   /** Step 2: Confirm the temp session as the real session */
   const handleCreateSession = useCallback(async () => {
@@ -725,6 +756,8 @@ export function SlotEditor({
               onCancelRoute={routeMode === "route-preview" ? handleCancelRoute : undefined}
               sessionId={effectiveSessionId ?? undefined}
               sessionStatus={sessionStatus}
+              driverProfileId={driverProfileId}
+              onDriverProfileChange={handleDriverProfileChange}
               routeMode={routeMode}
             />
 
