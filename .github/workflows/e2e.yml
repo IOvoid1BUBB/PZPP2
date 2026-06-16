@@ -1,0 +1,92 @@
+name: E2E (Playwright)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  consolidation-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    # Deterministic, offline stack: mock the heavy VRP solver and the routing
+    # provider so the full flow runs fast and without external API keys.
+    env:
+      USE_SOLVER_MOCK: "true"
+      USE_ROUTING_MOCK: "true"
+      PLAYWRIGHT_BASE_URL: "http://localhost:3000"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright (chromium)
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Build & start the stack
+        run: docker compose up -d --build
+
+      - name: Wait for the stack to be healthy
+        run: |
+          set -e
+          echo "Waiting for the API…"
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8000/health > /dev/null; then
+              echo "API is up."
+              break
+            fi
+            sleep 5
+            if [ "$i" -eq 60 ]; then echo "API never became healthy"; exit 1; fi
+          done
+          echo "Waiting for the frontend…"
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/planner > /dev/null; then
+              echo "Frontend is up."
+              break
+            fi
+            sleep 5
+            if [ "$i" -eq 60 ]; then echo "Frontend never became healthy"; exit 1; fi
+          done
+
+      - name: Run Playwright E2E
+        working-directory: frontend
+        # PW_REUSE=1 → reuse the stack started above instead of re-running the
+        # webServer command. --retries=0 surfaces any flakiness as a failure.
+        env:
+          CI: "true"
+          PW_REUSE: "1"
+        run: npx playwright test --retries=0
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+      - name: Tear down the stack
+        if: always()
+        run: docker compose down -v
