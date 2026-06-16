@@ -4,6 +4,8 @@
  */
 
 import { toNumber } from "@/lib/api/coerce";
+import { errorFromResponse } from "@/lib/api/errors";
+import { fetchWithRetry } from "@/lib/api/fetchWithRetry";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
@@ -89,18 +91,18 @@ function mapFleetVehicle(raw: FleetVehicleApiRecord): FleetVehicle {
 }
 
 export async function fetchFleetVehicles(): Promise<FleetVehicle[]> {
-  const response = await fetch(`${API_BASE}/api/v1/fleet`);
+  const response = await fetchWithRetry(`${API_BASE}/api/v1/fleet`);
   if (!response.ok) {
-    throw new Error(`Failed to fetch fleet (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się pobrać floty.");
   }
   const raw = (await response.json()) as FleetVehicleApiRecord[];
   return raw.map(mapFleetVehicle);
 }
 
 export async function fetchFleetVehicle(id: string): Promise<FleetVehicle> {
-  const response = await fetch(`${API_BASE}/api/v1/fleet/${id}`);
+  const response = await fetchWithRetry(`${API_BASE}/api/v1/fleet/${id}`);
   if (!response.ok) {
-    throw new Error(`Failed to fetch fleet vehicle (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się pobrać pojazdu.");
   }
   return mapFleetVehicle((await response.json()) as FleetVehicleApiRecord);
 }
@@ -114,8 +116,7 @@ export async function createFleetVehicle(
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { detail?: string };
-    throw new Error(body.detail ?? `Nie udało się dodać pojazdu (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się dodać pojazdu.");
   }
   return mapFleetVehicle((await response.json()) as FleetVehicleApiRecord);
 }
@@ -130,7 +131,7 @@ export async function updateFleetVehicle(
     body: JSON.stringify(patch),
   });
   if (!response.ok) {
-    throw new Error(`Nie udało się zaktualizować pojazdu (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się zaktualizować pojazdu.");
   }
   return mapFleetVehicle((await response.json()) as FleetVehicleApiRecord);
 }
@@ -140,7 +141,7 @@ export async function deleteFleetVehicle(id: string): Promise<void> {
     method: "DELETE",
   });
   if (!response.ok && response.status !== 204) {
-    throw new Error(`Nie udało się usunąć pojazdu (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się usunąć pojazdu.");
   }
 }
 
@@ -149,7 +150,7 @@ export async function endFleetTrip(id: string): Promise<FleetVehicle> {
     method: "PUT",
   });
   if (!response.ok) {
-    throw new Error(`Nie udało się zakończyć trasy (${response.status})`);
+    throw await errorFromResponse(response, "Nie udało się zakończyć trasy.");
   }
   return mapFleetVehicle((await response.json()) as FleetVehicleApiRecord);
 }
