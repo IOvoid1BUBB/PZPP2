@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -43,10 +43,13 @@ def _offer_to_read(offer: MarketOffer) -> OfferRead:
     summary="List market offers from the database",
 )
 async def list_offers(
+    response: Response,
     db: AsyncSession = Depends(get_db),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> list[OfferRead]:
+    total = int(await db.scalar(select(func.count()).select_from(MarketOffer)) or 0)
+    response.headers["X-Total-Count"] = str(total)
     result = await db.execute(
         select(MarketOffer).order_by(MarketOffer.time_window_open.desc()).limit(limit).offset(offset),
     )
