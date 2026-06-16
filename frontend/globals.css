@@ -1476,6 +1476,14 @@ select {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
+.route-map-pin--rest {
+  color: #fff;
+}
+
+.route-map-pin--rest .route-map-pin-kind {
+  font-size: 0.85rem;
+}
+
 .route-map-pin-kind {
   font-size: 0.7rem;
   line-height: 1;
