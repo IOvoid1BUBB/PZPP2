@@ -31,6 +31,7 @@ async def test_offers_list_returns_array() -> None:
 
     assert response.status_code == 200
     assert isinstance(response.json(), list)
+    assert "X-Total-Count" in response.headers
 
 
 @pytest.mark.integration

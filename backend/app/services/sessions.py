@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import AppException, NotFoundError, ValidationAppError
+from app.lib.session_loader import load_session
 from app.lib.geo import geo_point_from_geometry, lat_lon_from_geometry
 from app.lib.routing import RoutingProvider, get_routing_provider
 from app.lib.redis_client import get_redis
@@ -34,6 +35,7 @@ from app.services.stop_cost_calculator import (
     StopCostRates,
     calculate_stop_cost,
 )
+from app.services.profit_utils import calculate_net_profit, estimate_fuel_cost
 from app.services.stop_labels import ensure_stop_label
 
 _ALLOWED_TRANSITIONS: dict[str, str] = {
@@ -321,22 +323,8 @@ class SessionService:
         scored.sort(key=lambda item: (item[0], item[1].created_at))
         return scored[0][1]
 
-    async def _auto_link_fleet_vehicle(self, session: ConsolidationSession) -> None:
-        """Deprecated alias — kept for internal callers."""
-        await self._link_fleet_vehicle_on_confirm(session, None)
-
     async def _load_session(self, session_id: UUID) -> ConsolidationSession | None:
-        stmt = (
-            select(ConsolidationSession)
-            .where(ConsolidationSession.id == session_id)
-            .options(
-                selectinload(ConsolidationSession.vehicle),
-                selectinload(ConsolidationSession.driver_profile),
-                selectinload(ConsolidationSession.route_stops).selectinload(RouteStop.offer),
-            )
-        )
-        result = await self._db.execute(stmt)
-        return result.scalar_one_or_none()
+        return await load_session(self._db, session_id)
 
     async def _get_vehicle(self, vehicle_id: UUID) -> Vehicle:
         result = await self._db.execute(select(Vehicle).where(Vehicle.id == vehicle_id))
@@ -501,9 +489,11 @@ class SessionService:
 
     @staticmethod
     def _ensure_draft(session: ConsolidationSession) -> None:
-        if session.status != "draft":
-            raise ValidationAppError(
-                "Offers can only be modified while session is in draft status.",
+        if session.status not in ("draft",):
+            raise AppException(
+                status_code=409,
+                error_code="session_not_draft",
+                detail=f"Session is {session.status}, expected draft",
             )
 
     async def _session_offer_ids(self, session_id: UUID) -> list[UUID]:
@@ -603,7 +593,7 @@ class SessionService:
         fuel_cost = self._estimate_fuel_cost(route.total_distance_km, session)
         stop_cost_total = sum(float(s.stop_cost_eur or 0) for s in stops)
         revenue = float(session.total_revenue_eur or 0)
-        session.net_profit_eur = round(revenue - fuel_cost - stop_cost_total, 2)
+        session.net_profit_eur = calculate_net_profit(revenue, fuel_cost, stop_cost_total)
         await self._db.flush()
 
     async def _total_revenue(self, session_id: UUID) -> float:
@@ -618,8 +608,11 @@ class SessionService:
         vehicle = session.vehicle
         if vehicle is None:
             return 0.0
-        liters = distance_km * float(vehicle.fuel_per_100km_base) / 100.0
-        return round(liters * self._settings.FUEL_PRICE_EUR_PER_LITER, 2)
+        return estimate_fuel_cost(
+            distance_km,
+            float(vehicle.fuel_per_100km_base),
+            self._settings.FUEL_PRICE_EUR_PER_LITER,
+        )
 
     async def _build_full_response(self, session: ConsolidationSession) -> SessionFullResponse:
         loaded = await self._load_session(session.id)
@@ -702,7 +695,7 @@ class SessionService:
         fuel_cost = self._estimate_fuel_cost(total_distance_km, session)
         estimated_profit: float | None = None
         if offers:
-            estimated_profit = round(revenue - fuel_cost - stop_costs, 2)
+            estimated_profit = calculate_net_profit(revenue, fuel_cost, stop_costs)
 
         return SessionMetrics(
             used_ldm=round(used_ldm, 2),

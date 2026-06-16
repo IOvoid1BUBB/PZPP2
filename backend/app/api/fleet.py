@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from datetime import datetime
 from uuid import UUID
 
@@ -12,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.lib.geo import lat_lon_from_geometry
+from app.lib.geo import haversine_km, lat_lon_from_geometry
 from app.models.fleet_vehicle import FleetVehicle
 from app.models.session import ConsolidationSession
 from app.models.stop import RouteStop
@@ -39,14 +38,6 @@ class FleetRouteStopsResponse(BaseModel):
     session_id: UUID | None = None
     simulation_started_at: datetime | None = None
     stops: list[RouteStopSimEntry]
-
-
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    R = 6371.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
-    return R * 2 * math.asin(math.sqrt(a))
 
 
 # ── CRUD endpoints ─────────────────────────────────────────────────────────────
@@ -125,7 +116,7 @@ async def get_fleet_route_stops(
         except Exception:
             continue
         if prev_lat is not None and prev_lon is not None:
-            cumulative += _haversine_km(prev_lat, prev_lon, lat, lon)
+            cumulative += haversine_km(prev_lon, prev_lat, lon, lat)
         entries.append(RouteStopSimEntry(
             sequence=i,
             lat=lat,

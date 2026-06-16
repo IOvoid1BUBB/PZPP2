@@ -409,6 +409,124 @@ async def test_get_profit_alias_returns_same_as_post(client: AsyncClient) -> Non
 
 
 @pytest.mark.asyncio
+async def test_profit_breakdown_components_sum_to_net(client: AsyncClient) -> None:
+    """fuel + toll + stop + driver + maintenance must equal net profit components."""
+    from app.lib.routing import get_routing_provider
+    from app.main import app as fastapi_app
+
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
+
+    try:
+        session_id = await _create_session(client)
+        await client.post(f"/api/v1/sessions/{session_id}/simulate?count=30")
+        ranked = await client.get(
+            f"/api/v1/sessions/{session_id}/ranked-offers?limit=3"
+        )
+        for o in ranked.json()["offers"][:3]:
+            await client.post(
+                f"/api/v1/sessions/{session_id}/offers/{o['offer_id']}"
+            )
+
+        data = (await client.post(f"/api/v1/sessions/{session_id}/profit")).json()
+        expected_net = round(
+            data["revenue_eur"]
+            - data["fuel_eur"]
+            - data["toll_eur"]
+            - data["stop_costs_eur"]
+            - data["driver_eur"]
+            - data["maintenance_eur"],
+            2,
+        )
+        assert data["net_profit_eur"] == pytest.approx(expected_net, abs=0.01)
+    finally:
+        del fastapi_app.dependency_overrides[get_routing_provider]
+
+
+@pytest.mark.asyncio
+async def test_stop_bar_only_when_multiple_stops(client: AsyncClient) -> None:
+    """Single-offer session still returns stop_costs_eur (may be zero for one leg)."""
+    from app.lib.routing import get_routing_provider
+    from app.main import app as fastapi_app
+
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
+
+    try:
+        session_id = await _create_session(client)
+        await client.post(f"/api/v1/sessions/{session_id}/simulate?count=30")
+        ranked = await client.get(
+            f"/api/v1/sessions/{session_id}/ranked-offers?limit=1"
+        )
+        await client.post(
+            f"/api/v1/sessions/{session_id}/offers/{ranked.json()['offers'][0]['offer_id']}"
+        )
+
+        data = (await client.post(f"/api/v1/sessions/{session_id}/profit")).json()
+        assert data["stop_count"] == 2
+        assert data["stop_costs_eur"] >= 0.0
+    finally:
+        del fastapi_app.dependency_overrides[get_routing_provider]
+
+
+@pytest.mark.asyncio
+async def test_leg_costs_count_matches_route(client: AsyncClient) -> None:
+    """Number of leg_costs rows equals number of route legs."""
+    from app.lib.routing import get_routing_provider
+    from app.main import app as fastapi_app
+
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
+
+    try:
+        session_id = await _create_session(client)
+        await client.post(f"/api/v1/sessions/{session_id}/simulate?count=30")
+        ranked = await client.get(
+            f"/api/v1/sessions/{session_id}/ranked-offers?limit=3"
+        )
+        for o in ranked.json()["offers"][:3]:
+            await client.post(
+                f"/api/v1/sessions/{session_id}/offers/{o['offer_id']}"
+            )
+
+        data = (await client.post(f"/api/v1/sessions/{session_id}/profit")).json()
+        assert len(data["leg_costs"]) == len(data["legs"])
+    finally:
+        del fastapi_app.dependency_overrides[get_routing_provider]
+
+
+@pytest.mark.asyncio
+async def test_idempotent_double_post(client: AsyncClient) -> None:
+    """POST /profit twice returns the same net profit."""
+    from app.lib.routing import get_routing_provider
+    from app.main import app as fastapi_app
+
+    mock_routing = AsyncMock()
+    mock_routing.get_route_multi = AsyncMock(side_effect=_make_route)
+    fastapi_app.dependency_overrides[get_routing_provider] = lambda: mock_routing
+
+    try:
+        session_id = await _create_session(client)
+        await client.post(f"/api/v1/sessions/{session_id}/simulate?count=30")
+        ranked = await client.get(
+            f"/api/v1/sessions/{session_id}/ranked-offers?limit=2"
+        )
+        for o in ranked.json()["offers"][:2]:
+            await client.post(
+                f"/api/v1/sessions/{session_id}/offers/{o['offer_id']}"
+            )
+
+        first = (await client.post(f"/api/v1/sessions/{session_id}/profit")).json()
+        second = (await client.post(f"/api/v1/sessions/{session_id}/profit")).json()
+        assert second["net_profit_eur"] == pytest.approx(first["net_profit_eur"], abs=0.01)
+    finally:
+        del fastapi_app.dependency_overrides[get_routing_provider]
+
+
+@pytest.mark.asyncio
 async def test_get_profit_session_not_found(client: AsyncClient) -> None:
     """GET /profit returns 404 for missing session."""
     missing = "00000000-0000-0000-0000-000000000099"

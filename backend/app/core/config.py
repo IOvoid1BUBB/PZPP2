@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     MAINTENANCE_EUR_PER_KM: float = 0.08
     MAX_STOPS_PER_ROUTE: int = 12
     USE_SOLVER_MOCK: bool = False
+    USE_ROUTING_MOCK: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

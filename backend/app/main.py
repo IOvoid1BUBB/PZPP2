@@ -186,7 +186,15 @@ def _register_routes(app: FastAPI, settings: Settings) -> None:
         except Exception as exc:  # noqa: BLE001
             checks.append(DependencyStatus(name="redis", ok=False, detail=str(exc)))
 
-        if not settings.ORS_API_KEY:
+        if settings.USE_ROUTING_MOCK:
+            checks.append(
+                DependencyStatus(
+                    name="routing",
+                    ok=True,
+                    detail="mock routing enabled (USE_ROUTING_MOCK=true)",
+                ),
+            )
+        elif not settings.ORS_API_KEY:
             checks.append(
                 DependencyStatus(
                     name="routing",

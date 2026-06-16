@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
+from app.core.rate_limit import rate_limit
 from app.lib.routing import RoutingProvider, get_routing_provider
 from app.schemas.offer import RankedOffersResponse, SimulateOffersResponse
 from app.schemas.profit import SessionProfitBreakdown
@@ -275,6 +276,7 @@ async def get_session_profit(
     "/{session_id}/simulate",
     response_model=SimulateOffersResponse,
     summary="Generate synthetic market offers for testing VRP/UI",
+    dependencies=[Depends(rate_limit(limit=20))],
 )
 async def simulate_market_offers(
     session_id: UUID,

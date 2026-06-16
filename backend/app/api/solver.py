@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.exceptions import ConflictError
+from app.core.rate_limit import rate_limit
 from app.lib.routing import RoutingProvider, get_routing_provider
 from app.lib.redis_client import get_redis
 from app.schemas.solver import SolverRequest, SolverRunResult, SolverStatusResponse
@@ -53,6 +54,7 @@ async def get_optimization_status(
     response_model=SolverStatusResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Start CP-SAT offer selection for a session",
+    dependencies=[Depends(rate_limit(limit=10))],
 )
 async def trigger_optimization(
     session_id: UUID,

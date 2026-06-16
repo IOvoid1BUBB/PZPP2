@@ -404,9 +404,19 @@ async def test_vrp_solver_solve_mock_applies_route(monkeypatch: pytest.MonkeyPat
 
     mock_db.refresh = AsyncMock(side_effect=_refresh)
 
+    mock_routing = AsyncMock()
+    mock_routing.get_distance_matrix = AsyncMock(
+        return_value=__import__(
+            "app.lib.routing", fromlist=["DistanceMatrix"]
+        ).DistanceMatrix(
+            distances_km=[[0.0, 1.0], [1.0, 0.0]],
+            durations_minutes=[[0, 1], [1, 0]],
+            n=2,
+        ),
+    )
     solver = VRPSolver(
         mock_db,
-        routing=AsyncMock(),
+        routing=mock_routing,
         settings=Settings(
             DATABASE_URL="postgresql+asyncpg://x:x@localhost/x",
             USE_SOLVER_MOCK=True,
@@ -416,41 +426,7 @@ async def test_vrp_solver_solve_mock_applies_route(monkeypatch: pytest.MonkeyPat
     solver._load_session = AsyncMock(return_value=session)  # type: ignore[method-assign]
     solver._fetch_offers = AsyncMock(return_value=offers)  # type: ignore[method-assign]
     solver._session_service._session_offer_ids = AsyncMock(return_value=[offer_ids[0]])  # type: ignore[method-assign]
-
-    class _FakeRouteStop:
-        def __init__(self, stop_id: UUID, offer_id: UUID, stop_type: str, seq: int) -> None:
-            self.id = stop_id
-            self.offer_id = offer_id
-            self.stop_type = stop_type
-            self.sequence_order = seq
-            self.location = _loc()
-            self.offer = MagicMock(handling_time_minutes=30)
-
-    ordered_stops = [
-        _FakeRouteStop(uuid4(), offer_ids[i], "pickup", i * 2)
-        for i in range(3)
-    ] + [
-        _FakeRouteStop(uuid4(), offer_ids[i], "delivery", i * 2 + 1)
-        for i in range(3)
-    ]
-
-    solver._session_service._apply_offers_and_optimize_route = AsyncMock(  # type: ignore[method-assign]
-        return_value=ordered_stops,
-    )
-    monkeypatch.setattr(
-        SessionService,
-        "serialize_stop_sequence",
-        staticmethod(lambda stops: stop_sequence),
-    )
-    monkeypatch.setattr(
-        SessionService,
-        "_build_stops_from_route_stops",
-        staticmethod(lambda stops: []),
-    )
-    monkeypatch.setattr(
-        "app.services.vrp_solver.is_precedence_valid",
-        lambda _stops: True,
-    )
+    solver._build_stop_sequence = AsyncMock(return_value=stop_sequence)  # type: ignore[method-assign]
 
     result = await solver.solve(
         session_id=session_id,
@@ -463,8 +439,8 @@ async def test_vrp_solver_solve_mock_applies_route(monkeypatch: pytest.MonkeyPat
     assert result.solve_time_ms == 42
     assert len(result.selected_offer_ids) == 3
     assert result.current_offer_ids == [offer_ids[0]]
-    assert len(result.stop_sequence) == 0
-    solver._session_service._apply_offers_and_optimize_route.assert_not_awaited()
+    assert len(result.stop_sequence) == 6
+    solver._build_stop_sequence.assert_awaited_once()
 
 
 @pytest.mark.asyncio
