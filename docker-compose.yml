@@ -57,6 +57,9 @@ services:
       MAX_STOPS_PER_ROUTE: ${MAX_STOPS_PER_ROUTE:-12}
       WEIGHT_FUEL_FACTOR: ${WEIGHT_FUEL_FACTOR:-0.30}
       MAINTENANCE_EUR_PER_KM: ${MAINTENANCE_EUR_PER_KM:-0.08}
+      # Fast/deterministic solver + routing for E2E + CI.
+      USE_SOLVER_MOCK: ${USE_SOLVER_MOCK:-false}
+      USE_ROUTING_MOCK: ${USE_ROUTING_MOCK:-false}
     depends_on:
       db:
         condition: service_healthy

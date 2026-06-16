@@ -294,8 +294,17 @@ export function SlotEditor({
     setDrawerSlotId(slotId);
   }, []);
 
-  const contextMenuItems = useMemo<ContextMenuItem[]>(
-    () => [
+  const contextMenuItems = useMemo<ContextMenuItem[]>(() => {
+    // A confirmed/dispatched route is read-only: only non-mutating inspection is
+    // allowed, so the destructive/move actions are removed entirely.
+    const detailsItem: ContextMenuItem = {
+      label: "Szczegóły ładunku",
+      action: openDrawer,
+    };
+    if (computedReadOnly) {
+      return [detailsItem];
+    }
+    return [
       {
         label: "Usuń ładunek",
         destructive: true,
@@ -331,13 +340,18 @@ export function SlotEditor({
           void handleMoveToFirstFree(slotId);
         },
       },
-      {
-        label: "Szczegóły ładunku",
-        action: openDrawer,
-      },
-    ],
-    [handleMoveToFirstFree, openDrawer, removePallet, sessionId, showToast, slots, onOfferRemoved],
-  );
+      detailsItem,
+    ];
+  }, [
+    computedReadOnly,
+    handleMoveToFirstFree,
+    openDrawer,
+    removePallet,
+    sessionId,
+    showToast,
+    slots,
+    onOfferRemoved,
+  ]);
 
   const { bindSlot } = useContextMenuTrigger({
     onOpen: (slotId, x, y) => {
