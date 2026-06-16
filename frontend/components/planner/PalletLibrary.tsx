@@ -281,6 +281,8 @@ export interface PalletLibraryProps {
   /** Vehicle type UUID — enables lazy session creation on add (click). */
   vehicleId?: string | null;
   loadedOfferIds?: Set<string>;
+  /** External counter — bump to force a refetch of ranked offers (e.g. after solver apply). */
+  refreshSignal?: number;
   onOfferAdded?: (session: SessionFullResponse) => void;
   onOfferRemoved?: (offerId: string) => void;
   onLocalOfferAdd?: (offer: RankedOfferRow) => void;
@@ -315,6 +317,7 @@ export function PalletLibrary({
   sessionId,
   vehicleId,
   loadedOfferIds: loadedOfferIdsProp,
+  refreshSignal,
   onOfferAdded,
   onOfferRemoved,
   onLocalOfferAdd,
@@ -485,7 +488,7 @@ export function PalletLibrary({
     return () => {
       cancelled = true;
     };
-  }, [sessionId, refreshToken]);
+  }, [sessionId, refreshToken, refreshSignal]);
 
   // Auto-generate offers the first time the library loads with an empty DB
   useEffect(() => {

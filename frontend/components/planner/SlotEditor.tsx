@@ -142,10 +142,13 @@ export function SlotEditor({
   onOfferAdded,
   onOfferRemoved,
   onRouteConfirmed,
+  libraryRefreshSignal,
 }: {
   onOfferAdded?: () => void;
   onOfferRemoved?: () => void;
   onRouteConfirmed?: () => void;
+  /** Bumped by the planner page after a solver apply to refetch ranked offers. */
+  libraryRefreshSignal?: number;
 } = {}) {
   const hydrated = useClientHydrated();
   const {
@@ -678,6 +681,7 @@ export function SlotEditor({
         <PalletLibrarySuspense
           sessionId={sessionId}
           loadedOfferIds={loadedOfferIds}
+          refreshSignal={libraryRefreshSignal}
           onLocalOfferAdd={handleLocalOfferAdd}
           onRegisterAddOffer={(addOffer) => {
             libraryAddRef.current = addOffer;
@@ -729,6 +733,7 @@ export function SlotEditor({
             sessionId={effectiveSessionId}
             vehicleId={vehicleDbId}
             loadedOfferIds={loadedOfferIds}
+            refreshSignal={libraryRefreshSignal}
             onLocalOfferAdd={handleLocalOfferAdd}
             onRegisterAddOffer={(addOffer) => {
               libraryAddRef.current = addOffer;
