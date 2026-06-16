@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from collections.abc import Sequence
-from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
@@ -35,7 +34,6 @@ from app.services.stop_cost_calculator import (
     StopCostRates,
     calculate_stop_cost,
 )
-from app.services.session_list_filters import apply_session_list_filters
 from app.services.stop_labels import ensure_stop_label
 
 _ALLOWED_TRANSITIONS: dict[str, str] = {
@@ -59,23 +57,10 @@ class SessionService:
         self._routing = routing or get_routing_provider()
         self._settings = settings or get_settings()
 
-    async def list_all(
-        self,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-        status: str | None = None,
-        date: date | None = None,
-    ) -> list[ConsolidationSession]:
-        stmt = select(ConsolidationSession)
-        stmt = apply_session_list_filters(
-            stmt,
-            status=status,
-            day=date,
-            tz_name=self._settings.APP_TIMEZONE,
-        )
+    async def list_all(self, *, limit: int = 100, offset: int = 0) -> list[ConsolidationSession]:
         stmt = (
-            stmt.order_by(ConsolidationSession.created_at.desc())
+            select(ConsolidationSession)
+            .order_by(ConsolidationSession.created_at.desc())
             .limit(limit)
             .offset(offset)
         )

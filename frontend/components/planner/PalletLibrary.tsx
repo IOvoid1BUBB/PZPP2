@@ -337,10 +337,6 @@ export function PalletLibrary({
       } else {
         params.set(key, value);
       }
-      const sessionParam = searchParams.get("session");
-      if (sessionParam) {
-        params.set("session", sessionParam);
-      }
       const query = params.toString();
       router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     },

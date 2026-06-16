@@ -53,9 +53,7 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
   const conflicts = useConflicts();
 
   const hasLayout =
-    vehicle !== null || Object.keys(slots).length > 0;
-
-  const needsSessionHydration = sessionId !== null && vehicle === null;
+    vehicle !== null || sessionId !== null || Object.keys(slots).length > 0;
 
   const applyLayout = useCallback((next: PlannerLayoutState) => {
     useLoadStore.getState().setLayout({
@@ -92,14 +90,11 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
       return;
     }
 
-const activeSessionId = useLoadStore.getState().sessionId;
-if (needsSessionHydration || !hasLayout) {
-  queueMicrotask(() => void reload());
-  return;
-}
-if (activeSessionId) {
-  // logika z main — sync pojazdu po wejściu z Fleet Manager
-}
+    const activeSessionId = useLoadStore.getState().sessionId;
+
+    if (activeSessionId) {
+      // Always fetch from the server when a session exists — this syncs the
+      // vehicle from the session (e.g. after navigating from Fleet Manager).
       queueMicrotask(() => {
         void reload();
       });
@@ -114,36 +109,8 @@ if (activeSessionId) {
       return;
     }
 
-    void (async () => {
-      try {
-        const activeSessionId = useLoadStore.getState().sessionId;
-        if (!activeSessionId) {
-          return;
-        }
-        const next = await fetchSessionLayout(activeSessionId);
-        const current = useLoadStore.getState();
-        if (!current.vehicle) {
-          return;
-        }
-
-        useLoadStore.getState().setLayout({
-          sessionId: current.sessionId,
-          vehicle: {
-            ...current.vehicle,
-            payloadSlots: next.vehicle.payloadSlots,
-          },
-          slots: current.slots,
-        });
-      } catch {
-        /* keep existing layout if refresh fails */
-      }
-    })();
-  }, [applyLayout, hasLayout, hydrated, needsSessionHydration, reload, vehicle]);
-
-  const currentVehicleType = useCallback(
-    () => useLoadStore.getState().vehicle?.type ?? null,
-    [],
-  );
+    setLoading(false);
+  }, [hydrated, hasLayout, reload]);
 
   const persistSlots = useCallback(
     async (nextSlots: Record<string, PalletData | null>) => {

@@ -13,8 +13,6 @@ import { SolverPanel } from "@/components/planner/SolverPanel";
 import { VehicleSelector } from "@/components/planner/VehicleSelector";
 import { useHydratedSessionId } from "@/hooks/useHydratedSessionId";
 import { usePlannerLayout } from "@/hooks/usePlannerLayout";
-import { updateSessionStatus } from "@/lib/api/sessionClient";
-import { usePlannerActionStore } from "@/lib/stores/plannerActionStore";
 import { useSessionStore } from "@/lib/stores/sessionStore";
 import { useVehicleStore } from "@/lib/stores/vehicleStore";
 import { useLoadStore } from "@/lib/stores/loadStore";
@@ -34,20 +32,6 @@ const RouteMapClient = dynamic(
 const ROUTE_DEBOUNCE_MS = 800;
 
 export default function PlannerPage() {
-  return (
-    <Suspense
-      fallback={
-        <p className="text-sm text-ui-secondary">Wczytywanie plannera…</p>
-      }
-    >
-      <PlannerPageInner />
-    </Suspense>
-  );
-}
-
-function PlannerPageInner() {
-  const searchParams = useSearchParams();
-  const setSessionId = useSessionStore((state) => state.setSessionId);
   const sessionId = useHydratedSessionId();
   const { reload } = usePlannerLayout();
   const selectedVehicle = useVehicleStore((state) => state.selectedVehicle);
@@ -83,14 +67,6 @@ function PlannerPageInner() {
     }, ROUTE_DEBOUNCE_MS);
   }, [sessionId]);
 
-  useEffect(() => {
-    const querySessionId = searchParams.get("session");
-    if (querySessionId) {
-      setSessionId(querySessionId);
-    }
-  }, [searchParams, setSessionId]);
-
-  // Wire AppShell header "Send to driver" button
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);

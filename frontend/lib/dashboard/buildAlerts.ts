@@ -1,9 +1,14 @@
 /**
  * @file buildAlerts.ts
- * Legacy client-side alert builder (superseded by backend /api/v1/dashboard notifications).
- * Kept for unit tests and optional offline tooling.
+ * Czysta funkcja budująca syntetyczny feed alertów dashboardu na podstawie
+ * sesji, KPI, ofert rankingowych i walidacji czasu pracy kierowcy.
+ * Brak dedykowanego endpointu — alerty wyprowadzamy po stronie klienta.
  */
 
+import type {
+  DashboardKpi,
+  DashboardSessionSummary,
+} from "@/lib/api/dashboardClient";
 import type { RankedOfferRow } from "@/lib/types/offers";
 
 export type AlertType = "info" | "warning" | "opportunity";
@@ -17,27 +22,9 @@ export interface Alert {
   href?: string;
 }
 
-interface LegacyDashboardKpi {
-  active_sessions: number;
-  total_sessions: number;
-  total_estimated_profit_eur: number;
-  average_fill_pct: number;
-  market_offers_count: number;
-}
-
-interface LegacyDashboardSessionSummary {
-  id: string;
-  status: string;
-  created_at: string;
-  vehicle_name: string | null;
-  stop_count: number;
-  offer_count: number;
-  estimated_net_profit_eur: number | null;
-}
-
 export interface BuildAlertsInput {
-  sessions: LegacyDashboardSessionSummary[];
-  kpis: LegacyDashboardKpi;
+  sessions: DashboardSessionSummary[];
+  kpis: DashboardKpi;
   rankedOffers?: RankedOfferRow[];
   /** Sesja aktywna (do linków See offer → /market?offerId=). */
   activeSessionId?: string | null;
