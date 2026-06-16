@@ -747,6 +747,10 @@ select {
   backdrop-filter: blur(1px);
 }
 
+.trailer-pallet--readonly {
+  cursor: not-allowed;
+}
+
 .trailer-pallet__label {
   font-size: 0.75rem;
   font-weight: 600;

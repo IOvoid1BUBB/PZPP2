@@ -37,6 +37,7 @@ interface TrailerCanvasProps {
   shakingSlotIds: Set<string>;
   activeSlotId: string | null;
   bindSlotMenu: (slotId: string) => Record<string, unknown>;
+  isReadOnly?: boolean;
 }
 
 interface BedLayout {
@@ -288,6 +289,7 @@ export function TrailerCanvas({
   shakingSlotIds,
   activeSlotId,
   bindSlotMenu,
+  isReadOnly = false,
 }: TrailerCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const clientSummary = useClientSummary();
@@ -457,6 +459,7 @@ export function TrailerCanvas({
                   boxStyle={boxStyle}
                   isConflict={isConflict}
                   isShaking={shakingSlotIds.has(slotId)}
+                  isReadOnly={isReadOnly}
                   menuProps={menuProps}
                 />
               );
@@ -469,6 +472,7 @@ export function TrailerCanvas({
                 boxStyle={boxStyle}
                 isOver={activeSlotId === slotId}
                 isConflict={isConflict}
+                isReadOnly={isReadOnly}
                 menuProps={menuProps}
               />
             );

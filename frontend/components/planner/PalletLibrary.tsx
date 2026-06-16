@@ -181,6 +181,7 @@ export function OfferRow({
 
 interface DraggableOfferRowProps extends OfferRowProps {
   offer: RankedOfferRow;
+  isReadOnly?: boolean;
 }
 
 function DraggableOfferRow({
@@ -189,6 +190,7 @@ function DraggableOfferRow({
   isLoading,
   isLoaded,
   onAddClick,
+  isReadOnly = false,
 }: DraggableOfferRowProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `library-${offer.offer_id}`,
@@ -197,7 +199,7 @@ function DraggableOfferRow({
       offerId: offer.offer_id,
       offer,
     },
-    disabled: isLoading || isLoaded,
+    disabled: isLoading || isLoaded || isReadOnly,
   });
 
   return (
@@ -211,7 +213,7 @@ function DraggableOfferRow({
         offer={offer}
         isLoading={isLoading}
         isLoaded={isLoaded}
-        onAddClick={onAddClick}
+        onAddClick={isReadOnly ? undefined : onAddClick}
       />
     </div>
   );
@@ -255,6 +257,7 @@ export interface PalletLibraryProps {
   onOfferRemoved?: (offerId: string) => void;
   onRegisterAddOffer?: (addOffer: (offerId: string) => Promise<void>) => void;
   onRegisterRemoveOffer?: (removeOffer: (offerId: string) => void) => void;
+  isReadOnly?: boolean;
 }
 
 export function PalletLibrary({
@@ -264,6 +267,7 @@ export function PalletLibrary({
   onOfferRemoved,
   onRegisterAddOffer,
   onRegisterRemoveOffer,
+  isReadOnly = false,
 }: PalletLibraryProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -455,6 +459,7 @@ export function PalletLibrary({
       isLoading={loadingOfferId === offer.offer_id}
       isLoaded={loadedOfferIds.has(offer.offer_id)}
       onAddClick={() => void addOffer(offer.offer_id)}
+      isReadOnly={isReadOnly}
     />
   );
 
@@ -471,8 +476,9 @@ export function PalletLibrary({
         <button
           type="button"
           className="button bg-ui-surface hover:bg-gray/20 transition-colors mb-3 w-full"
-          disabled={simulating}
+          disabled={simulating || isReadOnly}
           onClick={() => void handleSimulate()}
+          title={isReadOnly ? "Sesja potwierdzona" : undefined}
         >
           {simulating ? "Generating offers…" : "Generate market offers"}
         </button>
