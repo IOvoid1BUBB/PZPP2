@@ -1,0 +1,62 @@
+[
+  {
+    "id": "nom-rhenus-rhenus-logistics-prague-cz-34",
+    "company": "Rhenus",
+    "facility_name": "Rhenus Logistics",
+    "facility_code": "LOGISTICS",
+    "facility_type": "contract_logistics_warehouse",
+    "address_line": "Rhenus Logistics,  Krahulov",
+    "city": "Prague",
+    "country_code": "CZ",
+    "lat": 50.0186,
+    "lon": 14.22418,
+    "source": "https://nominatim.openstreetmap.org/ui/details.html?osmtype=way&osmid=362947871",
+    "verified_at": "2026-06-15",
+    "geocode_method": "nominatim"
+  },
+  {
+    "id": "nom-dhl-dhl-express-dublin-hub-dublin-ie-41",
+    "company": "DHL",
+    "facility_name": "DHL Express Dublin Hub",
+    "facility_code": "LOGISTICS",
+    "facility_type": "contract_logistics_warehouse",
+    "address_line": "DHL Express Dublin Hub,  Elm Road",
+    "city": "Dublin",
+    "country_code": "IE",
+    "lat": 53.41936,
+    "lon": -6.31359,
+    "source": "https://nominatim.openstreetmap.org/ui/details.html?osmtype=way&osmid=309917715",
+    "verified_at": "2026-06-15",
+    "geocode_method": "nominatim"
+  },
+  {
+    "id": "nom-dhl-dhl-global-forwarding-dublin-ie-41",
+    "company": "DHL",
+    "facility_name": "DHL Global Forwarding",
+    "facility_code": "LOGISTICS",
+    "facility_type": "contract_logistics_warehouse",
+    "address_line": "DHL Global Forwarding,  Cedar Drive",
+    "city": "Dublin",
+    "country_code": "IE",
+    "lat": 53.41607,
+    "lon": -6.31442,
+    "source": "https://nominatim.openstreetmap.org/ui/details.html?osmtype=way&osmid=309917720",
+    "verified_at": "2026-06-15",
+    "geocode_method": "nominatim"
+  },
+  {
+    "id": "nom-dhl-dhl-logistics-vilnius-lt-47",
+    "company": "DHL",
+    "facility_name": "DHL Logistics",
+    "facility_code": "LOGISTICS",
+    "facility_type": "contract_logistics_warehouse",
+    "address_line": "DHL Logistics,  81",
+    "city": "Vilnius",
+    "country_code": "LT",
+    "lat": 54.644,
+    "lon": 25.27178,
+    "source": "https://nominatim.openstreetmap.org/ui/details.html?osmtype=way&osmid=77811331",
+    "verified_at": "2026-06-15",
+    "geocode_method": "nominatim"
+  }
+]

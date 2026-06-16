@@ -237,9 +237,12 @@ async def score_offer(
 
         total = compute_total_score(revenue_score, detour_score, fill_score, tw_score)
 
-        # Buduj label z adresu lub koordynatów
-        pickup_label = f"{pickup_lat:.4f}°N, {pickup_lon:.4f}°E"
-        delivery_label = f"{delivery[0]:.4f}°N, {delivery[1]:.4f}°E"
+        pickup_label = offer.pickup_label or ""
+        delivery_label = offer.delivery_label or ""
+        if not pickup_label or not delivery_label:
+            del_lat, del_lon = delivery[0], delivery[1]
+            pickup_label = pickup_label or f"Pickup {pickup_lat:.2f},{pickup_lon:.2f}"
+            delivery_label = delivery_label or f"Delivery {del_lat:.2f},{del_lon:.2f}"
 
         return OfferScore(
             offer_id=offer.id,

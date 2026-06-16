@@ -38,6 +38,9 @@ def _offer_to_row(offer: MarketOfferCreate) -> dict[str, object]:
         "time_window_close": offer.time_window_close,
         "handling_time_minutes": offer.handling_time_minutes,
         "stackable": offer.stackable,
+        "pickup_label": offer.pickup_label,
+        "delivery_label": offer.delivery_label,
+        "shipper_company": offer.shipper_company,
     }
 
 
