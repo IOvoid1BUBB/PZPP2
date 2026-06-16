@@ -55,6 +55,7 @@ class SessionStatusUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: SessionStatus
+    fleet_vehicle_id: UUID | None = None
 
 
 class SessionOffersReplace(BaseModel):

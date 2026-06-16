@@ -170,9 +170,15 @@ function StopTimeline({ stops, onStopClick }: StopTimelineProps) {
 
 export interface RouteMapClientProps {
   sessionId: string;
+  isPreview?: boolean;
+  isRefreshing?: boolean;
 }
 
-export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
+export default function RouteMapClient({
+  sessionId,
+  isPreview,
+  isRefreshing,
+}: RouteMapClientProps) {
   const [data, setData] = useState<RouteMapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -196,6 +202,9 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
         const routeMap = await fetchSessionRouteMap(sessionId);
         if (!cancelled) {
           setData(routeMap);
+          if (routeMap === null) {
+            setError(null);
+          }
         }
       } catch (err) {
         if (cancelled) {
@@ -292,15 +301,31 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
   }
 
   if (error || !routeData) {
+    // Distinguish "no offers yet" (normal empty state) from real errors
+    const isEmpty = !error && (!routeData || routeData.stops.length === 0);
     return (
       <Card className="grid min-h-[420px] place-items-center p-8">
         <div className="text-center">
-          <p className="text-sm font-medium text-[var(--ui-error,#dc2626)]">
-            {error ?? "Brak danych trasy"}
-          </p>
-          <p className="mt-2 text-xs text-[var(--ui-text-secondary)]">
-            Add offers to the session and run optimization to see the route map.
-          </p>
+          {isEmpty ? (
+            <>
+              <p className="text-2xl">🗺️</p>
+              <p className="mt-3 text-sm font-medium text-[var(--ui-text-secondary)]">
+                Dodaj ładunki, aby zobaczyć trasę
+              </p>
+              <p className="mt-1 text-xs text-[var(--ui-text-muted)]">
+                Mapa pojawi się po przypisaniu co najmniej jednej oferty.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-medium text-[var(--ui-error,#dc2626)]">
+                {error ?? "Brak danych trasy"}
+              </p>
+              <p className="mt-2 text-xs text-[var(--ui-text-secondary)]">
+                Dodaj oferty do sesji i uruchom optymalizację, aby zobaczyć mapę trasy.
+              </p>
+            </>
+          )}
         </div>
       </Card>
     );
@@ -334,6 +359,39 @@ export default function RouteMapClient({ sessionId }: RouteMapClientProps) {
         ) : null}
 
         <div className="relative min-h-[420px] flex-1">
+          {/* Preview badge — shown while route is being debounce-refreshed */}
+          {isPreview && (
+            <div
+              style={{
+                position: "absolute",
+                top: 8,
+                left: 8,
+                zIndex: 1000,
+                background: "rgba(245,158,11,0.9)",
+                color: "#fff",
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "3px 8px",
+                borderRadius: 6,
+                border: "1.5px dashed rgba(245,158,11,0.6)",
+                pointerEvents: "none",
+              }}
+            >
+              Podgląd trasy
+            </div>
+          )}
+          {isRefreshing && (
+            <div
+              className="absolute inset-0 z-[999] flex items-center justify-center bg-white/40 backdrop-blur-[1px]"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1.5 text-xs font-medium text-ui-secondary shadow-sm">
+                <span className="inline-block size-3 animate-spin rounded-full border border-ui-muted border-t-transparent" />
+                Aktualizuję trasę…
+              </span>
+            </div>
+          )}
           <MapContainer
             center={mapCenter}
             zoom={8}

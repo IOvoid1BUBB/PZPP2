@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Clock, DollarSign } from "lucide-react";
 
 import { Card, ProgressBar } from "@/components/loadmax/ui";
@@ -13,16 +13,24 @@ import {
   fetchSessionDetail,
   type SessionDetailResponse,
 } from "@/lib/api/sessionClient";
-import { fetchSessionRouteMap } from "@/lib/api/mapClient";
 import { fetchDriverCompliance } from "@/lib/api/complianceClient";
+import { fetchFleetVehicles, fetchFleetVehicle, type FleetVehicle } from "@/lib/api/fleetClient";
 import {
-  buildDashboardMarkers,
-  DEFAULT_ORIGIN,
+  buildFleetMarkers,
   type DashboardMarker,
-  type ResolvedSessionLocation,
 } from "@/lib/dashboard/buildDashboardMarkers";
 import { buildAlerts, type Alert } from "@/lib/dashboard/buildAlerts";
+import { interpolatePosition, type SimStop } from "@/lib/simulation/interpolatePosition";
 import type { RankedOfferRow } from "@/lib/types/offers";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
+const SIM_UPDATE_MS = 60_000;
+
+interface RouteStopsResponse {
+  session_id: string | null;
+  simulation_started_at: string | null;
+  stops: Array<SimStop & { address_label?: string | null }>;
+}
 
 const alertIcon: Record<Alert["type"], typeof CalendarDays> = {
   info: CalendarDays,
@@ -71,15 +79,41 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [markers, setMarkers] = useState<DashboardMarker[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [selectedDetail, setSelectedDetail] = useState<SessionDetailResponse | null>(
-    null,
-  );
+  const [selectedFleetVehicleId, setSelectedFleetVehicleId] = useState<string | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<SessionDetailResponse | null>(null);
+  const [selectedFleetVehicle, setSelectedFleetVehicle] = useState<FleetVehicle | null>(null);
   const [rankedOffers, setRankedOffers] = useState<RankedOfferRow[]>([]);
   const [complianceViolations, setComplianceViolations] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 1. Pobierz dashboard + rozwiąż markery z route-map origin.
+  // Map: fleetVehicleId → cached route stops data for simulation
+  const routeStopsCache = useRef<Map<string, RouteStopsResponse>>(new Map());
+  // Mutable markers ref for the simulation interval
+  const markersRef = useRef<DashboardMarker[]>([]);
+
+  function applySimulatedPositions(baseMarkers: DashboardMarker[]): DashboardMarker[] {
+    return baseMarkers.map((m) => {
+      if (!m.fleetVehicleId) return m;
+      const routeData = routeStopsCache.current.get(m.fleetVehicleId);
+      if (!routeData) return m;
+      const pos = interpolatePosition(routeData.stops, routeData.simulation_started_at);
+      if (!pos) return m;
+      const stop = routeData.stops[pos.currentStopIndex];
+      const stopLabel = stop?.address_label
+        ? ` · ${stop.address_label}`
+        : "";
+      return {
+        ...m,
+        coordinates: [pos.lon, pos.lat],
+        simulatedLat: pos.lat,
+        simulatedLon: pos.lon,
+        label: `${m.label}${stopLabel}`,
+      };
+    });
+  }
+
+  // 1. Pobierz dashboard + fleet vehicles — markery z pozycji floty.
   useEffect(() => {
     let cancelled = false;
 
@@ -87,35 +121,39 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetchDashboard();
+        const [response, fleetVehicles] = await Promise.all([
+          fetchDashboard(),
+          fetchFleetVehicles().catch(() => [] as FleetVehicle[]),
+        ]);
         if (cancelled) return;
         setData(response);
 
-        const recent = response.recent_sessions.slice(0, 6);
-        const resolved: ResolvedSessionLocation[] = await Promise.all(
-          recent.map(async (session) => {
-            let coordinates = DEFAULT_ORIGIN;
-            try {
-              const routeMap = await fetchSessionRouteMap(session.id);
-              const first = routeMap.stops[0];
-              coordinates = first
-                ? [first.location.lon, first.location.lat]
-                : [routeMap.origin.lon, routeMap.origin.lat];
-            } catch {
-              /* brak trasy — domyślny origin */
-            }
-            return {
-              id: session.id,
-              coordinates,
-              vehicleName: session.vehicle_name,
-              status: session.status,
-              hasIssue: session.status === "optimizing",
-            };
-          }),
-        );
-        if (cancelled) return;
-        setMarkers(buildDashboardMarkers(resolved));
+        // Build base markers from fleet vehicles
+        const baseMarkers = buildFleetMarkers(fleetVehicles);
 
+        // Fetch route stops for in_route vehicles
+        await Promise.all(
+          fleetVehicles
+            .filter((v) => v.status === "in_route")
+            .map(async (v) => {
+              try {
+                const res = await fetch(`${API_BASE}/api/v1/fleet/${v.id}/route-stops`);
+                if (res.ok) {
+                  const data = (await res.json()) as RouteStopsResponse;
+                  routeStopsCache.current.set(v.id, data);
+                }
+              } catch {
+                // optional
+              }
+            }),
+        );
+
+        if (cancelled) return;
+        const withSim = applySimulatedPositions(baseMarkers);
+        markersRef.current = baseMarkers; // store static markers for interval
+        setMarkers(withSim);
+
+        const recent = response.recent_sessions.slice(0, 6);
         if (recent.length > 0) {
           setSelectedSessionId((current) => current ?? recent[0].id);
         }
@@ -136,6 +174,14 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Update all in_route vehicle positions every 60 s (no re-fetch)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMarkers(applySimulatedPositions(markersRef.current));
+    }, SIM_UPDATE_MS);
+    return () => clearInterval(interval);
   }, []);
 
   // 2. Szczegóły wybranej sesji + ranked offers + compliance (dla alertów).
@@ -177,6 +223,19 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, [selectedSessionId]);
+
+  // 3. Load fleet vehicle detail on marker click (for vehicles without active sessions).
+  useEffect(() => {
+    if (!selectedFleetVehicleId) {
+      setSelectedFleetVehicle(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchFleetVehicle(selectedFleetVehicleId)
+      .then((v) => { if (!cancelled) setSelectedFleetVehicle(v); })
+      .catch(() => { if (!cancelled) setSelectedFleetVehicle(null); });
+    return () => { cancelled = true; };
+  }, [selectedFleetVehicleId]);
 
   const kpis: KpiTile[] = useMemo(() => {
     if (!data) return [];
@@ -268,6 +327,20 @@ export default function DashboardPage() {
                   Otwórz planner →
                 </Link>
               </div>
+            ) : selectedFleetVehicle ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-ui-muted">Pojazd floty</p>
+                <p className="text-lg font-semibold text-ui-primary">
+                  {selectedFleetVehicle.registration}
+                </p>
+                <p className="text-sm text-ui-secondary">{selectedFleetVehicle.typeName}</p>
+                <p className="text-sm text-ui-muted capitalize">
+                  Status: {selectedFleetVehicle.status}
+                </p>
+                <p className="text-xs text-ui-muted">
+                  {selectedFleetVehicle.maxLdm} LDM · {(selectedFleetVehicle.maxWeightKg / 1000).toFixed(1)} t
+                </p>
+              </div>
             ) : (
               <p className="text-center text-base text-ui-muted">
                 Wybierz pojazd z mapy
@@ -284,7 +357,20 @@ export default function DashboardPage() {
                 coordinates={marker.coordinates}
                 label={marker.label}
                 color={marker.color}
-                onClick={() => setSelectedSessionId(marker.sessionId)}
+                onClick={() => {
+                  if (marker.fleetVehicleId) {
+                    setSelectedFleetVehicleId(marker.fleetVehicleId);
+                    // If the vehicle has an active session, also load session detail
+                    if (marker.sessionId && marker.sessionId !== marker.fleetVehicleId) {
+                      setSelectedSessionId(marker.sessionId);
+                    } else {
+                      setSelectedSessionId(null);
+                    }
+                  } else {
+                    setSelectedSessionId(marker.sessionId);
+                    setSelectedFleetVehicleId(null);
+                  }
+                }}
               />
             ))}
           </EuropeMap>

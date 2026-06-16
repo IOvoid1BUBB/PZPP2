@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 class Vehicle(Base):
-    __tablename__ = "vehicles"
+    __tablename__ = "vehicle_types"
     __table_args__ = (
         CheckConstraint(
             "type IN ('master_l2','master_l3','master_l4','man_solo')",
@@ -42,3 +42,7 @@ class Vehicle(Base):
     consolidation_sessions: Mapped[list[ConsolidationSession]] = relationship(
         back_populates="vehicle",
     )
+
+
+# Alias for use after M3 migration (vehicle_types table)
+VehicleType = Vehicle

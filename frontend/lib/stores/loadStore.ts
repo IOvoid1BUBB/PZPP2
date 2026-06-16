@@ -406,6 +406,17 @@ export const useLoadStore = create<LoadStore>()(
         sessionId: state.sessionId,
         sessionOfferIds: state.sessionOfferIds,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        // Ensure rehydrated sessionId is always null or a valid UUID
+        const UUID_RE =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (state.sessionId !== null && !UUID_RE.test(state.sessionId)) {
+          state.sessionId = null;
+          state.slots = {};
+          state.sessionOfferIds = [];
+        }
+      },
     },
   ),
 );

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from collections.abc import Sequence
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,6 +17,7 @@ from app.lib.geo import geo_point_from_geometry, lat_lon_from_geometry
 from app.lib.routing import RoutingProvider, get_routing_provider
 from app.lib.redis_client import get_redis
 from app.models import ConsolidationSession, DriverProfile, MarketOffer, RouteStop, Vehicle
+from app.models.fleet_vehicle import FleetVehicle
 from app.schemas.driver_profile import DriverProfileRead
 from app.schemas.session import (
     OfferInSession,
@@ -227,15 +229,101 @@ class SessionService:
         self,
         session_id: UUID,
         new_status: SessionStatus,
+        fleet_vehicle_id: UUID | None = None,
     ) -> SessionFullResponse:
         session = await self.get(session_id)
+
+        # Idempotent: if already in the target status, return as-is
+        if session.status == new_status:
+            return await self._build_full_response(session)
+
         allowed_next = _ALLOWED_TRANSITIONS.get(session.status)
         if allowed_next != new_status:
             raise ValidationAppError("forbidden status transition")
+
         session.status = new_status
+
+        # On confirm: link fleet vehicle (explicit or auto)
+        if new_status == "confirmed" and session.fleet_vehicle_id is None:
+            await self._link_fleet_vehicle_on_confirm(session, fleet_vehicle_id)
+
+        # On dispatch: ensure linked fleet vehicle stays in_route
+        if new_status == "dispatched" and session.fleet_vehicle_id is not None:
+            fv = await self._db.get(FleetVehicle, session.fleet_vehicle_id)
+            if fv is not None:
+                fv.status = "in_route"
+
         await self._db.flush()
         await self._db.refresh(session)
         return await self._build_full_response(session)
+
+    async def _link_fleet_vehicle_on_confirm(
+        self,
+        session: ConsolidationSession,
+        fleet_vehicle_id: UUID | None,
+    ) -> None:
+        """Link session to a fleet vehicle on confirmation."""
+        if session.vehicle_id is None:
+            return
+
+        if fleet_vehicle_id is not None:
+            fv = await self._db.get(FleetVehicle, fleet_vehicle_id)
+            if fv is None:
+                raise NotFoundError(f"Fleet vehicle {fleet_vehicle_id} not found.")
+            if fv.type_id != session.vehicle_id:
+                raise ValidationAppError("Fleet vehicle type does not match session vehicle type.")
+            if fv.status != "idle":
+                raise ValidationAppError("Fleet vehicle is not idle.")
+            fleet_vehicle = fv
+        else:
+            fleet_vehicle = await self._find_least_busy_idle_fleet_vehicle(session.vehicle_id)
+
+        if fleet_vehicle is None:
+            return
+
+        fleet_vehicle.status = "in_route"
+        fleet_vehicle.simulation_started_at = datetime.now(UTC)
+        session.fleet_vehicle_id = fleet_vehicle.id
+        await self._db.flush()
+
+    async def _find_least_busy_idle_fleet_vehicle(
+        self,
+        vehicle_type_id: UUID,
+    ) -> FleetVehicle | None:
+        """Pick idle fleet vehicle of matching type with fewest active sessions."""
+        stmt = (
+            select(FleetVehicle)
+            .where(
+                FleetVehicle.type_id == vehicle_type_id,
+                FleetVehicle.status == "idle",
+            )
+            .order_by(FleetVehicle.created_at)
+        )
+        candidates = list((await self._db.execute(stmt)).scalars().all())
+        if not candidates:
+            return None
+
+        async def _active_session_count(fv_id: UUID) -> int:
+            count_stmt = (
+                select(func.count())
+                .select_from(ConsolidationSession)
+                .where(
+                    ConsolidationSession.fleet_vehicle_id == fv_id,
+                    ConsolidationSession.status.in_(("confirmed", "dispatched")),
+                )
+            )
+            return int((await self._db.execute(count_stmt)).scalar_one())
+
+        scored: list[tuple[int, FleetVehicle]] = []
+        for fv in candidates:
+            scored.append((await _active_session_count(fv.id), fv))
+
+        scored.sort(key=lambda item: (item[0], item[1].created_at))
+        return scored[0][1]
+
+    async def _auto_link_fleet_vehicle(self, session: ConsolidationSession) -> None:
+        """Deprecated alias — kept for internal callers."""
+        await self._link_fleet_vehicle_on_confirm(session, None)
 
     async def _load_session(self, session_id: UUID) -> ConsolidationSession | None:
         stmt = (

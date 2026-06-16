@@ -16,5 +16,8 @@ else
   python scripts/seed_market_offers.py --count "${SEED_OFFER_COUNT:-200}"
 fi
 
+echo "[entrypoint] Seed: fleet vehicles..."
+python scripts/seed_fleet_vehicles.py
+
 echo "[entrypoint] Start API..."
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000

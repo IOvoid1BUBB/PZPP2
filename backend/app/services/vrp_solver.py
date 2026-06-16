@@ -33,7 +33,6 @@ from app.services.solver_job import SolverJobStore
 from app.services.offer_detour import COST_PER_KM_EUR, haversine_added_detour_km
 from app.services.offer_scorer import OfferScorerService
 from app.services.planner_layout import build_layout_from_offers, slots_to_storage, vehicle_to_planner
-from app.services.sequence_optimizer import is_precedence_valid
 from app.services.sessions import SessionService
 from app.services.stop_cost_calculator import StopCostRates, calculate_stop_cost
 
@@ -175,6 +174,7 @@ class VRPSolver:
         candidate_offer_ids: list[UUID],
         max_stops_override: int | None,
         time_limit_seconds: int,
+        use_full_market: bool = False,
     ) -> SolverRunResult:
         session = await self._load_session(session_id)
         if session is None:
@@ -201,11 +201,21 @@ class VRPSolver:
         max_offer_slots = max(0, max_offer_slots)
 
         if not candidate_offer_ids:
-            ranked = await OfferScorerService(self._db, routing=self._routing).rank_offers(
-                session_id,
-                limit=max_offer_slots,
-            )
-            candidate_offer_ids = [o.offer_id for o in ranked.offers]
+            if use_full_market:
+                # Load up to 500 offers from the full market pool
+                full_market_stmt = (
+                    select(MarketOffer)
+                    .order_by(MarketOffer.price_eur.desc())
+                    .limit(500)
+                )
+                full_market_result = await self._db.execute(full_market_stmt)
+                candidate_offer_ids = [o.id for o in full_market_result.scalars().all()]
+            else:
+                ranked = await OfferScorerService(self._db, routing=self._routing).rank_offers(
+                    session_id,
+                    limit=max_offer_slots,
+                )
+                candidate_offer_ids = [o.offer_id for o in ranked.offers]
             if not candidate_offer_ids:
                 return await self._persist_empty_result(session_id, "INFEASIBLE", 0)
 
@@ -275,19 +285,9 @@ class VRPSolver:
         objective_eur = round(obj_cents / 100, 2)
 
         current_offer_ids = await self._session_service._session_offer_ids(session_id)
+        # Preview-only: persist proposal without mutating session offers/route.
         stop_sequence: list[StopSequenceEntry] = []
         stop_sequence_json: list[dict[str, object]] | None = None
-
-        if selected_ids and status_str in ("OPTIMAL", "FEASIBLE"):
-            ordered_stops = await self._session_service._apply_offers_and_optimize_route(
-                session_id,
-                selected_ids,
-            )
-            optimizer_stops = SessionService._build_stops_from_route_stops(ordered_stops)
-            if not is_precedence_valid(optimizer_stops):
-                raise ValidationAppError("Optimized stop sequence violates pickup-before-delivery.")
-            stop_sequence = SessionService.serialize_stop_sequence(ordered_stops)
-            stop_sequence_json = [entry.model_dump(mode="json") for entry in stop_sequence]
 
         orm_result = SolverResult(
             session_id=session_id,

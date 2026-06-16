@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api import dashboard, driver_profiles, offers, planner, sessions, solver, stops, vehicles
+from app.api import dashboard, driver_profiles, fleet, offers, planner, sessions, solver, stops, vehicles
 
 
 def build_api_router() -> APIRouter:
@@ -16,6 +16,7 @@ def build_api_router() -> APIRouter:
     api.include_router(offers.router)
     api.include_router(driver_profiles.router)
     api.include_router(vehicles.router)
+    api.include_router(fleet.router)
     api.include_router(solver.router)
     api.include_router(stops.router)
     return api

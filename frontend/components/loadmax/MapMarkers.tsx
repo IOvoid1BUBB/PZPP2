@@ -7,6 +7,8 @@ type Coord = [number, number];
 const COLORS = {
   blue: "#1a38f5",
   red: "#dc2f2f",
+  grey: "#9ca3af",
+  amber: "#f59e0b",
 } as const;
 
 /** Zaokrąglony marker z numerem/etykietą (zgodny z pinami z Figmy). */
