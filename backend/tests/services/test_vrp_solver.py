@@ -352,7 +352,7 @@ def test_build_stop_sequence_precedence() -> None:
 
 @pytest.mark.asyncio
 async def test_vrp_solver_solve_mock_applies_route(monkeypatch: pytest.MonkeyPatch) -> None:
-    """solve() with USE_SOLVER_MOCK applies selection and returns stop_sequence."""
+    """solve() with USE_SOLVER_MOCK returns a proposal without mutating the session."""
     from unittest.mock import AsyncMock, MagicMock
 
     from app.core.config import Settings
@@ -463,8 +463,8 @@ async def test_vrp_solver_solve_mock_applies_route(monkeypatch: pytest.MonkeyPat
     assert result.solve_time_ms == 42
     assert len(result.selected_offer_ids) == 3
     assert result.current_offer_ids == [offer_ids[0]]
-    assert len(result.stop_sequence) == 6
-    solver._session_service._apply_offers_and_optimize_route.assert_awaited_once()
+    assert len(result.stop_sequence) == 0
+    solver._session_service._apply_offers_and_optimize_route.assert_not_awaited()
 
 
 @pytest.mark.asyncio

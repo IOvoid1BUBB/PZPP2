@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ChevronDown, Send } from "lucide-react";
 
 import { DriverRouteBriefing } from "@/components/driver/DriverRouteBriefing";
@@ -8,150 +8,10 @@ import { Drawer } from "@/components/ui/Drawer";
 import { ProgressBar } from "../ui/ProgressBar";
 import { cn } from "@/lib/utils";
 import { useVehicleStore } from "@/lib/stores/vehicleStore";
-import { useLoadStore } from "@/lib/stores/loadStore";
-import { useSessionStore } from "@/lib/stores/sessionStore";
-import { fetchVehicles, createSession } from "@/lib/api/sessionClient";
-import { fetchSessionLayout } from "@/lib/api/plannerClient";
-import type { VehicleConfig } from "@/lib/types/load";
-import { VEHICLE_CONFIGS } from "./VehicleSelector";
 
-// ─── VehicleTile ──────────────────────────────────────────────────────────────
+// ─── DriverProfileTile ────────────────────────────────────────────────────────
 
 const DRIVER_PROFILE_OPTIONS = ["Economy", "Senior"] as const;
-
-function VehicleTile() {
-  const { selectedVehicle, selectVehicle } = useVehicleStore();
-  const { clearAllSlots, setLayout } = useLoadStore();
-  const { setSessionId } = useSessionStore();
-
-  const [open, setOpen] = useState(false);
-  const [vehicleMap, setVehicleMap] = useState<Map<string, VehicleConfig>>(new Map());
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    fetchVehicles()
-      .then((vehicles) => {
-        setVehicleMap(new Map(vehicles.map((v) => [v.type, v])));
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    function onClickOutside(e: MouseEvent) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, [open]);
-
-  const handleSelect = useCallback(
-    async (config: (typeof VEHICLE_CONFIGS)[0]) => {
-      const vehicle = vehicleMap.get(config.type);
-      if (!vehicle) {
-        setError("Brak danych pojazdu. Sprawdź połączenie z backendem.");
-        return;
-      }
-      setLoading(true);
-      setError(null);
-      try {
-        selectVehicle(vehicle);
-        clearAllSlots();
-        const session = await createSession({ vehicle_id: vehicle.id });
-        setSessionId(session.id);
-        try {
-          const layout = await fetchSessionLayout(session.id);
-          setLayout({ sessionId: session.id, vehicle: layout.vehicle, slots: layout.slots });
-        } catch {
-          /* pusty layout */
-        }
-      } catch {
-        setError("Nie udało się zainicjować sesji. Spróbuj ponownie.");
-      } finally {
-        setLoading(false);
-        setOpen(false);
-      }
-    },
-    [vehicleMap, selectVehicle, clearAllSlots, setLayout, setSessionId],
-  );
-
-  const uiConfig = selectedVehicle
-    ? VEHICLE_CONFIGS.find((c) => c.type === selectedVehicle.type)
-    : null;
-
-  return (
-    <div ref={wrapperRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        disabled={loading}
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        className="group flex w-full flex-col gap-2 rounded-md border-b border-transparent bg-ui-surface p-4 text-left transition-colors hover:border-primary disabled:opacity-60"
-      >
-        <span className="flex items-center justify-between text-xs text-ui-secondary">
-          Vehicle
-          <ChevronDown
-            className={cn(
-              "size-3 shrink-0 transition-transform duration-200 group-hover:text-primary",
-              open && "rotate-180",
-            )}
-          />
-        </span>
-        <span className="truncate text-sm font-semibold text-ui-primary">
-          {loading ? "Ładowanie…" : (uiConfig?.label ?? "—")}
-        </span>
-      </button>
-
-      {open && (
-        <div
-          role="listbox"
-          aria-label="Wybierz pojazd"
-          className="absolute left-0 top-full z-50 mt-1 min-w-[256px] overflow-hidden rounded-md bg-ui-surface shadow-lg"
-        >
-          {error && (
-            <p className="px-3 py-2 text-xs text-red-500">{error}</p>
-          )}
-          {VEHICLE_CONFIGS.map((config) => {
-            const isSelected = selectedVehicle?.type === config.type;
-            return (
-              <button
-                key={config.type}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
-                onClick={() => void handleSelect(config)}
-                className={cn(
-                  "flex w-full items-center gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-gray/30",
-                  isSelected && "bg-gray/60",
-                )}
-              >
-                <span
-                  className={cn(
-                    "size-2 shrink-0 rounded-full border transition-colors",
-                    isSelected
-                      ? "border-primary bg-ui-primary"
-                      : "border-primary",
-                  )}
-                />
-                <span className="flex-1 text-left text-sm font-medium text-ui-primary">
-                  {config.label}
-                </span>
-                <span className="text-xs text-ui-secondary">
-                  {config.maxLdm} LDM
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function DriverProfileTile() {
   const [open, setOpen] = useState(false);
@@ -243,8 +103,14 @@ interface VehicleHeaderProps {
   profitEur?: number;
   saving?: boolean;
   onSave?: () => void;
+  onConfirm?: () => void;
+  onCreateRoute?: () => void;
+  onCreateSession?: () => void;
+  onCancelRoute?: () => void;
   sessionId?: string;
-  isReadOnly?: boolean;
+  sessionStatus?: string;
+  /** Controls the two-step flow buttons */
+  routeMode?: "none" | "create-route" | "route-preview" | "confirmed";
 }
 
 export function VehicleHeader({
@@ -257,11 +123,17 @@ export function VehicleHeader({
   profitEur,
   saving,
   onSave,
+  onConfirm,
+  onCreateRoute,
+  onCreateSession,
+  onCancelRoute,
   sessionId,
-  isReadOnly = false,
+  sessionStatus,
+  routeMode = "none",
 }: VehicleHeaderProps) {
-  const lfilPercent = 50; //maxLdm > 0 ? (usedLdm / maxLdm) * 100 : 0;
+  const lfilPercent = 50;
   const [briefingOpen, setBriefingOpen] = useState(false);
+  const selectedVehicle = useVehicleStore((state) => state.selectedVehicle);
 
   const metrics = [
     { label: "Driver", value: driverName },
@@ -279,7 +151,14 @@ export function VehicleHeader({
   return (
     <header className="flex items-center justify-between gap-4">
       <div className="flex flex-1 gap-2" role="group" aria-label="Statystyki pojazdu">
-        <VehicleTile />
+        {/* Static vehicle display tile — vehicle selection happens via VehicleSelector */}
+        <div className="flex flex-col gap-2 rounded-md bg-ui-surface p-4">
+          <span className="text-xs text-ui-secondary">Vehicle</span>
+          <span className="truncate text-sm font-semibold text-ui-primary">
+            {selectedVehicle?.name ?? "—"}
+          </span>
+        </div>
+
         <DriverProfileTile />
 
         {metrics.map((metric) => (
@@ -311,24 +190,78 @@ export function VehicleHeader({
             aria-label="Otwórz plan trasy dla kierowcy"
             className="inline-flex items-center gap-2 rounded-full border border-ui-border bg-ui-surface px-5 py-2.5 text-sm font-semibold text-ui-primary transition-colors hover:bg-ui-nav"
           >
-           Driver briefing
+            Driver briefing
           </button>
         ) : null}
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={saving || !onSave}
-          className="inline-flex items-center gap-2 rounded-full bg-ui-black py-2 pl-2 pr-5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <span className="flex size-6 items-center justify-center rounded-full bg-white/15">
-            <Send className="size-3" aria-hidden="true" />
-          </span>
-          {saving
-            ? "Wysyłanie…"
-            : isReadOnly
-              ? "Send again"
-              : "Send to driver"}
-        </button>
+
+        {/* Two-step flow: Utwórz trasę → Utwórz sesję */}
+        {routeMode === "create-route" && onCreateRoute ? (
+          <button
+            type="button"
+            onClick={onCreateRoute}
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-full bg-ui-black py-2 pl-2 pr-5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span className="flex size-6 items-center justify-center rounded-full bg-white/15">
+              <Send className="size-3" aria-hidden="true" />
+            </span>
+            {saving ? "Ładowanie…" : "Utwórz trasę"}
+          </button>
+        ) : routeMode === "route-preview" ? (
+          <>
+            {onCancelRoute ? (
+              <button
+                type="button"
+                onClick={onCancelRoute}
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-full border border-ui-border bg-ui-surface px-5 py-2.5 text-sm font-semibold text-ui-primary transition-colors hover:bg-ui-nav disabled:opacity-50"
+              >
+                Anuluj
+              </button>
+            ) : null}
+            {onCreateSession ? (
+              <button
+                type="button"
+                onClick={onCreateSession}
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-full bg-ui-black py-2 pl-2 pr-5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="flex size-6 items-center justify-center rounded-full bg-white/15">
+                  <Send className="size-3" aria-hidden="true" />
+                </span>
+                {saving ? "Tworzenie…" : "Utwórz sesję"}
+              </button>
+            ) : null}
+          </>
+        ) : routeMode === "confirmed" ? (
+          <button
+            type="button"
+            disabled
+            className="inline-flex items-center gap-2 rounded-full bg-green-600 py-2 pl-2 pr-5 text-sm font-semibold text-white opacity-80 cursor-not-allowed"
+          >
+            <span className="flex size-6 items-center justify-center rounded-full bg-white/15">
+              <Send className="size-3" aria-hidden="true" />
+            </span>
+            Trasa zatwierdzona ✓
+          </button>
+        ) : (onSave ?? onConfirm) ? (
+          /* Existing session confirm button */
+          <button
+            type="button"
+            onClick={onConfirm ?? onSave}
+            disabled={saving || !(onConfirm ?? onSave)}
+            className="inline-flex items-center gap-2 rounded-full bg-ui-black py-2 pl-2 pr-5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span className="flex size-6 items-center justify-center rounded-full bg-white/15">
+              <Send className="size-3" aria-hidden="true" />
+            </span>
+            {saving
+              ? "Zapisywanie…"
+              : sessionStatus === "confirmed" || sessionStatus === "dispatched"
+                ? "Trasa zatwierdzona ✓"
+                : "Zatwierdź trasę"}
+          </button>
+        ) : null}
       </div>
 
       {sessionId ? (

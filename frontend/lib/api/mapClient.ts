@@ -104,13 +104,20 @@ export function mapRouteMapResponse(raw: RouteMapResponseApi): RouteMapData {
   };
 }
 
-export async function fetchSessionRouteMap(sessionId: string): Promise<RouteMapData> {
+export async function fetchSessionRouteMap(sessionId: string): Promise<RouteMapData | null> {
   const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/route-map`);
+  if (response.status === 404) {
+    return null;
+  }
   if (!response.ok) {
     throw new RouteMapFetchError(
       response.status,
       `Failed to fetch route map (${response.status})`,
     );
   }
-  return mapRouteMapResponse((await response.json()) as RouteMapResponseApi);
+  const mapped = mapRouteMapResponse((await response.json()) as RouteMapResponseApi);
+  if (mapped.stops.length === 0) {
+    return null;
+  }
+  return mapped;
 }

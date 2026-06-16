@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -44,6 +46,10 @@ class DashboardService:
         result = await self._db.execute(stmt)
         sessions = list(result.scalars().all())
 
+        # KPI profit: only sum confirmed/dispatched sessions created today (UTC).
+        # Excludes draft/optimizing — those are planning artifacts, not realized revenue.
+        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
         profit_values: list[float] = []
         fill_values: list[float] = []
         summaries: list[DashboardSessionSummary] = []
@@ -59,7 +65,14 @@ class DashboardService:
             stop_costs = sum(float(s.stop_cost_eur or 0) for s in session.route_stops)
             estimated_profit = round(revenue - stop_costs, 2) if offers else None
 
-            if estimated_profit is not None:
+            # Only include in KPI aggregation: confirmed/dispatched and created today
+            is_realized = session.status in ("confirmed", "dispatched")
+            created_at = session.created_at
+            if created_at and created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=UTC)
+            is_today = created_at is not None and created_at >= today_start
+
+            if estimated_profit is not None and is_realized and is_today:
                 profit_values.append(estimated_profit)
             if offers:
                 fill_values.append(fill_pct)

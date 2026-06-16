@@ -51,6 +51,7 @@ async def run_solver_job(
                 candidate_offer_ids=payload.candidate_offer_ids,
                 max_stops_override=payload.max_stops,
                 time_limit_seconds=payload.time_limit_seconds,
+                use_full_market=payload.use_full_market,
             )
 
             if await SolverJobStore.is_cancel_requested(redis, session_id):  # type: ignore[arg-type]

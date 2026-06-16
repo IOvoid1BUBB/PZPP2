@@ -27,6 +27,10 @@ class SolverRequest(BaseModel):
     candidate_offer_ids: list[UUID] = Field(default_factory=list)
     max_stops: int | None = Field(default=None, ge=0)
     time_limit_seconds: int = Field(default=10, ge=1, le=600)
+    use_full_market: bool = Field(
+        default=False,
+        description="When True, pull candidates from all market_offers (up to 500) instead of session-scoped rank.",
+    )
 
 
 class StopSequenceEntry(BaseModel):

@@ -28,6 +28,12 @@ export interface MarketOffer {
   isWithinCorridor: boolean;
   /** Cena za metr ładunkowy (EUR/LDM) — wyliczane po stronie klienta. */
   eurPerLdm: number;
+  /** Etykieta punktu załadunku (np. nazwa miasta) */
+  pickupLabel?: string | null;
+  /** Etykieta punktu rozładunku (np. nazwa miasta) */
+  deliveryLabel?: string | null;
+  /** Firma nadawcy */
+  shipperCompany?: string | null;
 }
 
 interface OfferApiRecord {
@@ -42,6 +48,9 @@ interface OfferApiRecord {
   handling_time_minutes: number | null;
   stackable: boolean;
   is_within_corridor: boolean;
+  pickup_label?: string | null;
+  delivery_label?: string | null;
+  shipper_company?: string | null;
 }
 
 function mapOffer(raw: OfferApiRecord): MarketOffer {
@@ -60,10 +69,13 @@ function mapOffer(raw: OfferApiRecord): MarketOffer {
     stackable: raw.stackable,
     isWithinCorridor: raw.is_within_corridor,
     eurPerLdm: ldm > 0 ? Math.round((priceEur / ldm) * 100) / 100 : 0,
+    pickupLabel: raw.pickup_label ?? null,
+    deliveryLabel: raw.delivery_label ?? null,
+    shipperCompany: raw.shipper_company ?? null,
   };
 }
 
-export async function fetchOffers(limit = 50, offset = 0): Promise<MarketOffer[]> {
+export async function fetchOffers(limit = 200, offset = 0): Promise<MarketOffer[]> {
   const response = await fetch(
     `${API_BASE}/api/v1/offers?limit=${limit}&offset=${offset}`,
   );
@@ -72,4 +84,24 @@ export async function fetchOffers(limit = 50, offset = 0): Promise<MarketOffer[]
   }
   const raw = (await response.json()) as OfferApiRecord[];
   return raw.map(mapOffer);
+}
+
+export interface SimulateOffersResult {
+  requested: number;
+  inserted: number;
+  skipped: number;
+}
+
+/**
+ * POST /api/v1/offers/simulate — generate synthetic market offers without a session.
+ * Used when market_offers table is empty and no session exists yet.
+ */
+export async function simulateMarketOffersGlobal(count = 200): Promise<SimulateOffersResult> {
+  const response = await fetch(`${API_BASE}/api/v1/offers/simulate?count=${count}`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to simulate offers (${response.status})`);
+  }
+  return (await response.json()) as SimulateOffersResult;
 }

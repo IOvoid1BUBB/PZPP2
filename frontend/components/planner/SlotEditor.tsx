@@ -40,7 +40,13 @@ import { useToast } from "@/components/ui/Toast";
 import { usePlannerLayout } from "@/hooks/usePlannerLayout";
 import { useProfitBreakdown } from "@/hooks/useProfitBreakdown";
 
-import { fetchSessionDetail, updateSessionStatus, removeOfferFromSession } from "@/lib/api/sessionClient";
+import {
+  addOfferToSession,
+  createSession,
+  fetchSessionDetail,
+  updateSessionStatus,
+  removeOfferFromSession,
+} from "@/lib/api/sessionClient";
 
 import { getCompanyColorPair } from "@/lib/colors/companyColors";
 import {
@@ -55,9 +61,27 @@ import {
 
 import type { ContextMenuItem, PalletData } from "@/lib/types/load";
 import type { RankedOfferRow } from "@/lib/types/offers";
+import { useLoadStore } from "@/lib/stores/loadStore";
 import { useSessionStore } from "@/lib/stores/sessionStore";
+import { useVehicleStore } from "@/lib/stores/vehicleStore";
 
 const SHAKE_MS = 600;
+
+/** Convert a RankedOfferRow (market mode, no session) into a PalletData for canvas placement. */
+function offerRowToPallet(offer: RankedOfferRow): PalletData {
+  return {
+    id: `market-${offer.offer_id}`,
+    offerId: offer.offer_id,
+    clientId: offer.offer_id,
+    clientName: offer.pickup_label ?? `#${offer.offer_id.slice(0, 6).toUpperCase()}`,
+    clientColor: "#1a38f5",
+    ldm: offer.ldm ?? 0,
+    weightKg: offer.weight_kg ?? 0,
+    dims: { wMm: 1200, dMm: 800, hMm: 1200 },
+    stackable: offer.stackable ?? true,
+    timeWindow: null,
+  };
+}
 
 function PalletDetails({ pallet }: { pallet: PalletData }) {
   return (
@@ -113,33 +137,34 @@ function PalletDetails({ pallet }: { pallet: PalletData }) {
   );
 }
 
-export function SlotEditor() {
+export function SlotEditor({
+  onOfferAdded,
+  onOfferRemoved,
+  onRouteConfirmed,
+}: {
+  onOfferAdded?: () => void;
+  onOfferRemoved?: () => void;
+  onRouteConfirmed?: () => void;
+} = {}) {
   const hydrated = useClientHydrated();
   const {
     loading,
-
     error,
-
-    vehicle,
-
+    vehicle: layoutVehicle,
     slots,
-
     conflicts,
-
     conflictSlotIds,
-
     sessionId,
-
     movePallet,
-
     removePallet,
-
     moveToFirstFree,
-
     persistSlots,
-
     reload,
   } = usePlannerLayout();
+
+  // Fall back to loadStore vehicle so TrailerCanvas renders even without a session
+  const storeVehicle = useLoadStore((state) => state.vehicle);
+  const vehicle = layoutVehicle ?? storeVehicle;
 
   const { showToast } = useToast();
 
@@ -168,19 +193,13 @@ export function SlotEditor() {
 
   const [saving, setSaving] = useState(false);
   const [driverName, setDriverName] = useState("—");
-  const { status: sessionStatus, setStatus: setGlobalStatus, isReadOnly } = useSessionStore(
-    (state) => ({
-      status: state.status,
-      setStatus: state.setStatus,
-      isReadOnly: state.isReadOnly,
-    }),
-  );
+  const [sessionStatus, setSessionStatus] = useState<string>("draft");
   const { data: profitData } = useProfitBreakdown(sessionId);
 
   useEffect(() => {
     if (!sessionId) {
       setDriverName("—");
-      setGlobalStatus("draft");
+      setSessionStatus("draft");
       return;
     }
 
@@ -191,7 +210,7 @@ export function SlotEditor() {
           return;
         }
         setDriverName(detail.driver_profile.name);
-        setGlobalStatus(detail.status);
+        setSessionStatus(detail.status);
       })
       .catch(() => {
         if (!cancelled) {
@@ -253,59 +272,48 @@ export function SlotEditor() {
   }, []);
 
   const contextMenuItems = useMemo<ContextMenuItem[]>(
-    () => {
-      const items: ContextMenuItem[] = [];
-
-      if (!computedReadOnly) {
-        items.push(
-          {
-            label: "Usuń ładunek",
-            destructive: true,
-            action: (slotId) => {
-              void removePallet(slotId);
-            },
-          },
-          {
-            label: "Odłóż na listę ofert",
-            action: (slotId) => {
-              const pallet = slots[slotId];
-              if (!pallet) return;
-              // Remove from session (API) then from layout
-              if (sessionId) {
-                void removeOfferFromSession(sessionId, pallet.offerId)
-                  .then(() => {
-                    libraryRemoveRef.current?.(pallet.offerId);
-                    void removePallet(slotId);
-                  })
-                  .catch(() => {
-                    showToast({
-                      type: "error",
-                      message: "Nie udało się odłożyć oferty.",
-                    });
-                  });
-              } else {
+    () => [
+      {
+        label: "Usuń ładunek",
+        destructive: true,
+        action: (slotId) => {
+          void removePallet(slotId);
+        },
+      },
+      {
+        label: "Odłóż na listę ofert",
+        action: (slotId) => {
+          const pallet = slots[slotId];
+          if (!pallet) return;
+          if (sessionId) {
+            void removeOfferFromSession(sessionId, pallet.offerId)
+              .then(() => {
                 libraryRemoveRef.current?.(pallet.offerId);
                 void removePallet(slotId);
-              }
-            },
-          },
-          {
-            label: "Przenieś do pierwszego wolnego slotu",
-            action: (slotId) => {
-              void handleMoveToFirstFree(slotId);
-            },
-          },
-        );
-      }
-
-      items.push({
+                onOfferRemoved?.();
+              })
+              .catch(() => {
+                showToast({ type: "error", message: "Nie udało się odłożyć oferty." });
+              });
+          } else {
+            libraryRemoveRef.current?.(pallet.offerId);
+            void removePallet(slotId);
+            onOfferRemoved?.();
+          }
+        },
+      },
+      {
+        label: "Przenieś do pierwszego wolnego slotu",
+        action: (slotId) => {
+          void handleMoveToFirstFree(slotId);
+        },
+      },
+      {
         label: "Szczegóły ładunku",
         action: openDrawer,
-      });
-
-      return items;
-    },
-    [computedReadOnly, handleMoveToFirstFree, openDrawer, removePallet, sessionId, showToast, slots],
+      },
+    ],
+    [handleMoveToFirstFree, openDrawer, removePallet, sessionId, showToast, slots, onOfferRemoved],
   );
 
   const { bindSlot } = useContextMenuTrigger({
@@ -327,6 +335,28 @@ export function SlotEditor() {
     }
     return ids;
   }, [slots]);
+
+  /** Handle local offer placement from PalletLibrary "Dodaj" button in pre-session mode */
+  const handleLocalOfferAdd = useCallback(
+    (offer: RankedOfferRow) => {
+      if (!vehicle) {
+        showToast({ type: "error", message: "Wybierz pojazd przed dodaniem ładunku." });
+        return;
+      }
+      const pallet = offerRowToPallet(offer);
+      // Find first empty slot
+      const slotIds = Object.keys(vehicle.payloadSlots);
+      const currentSlots = useLoadStore.getState().slots;
+      const targetSlot = slotIds.find((id) => !currentSlots[id]);
+      if (!targetSlot) {
+        showToast({ type: "error", message: "Brak wolnego miejsca na pace." });
+        return;
+      }
+      useLoadStore.getState().assignPallet(targetSlot, pallet);
+      onOfferAdded?.();
+    },
+    [vehicle, showToast, onOfferAdded],
+  );
 
   const handleDragStart = (event: DragStartEvent) => {
     if (computedReadOnly) {
@@ -355,11 +385,34 @@ export function SlotEditor() {
     setActiveSlotId(null);
 
     if (dragData?.type === "library-offer") {
-      if (!toSlot || !libraryAddRef.current) {
+      if (!toSlot || !vehicle) return;
+
+      const offer = dragData.offer as RankedOfferRow;
+      const activeSessionId = useLoadStore.getState().sessionId ?? sessionId;
+
+      if (!activeSessionId) {
+        // Pre-session: place locally in Zustand
+        const pallet = offerRowToPallet(offer);
+        const currentSlots = useLoadStore.getState().slots;
+        if (currentSlots[toSlot] !== null) {
+          showToast({ type: "error", message: "To miejsce jest już zajęte." });
+          return;
+        }
+        if (!canAssign(currentSlots, vehicle, pallet, toSlot, undefined)) {
+          triggerShake(toSlot);
+          showToast({
+            type: "error",
+            message: "Paleta nie pasuje do tego slotu.",
+          });
+          return;
+        }
+        useLoadStore.getState().assignPallet(toSlot, pallet);
+        onOfferAdded?.();
         return;
       }
 
-      await libraryAddRef.current(String(dragData.offerId));
+      if (!libraryAddRef.current) return;
+      await libraryAddRef.current(offer.offer_id);
       return;
     }
 
@@ -436,10 +489,7 @@ export function SlotEditor() {
     [slots],
   );
 
-  const handleSendToDriver = useCallback(async () => {
-    if (computedReadOnly) {
-      return;
-    }
+  const handleConfirmRoute = useCallback(async () => {
     if (!sessionId) {
       showToast({ type: "error", message: "Brak aktywnej sesji." });
       return;
@@ -456,16 +506,18 @@ export function SlotEditor() {
     setSaving(true);
     try {
       const saved = await persistSlots(slots);
-      if (!saved) {
-        return;
-      }
+      if (!saved) return;
 
-      if (sessionStatus === "draft") {
-        await updateSessionStatus(sessionId, "optimizing");
+      // Direct transition to confirmed (idempotent if already confirmed)
+      if (sessionStatus !== "confirmed" && sessionStatus !== "dispatched") {
+        if (sessionStatus === "draft") {
+          await updateSessionStatus(sessionId, "optimizing");
+        }
       }
       const confirmed = await updateSessionStatus(sessionId, "confirmed");
-      setGlobalStatus(confirmed.status);
-      showToast({ type: "success", message: "Sesja potwierdzona i wysłana do kierowcy." });
+      setSessionStatus(confirmed.status);
+      showToast({ type: "success", message: "Trasa zatwierdzona — widoczna w Fleet Manager." });
+      onRouteConfirmed?.();
     } catch (err) {
       showToast({
         type: "error",
@@ -475,7 +527,98 @@ export function SlotEditor() {
     } finally {
       setSaving(false);
     }
-  }, [conflicts.length, loadedCount, persistSlots, sessionId, sessionStatus, showToast, slots]);
+  }, [conflicts.length, loadedCount, onRouteConfirmed, persistSlots, sessionId, sessionStatus, showToast, slots]);
+
+  // ── Two-step flow: Utwórz trasę → Utwórz sesję ────────────────────────────
+
+  const setSessionId = useSessionStore((state) => state.setSessionId);
+  const selectedVehicle = useVehicleStore((state) => state.selectedVehicle);
+  const vehicleDbId = selectedVehicle?.id ?? storeVehicle?.id ?? null;
+
+  /**
+   * Collect placed offer IDs from canvas slots (pre-session mode).
+   */
+  const pendingOfferIds = useMemo(() => {
+    if (sessionId) return [];
+    const ids = new Set<string>();
+    for (const pallet of Object.values(slots)) {
+      if (pallet) ids.add(pallet.offerId);
+    }
+    return Array.from(ids);
+  }, [sessionId, slots]);
+
+  // Route preview mode: temp session created, showing route, awaiting confirmation
+  const [routePreviewSessionId, setRoutePreviewSessionId] = useState<string | null>(null);
+  const [routeConfirmed, setRouteConfirmed] = useState(false);
+  const [creatingRoute, setCreatingRoute] = useState(false);
+
+  /** Step 1: Create a temp session with all pending offers, show route preview */
+  const handleCreateRoute = useCallback(async () => {
+    if (!vehicleDbId) {
+      showToast({ type: "error", message: "Wybierz pojazd przed stworzeniem trasy." });
+      return;
+    }
+    if (pendingOfferIds.length === 0) {
+      showToast({ type: "error", message: "Dodaj co najmniej jeden ładunek." });
+      return;
+    }
+
+    setCreatingRoute(true);
+    try {
+      const session = await createSession({ vehicle_id: vehicleDbId });
+      for (const offerId of pendingOfferIds) {
+        try {
+          await addOfferToSession(session.id, offerId);
+        } catch {
+          // Skip offers that fail capacity — session is still useful
+        }
+      }
+      setRoutePreviewSessionId(session.id);
+    } catch (err) {
+      showToast({
+        type: "error",
+        message: err instanceof Error ? err.message : "Nie udało się stworzyć trasy.",
+      });
+    } finally {
+      setCreatingRoute(false);
+    }
+  }, [vehicleDbId, pendingOfferIds, showToast]);
+
+  /** Step 2: Confirm the temp session as the real session */
+  const handleCreateSession = useCallback(async () => {
+    if (!routePreviewSessionId) return;
+
+    setSaving(true);
+    try {
+      setSessionId(routePreviewSessionId);
+      useLoadStore.getState().setSessionId(routePreviewSessionId);
+      setRouteConfirmed(true);
+      void reload();
+      showToast({ type: "success", message: "Sesja utworzona — możesz teraz zarządzać trasą." });
+      onRouteConfirmed?.();
+    } catch (err) {
+      showToast({
+        type: "error",
+        message: err instanceof Error ? err.message : "Nie udało się zapisać sesji.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [routePreviewSessionId, setSessionId, reload, showToast, onRouteConfirmed]);
+
+  /** Cancel route preview — discard temp session (leave draft in DB) */
+  const handleCancelRoute = useCallback(() => {
+    setRoutePreviewSessionId(null);
+    setRouteConfirmed(false);
+  }, []);
+
+  // Determine VehicleHeader routeMode
+  const routeMode = useMemo(() => {
+    if (routeConfirmed || (sessionId && sessionStatus === "confirmed")) return "confirmed" as const;
+    if (routePreviewSessionId) return "route-preview" as const;
+    if (!sessionId && pendingOfferIds.length > 0) return "create-route" as const;
+    return "none" as const;
+  }, [routeConfirmed, sessionId, sessionStatus, routePreviewSessionId, pendingOfferIds.length]);
 
   if (!hydrated || loading) {
     return <p className="planner-empty">Wczytywanie layoutu…</p>;
@@ -498,27 +641,27 @@ export function SlotEditor() {
   }
 
   if (!vehicle) {
+    // No vehicle at all — show library + empty placeholder
     return (
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
-        <aside className="offer-sidebar rounded-2xl border border-ui-border/70 bg-ui-surface p-5" aria-label="Biblioteka ofert">
-          <p className="text-sm font-semibold text-ui-primary">Oferty</p>
-          <p className="mt-3 text-sm text-ui-secondary">
-            Wybierz pojazd, aby załadować dostępne oferty z giełdy.
-          </p>
-        </aside>
+        <PalletLibrarySuspense
+          sessionId={sessionId}
+          loadedOfferIds={loadedOfferIds}
+          onLocalOfferAdd={handleLocalOfferAdd}
+          onRegisterAddOffer={(addOffer) => {
+            libraryAddRef.current = addOffer;
+          }}
+          onRegisterRemoveOffer={(removeOffer) => {
+            libraryRemoveRef.current = removeOffer;
+          }}
+          onOfferAdded={() => { void reload(); onOfferAdded?.(); }}
+        />
         <div className="flex flex-col gap-4">
           <VehicleHeader />
-          <div className="rounded-2xl border border-ui-border/70 bg-ui-surface p-5">
-            <div className="rounded-xl bg-ui-raised p-4">
-              <div className="grid grid-cols-8 gap-2">
-                {Array.from({ length: 24 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="aspect-square rounded-lg border border-dashed border-ui-border/80 bg-ui-surface/60"
-                  />
-                ))}
-              </div>
-            </div>
+          <div className="rounded-2xl border border-dashed border-ui-border/50 bg-ui-surface p-8 text-center">
+            <p className="text-sm text-ui-secondary">
+              Wybierz pojazd powyżej, aby zobaczyć naczepę.
+            </p>
           </div>
         </div>
       </div>
@@ -533,10 +676,11 @@ export function SlotEditor() {
       ? getCompanyColorPair(draggingLibraryOffer.offer_id)
       : null;
 
-
   const usedWeightKg = getUsedWeight(slots);
-
   const usedLdm = getUsedLdm(slots);
+
+  // Effective session id for PalletLibrary and map (may be temp preview session)
+  const effectiveSessionId = sessionId ?? routePreviewSessionId;
 
   return (
     <section className="slot-editor">
@@ -549,26 +693,21 @@ export function SlotEditor() {
         }
       >
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
-          {sessionId ? (
-            <PalletLibrarySuspense
-              sessionId={sessionId}
-              loadedOfferIds={loadedOfferIds}
-              onRegisterAddOffer={(addOffer) => {
-                libraryAddRef.current = addOffer;
-              }}
-              onRegisterRemoveOffer={(removeOffer) => {
-                libraryRemoveRef.current = removeOffer;
-              }}
-              onOfferAdded={() => void reload()}
-              isReadOnly={computedReadOnly}
-            />
-          ) : (
-            <aside className="offer-sidebar" aria-label="Biblioteka ofert">
-              <p className="pallet-library__status">
-                Wybierz pojazd, aby wczytać bibliotekę ofert.
-              </p>
-            </aside>
-          )}
+          {/* PalletLibrary: shows ranked offers with session, raw market offers without */}
+          <PalletLibrarySuspense
+            sessionId={effectiveSessionId}
+            vehicleId={vehicleDbId}
+            loadedOfferIds={loadedOfferIds}
+            onLocalOfferAdd={handleLocalOfferAdd}
+            onRegisterAddOffer={(addOffer) => {
+              libraryAddRef.current = addOffer;
+            }}
+            onRegisterRemoveOffer={(removeOffer) => {
+              libraryRemoveRef.current = removeOffer;
+            }}
+            onOfferAdded={() => { void reload(); onOfferAdded?.(); }}
+            onOfferRemoved={() => onOfferRemoved?.()}
+          />
 
           <div className="flex min-w-0 flex-col gap-5">
             <VehicleHeader
@@ -579,10 +718,14 @@ export function SlotEditor() {
               usedLdm={usedLdm}
               maxLdm={vehicle.maxLdm}
               profitEur={profitData ? Math.round(profitData.netProfitEur) : undefined}
-              saving={saving}
-              onSave={computedReadOnly ? undefined : () => void handleSendToDriver()}
-              sessionId={sessionId ?? undefined}
-              isReadOnly={computedReadOnly}
+              saving={saving || creatingRoute}
+              onConfirm={sessionId && !computedReadOnly ? () => void handleConfirmRoute() : undefined}
+              onCreateRoute={routeMode === "create-route" ? () => void handleCreateRoute() : undefined}
+              onCreateSession={routeMode === "route-preview" ? () => void handleCreateSession() : undefined}
+              onCancelRoute={routeMode === "route-preview" ? handleCancelRoute : undefined}
+              sessionId={effectiveSessionId ?? undefined}
+              sessionStatus={sessionStatus}
+              routeMode={routeMode}
             />
 
             {conflicts.length > 0 && (

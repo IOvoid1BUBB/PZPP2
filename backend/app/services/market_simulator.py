@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from app.lib.geo import haversine_km
-from app.schemas.offer import MarketOfferCreate
+from app.schemas.offer import HUB_LABELS, MarketOfferCreate
 
 PALLET_LDM = 0.4
 
@@ -95,6 +95,8 @@ def generate_single_offer(
             weights=_HANDLING_WEIGHTS,
         )[0],
         stackable=random.random() < 0.65,
+        pickup_label=HUB_LABELS.get(pickup_hub_key, pickup_hub_key.capitalize()),
+        delivery_label=HUB_LABELS.get(delivery_hub_key, delivery_hub_key.capitalize()),
     )
     return GeneratedOffer(
         offer=offer,

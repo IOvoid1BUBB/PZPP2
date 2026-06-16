@@ -37,7 +37,7 @@ class ConsolidationSession(Base):
     )
     vehicle_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("vehicles.id"),
+        ForeignKey("vehicle_types.id", name="fk_consolidation_sessions_vehicle_id"),
         nullable=True,
     )
     driver_profile_id: Mapped[uuid.UUID] = mapped_column(
@@ -57,6 +57,11 @@ class ConsolidationSession(Base):
     origin_lat: Mapped[float | None] = mapped_column(Numeric(9, 6))
     target_region_bbox: Mapped[list[float] | None] = mapped_column(JSONB)
     load_layout: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    fleet_vehicle_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("fleet_vehicles.id", name="fk_consolidation_sessions_fleet_vehicle_id"),
+        nullable=True,
+    )
 
     vehicle: Mapped[Vehicle | None] = relationship(back_populates="consolidation_sessions")
     driver_profile: Mapped[DriverProfile] = relationship(back_populates="consolidation_sessions")

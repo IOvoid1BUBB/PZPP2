@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Literal
+from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -38,18 +38,10 @@ CLIENT_COLORS = [
     "#d8b4fe",
 ]
 
-VehicleType = Literal["master_l2", "master_l3", "master_l4", "man_solo"]
-
-DEFAULT_DEMO_VEHICLE_TYPE: VehicleType = "master_l2"
 
 _VALID_VEHICLE_TYPES: frozenset[str] = frozenset(
     {"master_l2", "master_l3", "master_l4", "man_solo"},
 )
-
-# Bump when default demo slot selection changes — invalidates in-memory demo cache.
-_DEMO_LAYOUT_VERSION = 2
-
-_demo_layout_cache: dict[str, tuple[int, dict[str, PalletData | None]]] = {}
 
 
 def _normalize_payload_slots(raw: dict[str, Any]) -> dict[str, PayloadSlotConfig]:
@@ -203,135 +195,6 @@ def slots_to_storage(slots: dict[str, PalletData | None]) -> dict[str, Any]:
             result[slot_id] = pallet.model_dump(by_alias=True, mode="json")
     return result
 
-
-def build_demo_slots(payload_slots: dict[str, PayloadSlotConfig]) -> dict[str, PalletData | None]:
-    """Fill the first N slots of any vehicle layout with demo pallets.
-
-    Demo cargo (IKEA, Amazon, Gamma, Delta) is placed on non-overlapping slot
-    ids chosen per vehicle layout (see ``_demo_slot_ids``). For ``master_l2``
-    that is s0/s3 on the front row and s2/s6 on the rear row so long and
-    transverse footprints align on the canvas.
-    """
-    slots = empty_slots(payload_slots)
-    now = datetime.now(timezone.utc)
-
-    demo_pallets: list[dict[str, Any]] = [
-        {
-            "pallet_id": "p1",
-            "offer_id": "o1",
-            "client_id": "c1",
-            "client_name": "IKEA",
-            "color_index": 0,
-            "ldm": 0.4,
-            "weight_kg": 420,
-            "stackable": True,
-            "time_window": None,
-        },
-        {
-            "pallet_id": "p2",
-            "offer_id": "o2",
-            "client_id": "c2",
-            "client_name": "Amazon",
-            "color_index": 1,
-            "ldm": 0.4,
-            "weight_kg": 680,
-            "stackable": False,
-            "time_window": None,
-        },
-        {
-            "pallet_id": "p4",
-            "offer_id": "o4",
-            "client_id": "c3",
-            "client_name": "Gamma",
-            "color_index": 2,
-            "ldm": 0.4,
-            "weight_kg": 910,
-            "stackable": True,
-            "time_window": None,
-        },
-        {
-            "pallet_id": "p5",
-            "offer_id": "o5",
-            "client_id": "c4",
-            "client_name": "Delta",
-            "color_index": 3,
-            "ldm": 0.4,
-            "weight_kg": 540,
-            "stackable": True,
-            "time_window": {
-                "open": now - timedelta(days=1),
-                "close": now - timedelta(hours=1),
-            },
-        },
-    ]
-
-    # Pick demo slots per layout. ``master_l4`` rear transverse slots (s3/s4)
-    # overlap long right-column slots (s8/s9) — use s5/s6 instead.
-    demo_slot_ids = _demo_slot_ids(payload_slots)
-
-    for demo, slot_id in zip(demo_pallets, demo_slot_ids):
-        slot_cfg = payload_slots[slot_id]
-        slots[slot_id] = PalletData(
-            id=demo["pallet_id"],
-            offerId=demo["offer_id"],
-            clientId=demo["client_id"],
-            clientName=demo["client_name"],
-            clientColor=CLIENT_COLORS[demo["color_index"] % len(CLIENT_COLORS)],
-            ldm=demo["ldm"],
-            weightKg=demo["weight_kg"],
-            dims=PalletDims(
-                wMm=int(slot_cfg.width_cm * 10),
-                dMm=int(slot_cfg.depth_cm * 10),
-                hMm=1600,
-            ),
-            stackable=demo["stackable"],
-            timeWindow=demo["time_window"],
-        )
-
-    return slots
-
-
-def _demo_slot_ids(payload_slots: dict[str, PayloadSlotConfig]) -> list[str]:
-    """Return up to four slot ids for demo cargo without overlapping footprints."""
-    slot_ids = list(payload_slots)
-    s3 = payload_slots.get("s3")
-    if "s9" in payload_slots or (
-        "s8" in payload_slots
-        and s3 is not None
-        and s3.depth_cm < 100
-        and s3.y_offset_cm >= 300
-    ):
-        # L4: avoid s1+s6 (long/trans pitch mismatch looks like overlapping tiles).
-        candidates = ["s0", "s5", "s2", "s7", "s1", "s6", "s8", "s9"]
-    elif "s8" in payload_slots:
-        # L3: same long/trans pitch issue with s1+s5.
-        candidates = ["s0", "s4", "s2", "s6", "s1", "s5", "s7", "s8"]
-    elif "s7" in payload_slots and "s6" in payload_slots:
-        # L2: long left column + transverse right column (not s0/s1/s3/s4 2×2).
-        candidates = ["s0", "s3", "s2", "s6", "s1", "s5", "s4"]
-    else:
-        candidates = [slot_ids[index] for index in (0, 1, 3, 4) if index < len(slot_ids)]
-
-    chosen: list[str] = []
-    for slot_id in candidates:
-        if slot_id not in payload_slots or len(chosen) >= 4:
-            continue
-        config = payload_slots[slot_id]
-        if any(_footprints_overlap(config, payload_slots[existing]) for existing in chosen):
-            continue
-        chosen.append(slot_id)
-
-    for slot_id in slot_ids:
-        if len(chosen) >= 4:
-            break
-        if slot_id in chosen:
-            continue
-        config = payload_slots[slot_id]
-        if any(_footprints_overlap(config, payload_slots[existing]) for existing in chosen):
-            continue
-        chosen.append(slot_id)
-
-    return chosen[:4]
 
 
 def build_layout_from_offers(
@@ -774,51 +637,6 @@ class PlannerLayoutService:
             )
         return vehicle
 
-    @staticmethod
-    def _resolve_demo_vehicle_type(vehicle_type: str | None) -> str:
-        resolved = vehicle_type or DEFAULT_DEMO_VEHICLE_TYPE
-        if resolved not in _VALID_VEHICLE_TYPES:
-            raise ValidationAppError(
-                f"Unknown vehicle_type '{resolved}'. "
-                f"Expected one of: {', '.join(sorted(_VALID_VEHICLE_TYPES))}.",
-            )
-        return resolved
-
-    async def get_demo_layout(self, vehicle_type: str | None = None) -> LoadLayoutResponse:
-        resolved_type = self._resolve_demo_vehicle_type(vehicle_type)
-        vehicle = await self._get_vehicle_by_type(resolved_type)
-        planner_vehicle = vehicle_to_planner(vehicle)
-        cached_entry = _demo_layout_cache.get(resolved_type)
-        if cached_entry is None or cached_entry[0] != _DEMO_LAYOUT_VERSION:
-            cached = build_demo_slots(planner_vehicle.payload_slots)
-            _demo_layout_cache[resolved_type] = (_DEMO_LAYOUT_VERSION, cached)
-        else:
-            cached = cached_entry[1]
-        return build_layout_response(planner_vehicle, cached, session_id=f"demo:{resolved_type}")
-
-    async def update_demo_layout(
-        self,
-        payload: LoadLayoutUpdate,
-        vehicle_type: str | None = None,
-    ) -> LoadLayoutResponse:
-        resolved_type = self._resolve_demo_vehicle_type(vehicle_type)
-        vehicle = await self._get_vehicle_by_type(resolved_type)
-        planner_vehicle = vehicle_to_planner(vehicle)
-        self._validate_slot_keys(payload.slots, planner_vehicle)
-        _validate_layout_slots(payload.slots, planner_vehicle)
-        _demo_layout_cache[resolved_type] = (_DEMO_LAYOUT_VERSION, dict(payload.slots))
-        return build_layout_response(
-            planner_vehicle,
-            _demo_layout_cache[resolved_type][1],
-            session_id=f"demo:{resolved_type}",
-        )
-
-    async def reset_demo_layout(self, vehicle_type: str | None = None) -> LoadLayoutResponse:
-        """Drop cache and rebuild from defaults — exposes a 'reload demo' affordance."""
-        resolved_type = self._resolve_demo_vehicle_type(vehicle_type)
-        _demo_layout_cache.pop(resolved_type, None)
-        return await self.get_demo_layout(resolved_type)
-
     async def get_session_layout(self, session_id: UUID) -> LoadLayoutResponse:
         session = await self._load_session(session_id)
         if session.vehicle is None:
@@ -860,18 +678,12 @@ class PlannerLayoutService:
 
     async def apply_move(
         self,
-        session_id: UUID | None,
+        session_id: UUID,
         *,
         from_slot: str,
         to_slot: str,
-        demo: bool = False,
-        vehicle_type: str | None = None,
     ) -> LoadLayoutResponse:
-        layout = (
-            await self.get_demo_layout(vehicle_type)
-            if demo
-            else await self.get_session_layout(session_id)  # type: ignore[arg-type]
-        )
+        layout = await self.get_session_layout(session_id)
         slots = dict(layout.slots)
         source = slots.get(from_slot)
         if source is None:
@@ -905,45 +717,27 @@ class PlannerLayoutService:
             slots[from_slot] = None
 
         update = LoadLayoutUpdate(slots=slots)
-        if demo:
-            return await self.update_demo_layout(update, vehicle_type)
-        return await self.update_session_layout(session_id, update)  # type: ignore[arg-type]
+        return await self.update_session_layout(session_id, update)
 
     async def remove_slot(
         self,
-        session_id: UUID | None,
+        session_id: UUID,
         slot_id: str,
-        *,
-        demo: bool = False,
-        vehicle_type: str | None = None,
     ) -> LoadLayoutResponse:
-        layout = (
-            await self.get_demo_layout(vehicle_type)
-            if demo
-            else await self.get_session_layout(session_id)  # type: ignore[arg-type]
-        )
+        layout = await self.get_session_layout(session_id)
         slots = dict(layout.slots)
         if slot_id not in slots:
             raise ValidationAppError(f"Unknown slot '{slot_id}'.")
         slots[slot_id] = None
         update = LoadLayoutUpdate(slots=slots)
-        if demo:
-            return await self.update_demo_layout(update, vehicle_type)
-        return await self.update_session_layout(session_id, update)  # type: ignore[arg-type]
+        return await self.update_session_layout(session_id, update)
 
     async def move_to_first_free(
         self,
-        session_id: UUID | None,
+        session_id: UUID,
         slot_id: str,
-        *,
-        demo: bool = False,
-        vehicle_type: str | None = None,
     ) -> LoadLayoutResponse:
-        layout = (
-            await self.get_demo_layout(vehicle_type)
-            if demo
-            else await self.get_session_layout(session_id)  # type: ignore[arg-type]
-        )
+        layout = await self.get_session_layout(session_id)
         slots = dict(layout.slots)
         pallet = slots.get(slot_id)
         if pallet is None:
@@ -957,9 +751,7 @@ class PlannerLayoutService:
         slots[target] = _orient_pallet_for_slot(pallet, target_config)
         slots[slot_id] = None
         update = LoadLayoutUpdate(slots=slots)
-        if demo:
-            return await self.update_demo_layout(update, vehicle_type)
-        return await self.update_session_layout(session_id, update)  # type: ignore[arg-type]
+        return await self.update_session_layout(session_id, update)
 
     @staticmethod
     def _validate_slot_keys(

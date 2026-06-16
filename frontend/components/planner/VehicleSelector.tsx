@@ -24,9 +24,7 @@ import {
   type KeyboardEvent,
 } from "react";
 
-import { fetchSessionLayout } from "@/lib/api/plannerClient";
 import {
-  createSession,
   fetchDriverProfiles,
   fetchVehicles,
   type DriverProfileRecord,
@@ -136,7 +134,7 @@ function TrailerThumbnail({ lengthCm, widthCm }: TrailerThumbnailProps) {
 export function VehicleSelector() {
   const hydrated = useClientHydrated();
   const { selectedVehicle, selectVehicle } = useVehicleStore();
-  const { clearAllSlots, setLayout } = useLoadStore();
+  const { clearAllSlots } = useLoadStore();
   const { setSessionId } = useSessionStore();
 
   /** Cache pojazdów z API — klucz: type */
@@ -147,6 +145,13 @@ export function VehicleSelector() {
   const [error, setError] = useState<string | null>(null);
   const [driverProfiles, setDriverProfiles] = useState<DriverProfileRecord[]>([]);
   const [selectedDriverProfileId, setSelectedDriverProfileId] = useState<string>("");
+  /**
+   * Fleet vehicles — if available, shown as labels on type cards.
+   * Key: vehicle type string (e.g. "man_solo") → registration of first matching fleet vehicle.
+   */
+  const [fleetRegistrationByType, setFleetRegistrationByType] = useState<
+    Map<string, string>
+  >(new Map());
 
   /** Roving tabindex — indeks aktywnej karty w obrębie radiogroup */
   const [rovingIndex, setRovingIndex] = useState(0);
@@ -180,6 +185,23 @@ export function VehicleSelector() {
         /* driver profile list optional for vehicle cards */
       });
 
+    // Try loading fleet vehicles — if present, show registration on cards (graceful degradation)
+    import("@/lib/api/fleetClient")
+      .then(({ fetchFleetVehicles }) => fetchFleetVehicles())
+      .then((fleetVehicles) => {
+        if (cancelled) return;
+        const regMap = new Map<string, string>();
+        for (const fv of fleetVehicles) {
+          if (fv.status !== "retired" && !regMap.has(fv.typeKey)) {
+            regMap.set(fv.typeKey, fv.registration);
+          }
+        }
+        setFleetRegistrationByType(regMap);
+      })
+      .catch(() => {
+        /* fleet endpoint optional */
+      });
+
     return () => {
       cancelled = true;
     };
@@ -200,37 +222,25 @@ export function VehicleSelector() {
       setError(null);
 
       try {
-        // 1. Aktualizuj wybrany pojazd (vehicleStore + loadStore.vehicle)
+        // 1. Update selected vehicle (vehicleStore + loadStore.vehicle)
         selectVehicle(vehicle);
 
-        // 2. Wyczyść sloty ładunku synchronicznie — UI od razu pokazuje pustą
-        //    naczepę, zanim backend zdąży zwrócić demo dla nowego pojazdu.
+        // 2. Clear slots synchronously — show empty canvas immediately
         clearAllSlots();
 
-        // 3. Utwórz nową sesję konsolidacji
-        const session = await createSession({
-          vehicle_id: vehicle.id,
-          driver_profile_id: selectedDriverProfileId || undefined,
-        });
-        setSessionId(session.id);
+        // 3. Reset session — session is created only at "Utwórz sesję" step
+        setSessionId(null);
+        useLoadStore.getState().setSessionId(null);
 
-        try {
-          const layout = await fetchSessionLayout(session.id);
-          setLayout({
-            sessionId: session.id,
-            vehicle: layout.vehicle,
-            slots: layout.slots,
-          });
-        } catch {
-          /* pusty layout — użytkownik dogra ręcznie */
-        }
+        // 4. Set vehicle in loadStore so TrailerCanvas can render payload slots
+        useLoadStore.getState().setVehicle(vehicle);
       } catch {
-        setError("Nie udało się zainicjować sesji. Spróbuj ponownie.");
+        setError("Nie udało się zainicjować pojazdu. Spróbuj ponownie.");
       } finally {
         setLoading(false);
       }
     },
-    [vehicleMap, selectVehicle, clearAllSlots, setLayout, setSessionId, selectedDriverProfileId],
+    [vehicleMap, selectVehicle, clearAllSlots, setSessionId],
   );
 
   // ── Roving tabindex keyboard navigation ────────────────────────────────────
@@ -308,6 +318,7 @@ export function VehicleSelector() {
           const isSelected =
             hydrated && selectedVehicle?.type === config.type;
           const isDisabled = loading;
+          const fleetReg = fleetRegistrationByType.get(config.type);
 
           return (
             <button
@@ -319,7 +330,7 @@ export function VehicleSelector() {
               role="radio"
               id={`vehicle-card-${config.type}`}
               aria-checked={isSelected}
-              aria-label={`${config.label}, max ${config.maxStops} przystanków`}
+              aria-label={`${config.label}${fleetReg ? ` (${fleetReg})` : ""}, max ${config.maxStops} przystanków`}
               aria-disabled={isDisabled}
               tabIndex={rovingIndex === index ? 0 : -1}
               disabled={isDisabled}
@@ -340,8 +351,15 @@ export function VehicleSelector() {
                 />
               )}
 
-              {/* Tytuł */}
-              <span className="vehicle-selector__label">{config.label}</span>
+              {/* Tytuł + optional fleet registration badge */}
+              <div className="flex items-start justify-between gap-1">
+                <span className="vehicle-selector__label">{config.label}</span>
+                {fleetReg && (
+                  <span className="rounded bg-ui-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-ui-accent">
+                    {fleetReg}
+                  </span>
+                )}
+              </div>
 
               {/* Thumbnail naczepy */}
               <TrailerThumbnail
