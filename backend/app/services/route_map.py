@@ -14,11 +14,17 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError
 from app.lib.geo import geo_point_from_geometry, lat_lon_from_geometry
 from app.lib.geocoder import coordinate_fallback
-from app.lib.routing import RoutingProvider, get_routing_provider
 from app.lib.redis_client import get_redis
+from app.lib.routing import RoutingProvider, get_routing_provider
 from app.models import ConsolidationSession, RouteStop
 from app.schemas.offer import GeoPoint
-from app.schemas.route_map import RouteMapLeg, RouteMapResponse, RouteMapStop
+from app.schemas.route_map import (
+    DriverRestPoint,
+    RouteMapLeg,
+    RouteMapResponse,
+    RouteMapStop,
+)
+from app.services.driver_compliance import compute_rest_points
 from app.services.route_builder import build_session_route
 from app.services.stop_labels import ensure_stop_label
 
@@ -66,7 +72,7 @@ class RouteMapService:
 
     async def get_route_map(self, session_id: UUID) -> RouteMapResponse:
         redis = get_redis()
-        cache_key = f"route_map:{session_id}"
+        cache_key = f"route_map:v2:{session_id}"
 
         cached = await redis.get(cache_key)
         if cached is not None:
@@ -130,14 +136,20 @@ class RouteMapService:
                     route_leg.from_index,
                     route_leg.to_index,
                 )
+            max_weight = float(vehicle.max_weight_kg)
+            max_ldm = float(vehicle.max_ldm)
+            weight_ratio = leg_cost.weight_kg_at_leg / max_weight if max_weight > 0 else 0.0
+            ldm_ratio = leg_cost.ldm_at_leg / max_ldm if max_ldm > 0 else 0.0
+            load_ratio = round(min(1.0, max(weight_ratio, ldm_ratio)), 4)
             legs.append(
                 RouteMapLeg(
                     leg_id=leg_cost.leg_index + 1,
                     weight_kg_at_leg=round(leg_cost.weight_kg_at_leg, 1),
+                    ldm_at_leg=round(leg_cost.ldm_at_leg, 2),
                     geometry_coords=coords,
                     distance_km=round(leg_cost.distance_km, 3),
                     duration_minutes=route_leg.duration_minutes,
-                    load_ratio=round(leg_cost.load_ratio, 4),
+                    load_ratio=load_ratio,
                 )
             )
 
@@ -145,11 +157,30 @@ class RouteMapService:
         for index, stop in enumerate(build.stops):
             stop_rows.append(await self._stop_row(stop, is_current=(index == 0)))
 
+        stop_minutes = [
+            float(
+                stop.offer.handling_time_minutes
+                if stop.offer is not None
+                and stop.offer.handling_time_minutes is not None
+                else self._settings.STOP_COST_MINUTES
+            )
+            for stop in build.stops
+        ]
+        rest_points = [
+            DriverRestPoint.model_validate(point)
+            for point in compute_rest_points(
+                leg_minutes=[float(leg.duration_minutes) for leg in legs],
+                stop_minutes=stop_minutes,
+                leg_geometries=[leg.geometry_coords for leg in legs],
+            )
+        ]
+
         result = RouteMapResponse(
             session_id=session.id,
             origin=origin,
             legs=legs,
             stops=stop_rows,
+            rest_points=rest_points,
             vehicle_max_weight_kg=int(vehicle.max_weight_kg),
             total_distance_km=round(build.route.total_distance_km, 3),
             total_duration_minutes=build.route.total_duration_minutes,

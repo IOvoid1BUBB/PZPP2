@@ -14,6 +14,7 @@ WEIGHT_FUEL_FACTOR = 0.30
 @dataclass(frozen=True)
 class MockOffer:
     weight_kg: int
+    ldm: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -42,8 +43,12 @@ def vehicle(
     )
 
 
-def stop(stop_type: Literal["pickup", "delivery"], weight_kg: int) -> MockStop:
-    return MockStop(stop_type=stop_type, offer=MockOffer(weight_kg=weight_kg))
+def stop(
+    stop_type: Literal["pickup", "delivery"],
+    weight_kg: int,
+    ldm: float = 0.0,
+) -> MockStop:
+    return MockStop(stop_type=stop_type, offer=MockOffer(weight_kg=weight_kg, ldm=ldm))
 
 
 def leg(
