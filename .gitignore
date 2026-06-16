@@ -45,3 +45,7 @@ frontend/.tmp/lighthouse.*/
 
 # OSRM
 osrm-data/
+
+*.osrm*
+*.osm.pbf
+*docker-compose.override.yml

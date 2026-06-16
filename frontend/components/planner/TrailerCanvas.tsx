@@ -501,10 +501,10 @@ export function TrailerCanvas({
 
       <button
         type="button"
-        className="button button--secondary trailer-canvas__export"
+        className="button bg-gray/30 px-4 py-2"
         onClick={handleExportPng}
       >
-        Eksportuj PNG
+        Export png
       </button>
     </div>
   );

@@ -164,7 +164,7 @@ export function VehicleSelector() {
       })
       .catch(() => {
         if (!cancelled) {
-          setError("Nie udało się pobrać listy pojazdów.");
+          setError("Failed to fetch vehicles.");
         }
       });
 

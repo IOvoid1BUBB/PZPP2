@@ -121,7 +121,7 @@ export function SolverPanel({ sessionId, onApplied }: SolverPanelProps) {
         <div>
           <CardTitle>Solver VRP</CardTitle>
           <CardDescription>
-            Automatyczny wybór ofert i optymalizacja sekwencji przystanków.
+            Automatic selection of offers and optimization of stop sequences.
           </CardDescription>
         </div>
         <Button variant="primary" disabled={running} onClick={() => void handleRun()}>

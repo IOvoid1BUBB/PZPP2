@@ -1,60 +1,75 @@
-import { ThemeToggle } from "@/components/ui/ThemeToggle";
+"use client";
 
-type NavItem = {
-  label: string;
-  href: string;
-  active: boolean;
-};
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Home, LayoutGrid, Truck, BarChart3, User } from "lucide-react";
 
-type AppHeaderProps = {
-  navItems: NavItem[];
-};
+import { cn } from "@/lib/utils";
 
-export function AppHeader({ navItems }: AppHeaderProps) {
+const NAV = [
+  { icon: Home, label: "Dashboard", route: "/" },
+  { icon: LayoutGrid, label: "Planning lab", route: "/planner" },
+  { icon: Truck, label: "Fleet manager", route: "/fleet" },
+  { icon: BarChart3, label: "Market hub", route: "/market" },
+];
+
+export function AppHeader() {
+  const pathname = usePathname();
+
   return (
-    <header className="flex min-h-14 items-center justify-between gap-4 border-b border-[var(--ui-border)] bg-[var(--ui-nav)] px-4 md:px-6">
-      <div className="min-w-0 shrink-0 text-sm font-semibold tracking-tight">
-        Loadmax AI
-      </div>
+    <header className="sticky top-0 z-30 border-b border-ui-border grid grid-cols-[0.5fr_1fr_0.5fr] bg-bg/80 px-6 py-4 backdrop-blur">
 
-      <nav
-        className="hidden min-w-0 flex-1 items-center justify-center gap-2 md:flex"
-        aria-label="Główna nawigacja"
-      >
-        {navItems.map((item) => (
-          <a
-            key={item.label}
-            href={item.href}
-            className={
-              item.active
-                ? "inline-flex items-center gap-2 rounded-md bg-[var(--ui-surface)] px-3 py-2 text-sm font-medium text-[var(--ui-text-primary)]"
-                : "inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[var(--ui-text-secondary)] hover:bg-[var(--ui-surface-raised)]"
-            }
-            aria-current={item.active ? "page" : undefined}
-          >
-            <span
-              className="h-3.5 w-3.5 rounded-sm border border-[var(--ui-border-strong)]"
-              aria-hidden="true"
-            />
-            {item.label}
-          </a>
-        ))}
-      </nav>
+        <div className="text-md h-full flex items-center">Loadmax AI</div>
 
-      <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-        <ThemeToggle />
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 rounded-md border border-[var(--ui-border)] bg-[var(--ui-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--ui-text-primary)] hover:bg-[var(--ui-surface-raised)]"
-          aria-label="Moj profil"
+        <nav
+          aria-label="Primary"
+          className="flex items-center justify-center rounded-full p-1"
         >
-          <span
-            className="h-5 w-5 rounded-full border border-[var(--ui-border-strong)]"
-            aria-hidden="true"
-          />
-          <span>Moj profil</span>
-        </button>
-      </div>
+          {NAV.map(({ icon: Icon, label, route }) => {
+            const active =
+              route === "/" ? pathname === "/" : pathname.startsWith(route);
+            return (
+              <Link
+                key={route}
+                href={route}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex items-center rounded-full py-2 text-sm font-medium transition-all duration-300",
+                  active
+                    ? "bg-ui-surface pl-2.5 pr-3.5 text-ui-primary "
+                    : "px-2.5 text-ui-secondary bg-white/70 hover:bg-white/80 hover:text-ui-primary",
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex size-5 shrink-0 items-center justify-center rounded-full transition-all duration-300",
+                    active ? "" : "bg-white/20",
+                  )}
+                >
+                  <Icon className="size-5 shrink-0" aria-hidden="true" />
+                </span>
+                <span
+                  className={cn(
+                    "overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out",
+                    active ? "ml-2 max-w-28 opacity-100" : "max-w-0 opacity-0",
+                  )}
+                >
+                  {label}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="ml-auto flex items-center gap-3">
+          <button
+            type="button"
+            aria-label="Konto"
+            className="flex size-9 items-center justify-center rounded-full  bg-ui-surface/70 text-ui-secondary hover:text-ui-primary"
+          >
+            <User className="size-5" aria-hidden="true" />
+          </button>
+        </div>
     </header>
   );
 }

@@ -465,7 +465,7 @@ export function PalletLibrary({
   return (
     <aside className="pallet-library offer-sidebar" aria-label="Biblioteka ofert">
       <header className="pallet-library__header">
-        <h2 className="pallet-library__title">Oferty</h2>
+        <h2 className="pallet-library__title">Offers</h2>
         <span className="pallet-library__count">
           {filteredOffers.length} / {offers.length}
         </span>
@@ -474,16 +474,17 @@ export function PalletLibrary({
       {(offers.length === 0 && !loading) || simulating ? (
         <button
           type="button"
-          className="button button--secondary mb-3 w-full"
+          className="button bg-ui-surface hover:bg-gray/20 transition-colors mb-3 w-full"
           disabled={simulating}
           onClick={() => void handleSimulate()}
         >
-          {simulating ? "Generowanie ofert…" : "Generuj oferty rynkowe"}
+          {simulating ? "Generating offers…" : "Generate market offers"}
         </button>
       ) : null}
 
       <div className="pallet-library__filters">
-        <label className="pallet-library__filter">
+        <label className="flex gap-2 text-xs">
+        Only stackable
           <input
             type="checkbox"
             checked={filters.stackableOnly}
@@ -495,7 +496,7 @@ export function PalletLibrary({
               )
             }
           />
-          Tylko stackowalne
+          
         </label>
 
         <label className="pallet-library__filter">

@@ -13,14 +13,11 @@
  */
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { DriverHoursWarning } from "@/components/planner/DriverHoursWarning";
 import { SlotEditor } from "@/components/planner/SlotEditor";
 import { SolverPanel } from "@/components/planner/SolverPanel";
-import { VehicleSelector } from "@/components/planner/VehicleSelector";
 import { DriverRouteBriefing } from "@/components/driver/DriverRouteBriefing";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
@@ -110,31 +107,18 @@ function PlannerPageInner() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* ── Nagłówek ─────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight text-ui-primary">
-          Planning lab
-        </h1>
-        {sessionId && (
-          <Link href={`/sessions/${sessionId}/map`}>
-            <Button variant="secondary">Pełna mapa trasy →</Button>
-          </Link>
-        )}
-      </div>
 
       {/* ── Alerty czasu pracy ────────────────────────────────────── */}
       <DriverHoursWarning />
 
-      {/* ── Krok 1: Wybierz pojazd (tworzy sesję + ładuje oferty) ── */}
-      <VehicleSelector />
 
       {/* ── Krok 2: Solver VRP (tylko gdy sesja istnieje) ─────────── */}
       {sessionId && (
-        <details className="rounded-2xl border border-ui-border/70 bg-ui-surface shadow-sm">
+        <details className="rounded-2xl  bg-ui-surface">
           <summary className="cursor-pointer select-none px-5 py-3 text-sm font-semibold text-ui-primary">
-            ⚙ Solver VRP — automatyczna optymalizacja
+            ⚙ Solver VRP — AI optimization
           </summary>
-          <div className="border-t border-ui-border/50 px-4 pb-4 pt-3">
+          <div className=" px-4 pb-4 pt-3">
             <SolverPanel sessionId={sessionId} onApplied={handleSolverApplied} />
           </div>
         </details>
@@ -158,11 +142,11 @@ function PlannerPageInner() {
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold text-ui-primary">
-              Mapa trasy
+              Route map
             </h2>
             <p className="text-xs text-ui-muted">
-              Rzeczywiste drogi z OpenRouteService (profil HGV).
-              Aktualizuje się po dodaniu ofert i uruchomieniu solvera.
+              Real roads from OpenRouteService (HGV profile).
+              Updates after adding offers and running the solver.
             </p>
           </div>
           <RouteMapClient

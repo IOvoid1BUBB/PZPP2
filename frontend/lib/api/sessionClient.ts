@@ -284,7 +284,7 @@ export async function listSessions(
 export async function fetchVehicles(): Promise<VehicleConfig[]> {
   const response = await fetch(`${API_BASE}/api/v1/vehicles`);
   if (!response.ok) {
-    throw new Error(`Nie udało się pobrać listy pojazdów (${response.status})`);
+    throw new Error(`Failed to fetch vehicles (${response.status})`);
   }
   const raw = (await response.json()) as VehicleApiRecord[];
   return raw.map(mapVehicle);
@@ -413,7 +413,7 @@ export async function fetchRankedOffers(
 
   if (!response.ok) {
     throw new Error(
-      `Nie udało się pobrać ofert (${response.status})`,
+      `Failed to fetch offers (${response.status})`,
     );
   }
 
@@ -464,7 +464,7 @@ export async function addOfferToSession(
 export async function fetchDriverProfiles(): Promise<DriverProfileRecord[]> {
   const response = await fetch(`${API_BASE}/api/v1/driver-profiles`);
   if (!response.ok) {
-    throw new Error(`Nie udało się pobrać profili kierowców (${response.status})`);
+    throw new Error(`Failed to fetch driver profiles (${response.status})`);
   }
   return (await response.json()) as DriverProfileRecord[];
 }
@@ -472,7 +472,7 @@ export async function fetchDriverProfiles(): Promise<DriverProfileRecord[]> {
 export async function fetchSessionDetail(sessionId: string): Promise<SessionDetailResponse> {
   const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}`);
   if (!response.ok) {
-    throw new Error(`Nie udało się pobrać sesji (${response.status})`);
+    throw new Error(`Failed to fetch session (${response.status})`);
   }
   const raw = (await response.json()) as SessionDetailResponse & {
     metrics: Record<string, unknown>;

@@ -142,8 +142,7 @@ export function DriverRouteBriefing({
         data-testid="driver-route-briefing"
         className={classes("text-sm text-[var(--ui-text-secondary)]", className)}
       >
-        Brak postojów do wysłania. Dodaj oferty do sesji, aby wygenerować plan
-        dla kierowcy.
+        No stops to send. Add offers to the session to generate a plan for the driver.
       </div>
     );
   }
