@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, type CSSProperties } from "react";
 import nextDynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, PlusIcon } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -25,23 +25,27 @@ import {
   AddOfferError,
 } from "@/lib/api/sessionClient";
 import { useHydratedSessionId } from "@/hooks/useHydratedSessionId";
+import {
+  getCompanyColorHex,
+  getCompanyColorPair,
+} from "@/lib/colors/companyColors";
 import { aggregateWeeklyEurLdm } from "@/lib/market/aggregateWeeklyEurLdm";
 import { cn } from "@/lib/utils";
 
 // Leaflet map loaded only client-side
 const MarketHeatMap = nextDynamic(
-  () => import("@/components/market/MarketHeatMap"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex h-full min-h-[460px] items-center justify-center bg-ui-raised text-sm text-ui-secondary">
-      Ładowanie mapy…
-    </div>
-  ),
-});
+  () => import("@/components/market/MarketHeatMap"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full min-h-[460px] items-center justify-center bg-ui-raised text-sm text-ui-secondary">
+        Ładowanie mapy…
+      </div>
+    ),
+  },
+);
 
 export const dynamic = "force-dynamic";
-
-const PASTELS = ["bg-[#e8f1ff]", "bg-[#fff5ce]", "bg-[#e6e8ff]", "bg-[#ddf0f3]"] as const;
 
 type SortKey = "score" | "eurLdm" | "date" | "ldm";
 
@@ -51,11 +55,6 @@ const SORT_LABELS: Record<SortKey, string> = {
   date: "Data",
   ldm: "LDM",
 };
-
-function pastelFor(id: string): string {
-  const sum = id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  return PASTELS[sum % PASTELS.length];
-}
 
 function shortId(id: string): string {
   return `#${id.slice(-4).toUpperCase()}`;
@@ -67,7 +66,11 @@ function coordLabel(lat: number, lon: number): string {
 
 export default function MarketPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-ui-secondary">Wczytywanie giełdy…</p>}>
+    <Suspense
+      fallback={
+        <p className="text-sm text-ui-secondary">Wczytywanie giełdy…</p>
+      }
+    >
       <MarketPageInner />
     </Suspense>
   );
@@ -89,9 +92,9 @@ function MarketPageInner() {
 
   const [offers, setOffers] = useState<MarketOffer[]>([]);
   const [scoreById, setScoreById] = useState<Map<string, number>>(new Map());
-  const [labelById, setLabelById] = useState<Map<string, { pickup: string; delivery: string }>>(
-    new Map(),
-  );
+  const [labelById, setLabelById] = useState<
+    Map<string, { pickup: string; delivery: string }>
+  >(new Map());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("eurLdm");
   const [loading, setLoading] = useState(true);
@@ -106,9 +109,13 @@ function MarketPageInner() {
       const list = await fetchOffers(100);
       setOffers(list);
       const queryOfferId = searchParams.get("offerId");
-      setSelectedId((current) => current ?? queryOfferId ?? list[0]?.id ?? null);
+      setSelectedId(
+        (current) => current ?? queryOfferId ?? list[0]?.id ?? null,
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Nie udało się wczytać ofert.");
+      setError(
+        err instanceof Error ? err.message : "Nie udało się wczytać ofert.",
+      );
     } finally {
       setLoading(false);
     }
@@ -186,6 +193,13 @@ function MarketPageInner() {
     [offers, selectedId],
   );
 
+  const selectedColors = selectedOffer
+    ? getCompanyColorPair(selectedOffer.id)
+    : null;
+  const selectedColorHex = selectedOffer
+    ? getCompanyColorHex(selectedOffer.id)
+    : null;
+
   const avgEurLdm = useMemo(() => {
     const valid = offers.filter((o) => o.eurPerLdm > 0);
     if (valid.length === 0) return 0;
@@ -210,9 +224,11 @@ function MarketPageInner() {
       const rawScore = scoreById.get(offer.id) ?? offer.eurPerLdm / maxEur;
       const intensity = Math.min(1, Math.max(0.05, rawScore));
       const pickupLabel =
-        labelById.get(offer.id)?.pickup ?? coordLabel(offer.pickup.lat, offer.pickup.lon);
+        labelById.get(offer.id)?.pickup ??
+        coordLabel(offer.pickup.lat, offer.pickup.lon);
       const deliveryLabel =
-        labelById.get(offer.id)?.delivery ?? coordLabel(offer.delivery.lat, offer.delivery.lon);
+        labelById.get(offer.id)?.delivery ??
+        coordLabel(offer.delivery.lat, offer.delivery.lon);
       return [
         {
           lat: offer.pickup.lat,
@@ -273,7 +289,10 @@ function MarketPageInner() {
     } catch (err) {
       showToast({
         type: "error",
-        message: err instanceof Error ? err.message : "Nie udało się wygenerować ofert.",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Nie udało się wygenerować ofert.",
       });
     } finally {
       setGenerating(false);
@@ -296,7 +315,11 @@ function MarketPageInner() {
     return (
       <Card className="flex flex-col items-center justify-center gap-4 p-12 text-center">
         <p className="text-base text-ui-secondary">Brak ofert na giełdzie.</p>
-        <Button variant="primary" disabled={generating} onClick={() => void handleGenerate()}>
+        <Button
+          variant="primary"
+          disabled={generating}
+          onClick={() => void handleGenerate()}
+        >
           {generating ? "Generowanie…" : "Wygeneruj oferty testowe"}
         </Button>
         {!sessionId && (
@@ -309,62 +332,81 @@ function MarketPageInner() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
+    <div className="grid grid-cols-1 h-[calc(100dvh-12rem)] mb-6 max-h-screen gap-6 lg:grid-cols-[300px_1fr]">
       {/* ── Lewa: lista ofert ──────────────────────────────────────── */}
-      <aside className="flex flex-col gap-4">
-        <h2 className="px-1 text-lg font-semibold text-ui-primary">Oferty</h2>
+      <aside className="flex flex-col px-2 overflow-y-auto gap-4 bg-ui-surface py-2 roudned-2xl">
+        <h2 className="px-1 text-lg font-semibold text-ui-primary">Offers</h2>
         {sortedOffers.slice(0, 20).map((offer) => {
           const selected = selectedId === offer.id;
+          const colors = getCompanyColorPair(offer.id);
           const score = scoreById.get(offer.id);
           const labels = labelById.get(offer.id);
           const pickupLabel =
             labels?.pickup ?? coordLabel(offer.pickup.lat, offer.pickup.lon);
           const deliveryLabel =
-            labels?.delivery ?? coordLabel(offer.delivery.lat, offer.delivery.lon);
+            labels?.delivery ??
+            coordLabel(offer.delivery.lat, offer.delivery.lon);
           const route = `${pickupLabel} → ${deliveryLabel}`;
           return (
             <button
               key={offer.id}
               type="button"
               onClick={() => setSelectedId(offer.id)}
+              style={
+                {
+                  "--offer-muted": colors.muted,
+                  "--offer-intense": colors.intense,
+                } as CSSProperties
+              }
               className={cn(
-                "rounded-2xl p-4 text-left transition-shadow",
-                pastelFor(offer.id),
-                selected && "ring-2 ring-ui-accent",
+                "rounded-2xl border p-4 text-left transition-colors",
+                "border-[color-mix(in_srgb,var(--offer-intense)_35%,var(--ui-border))]",
+                "bg-[var(--offer-muted)]",
+                "hover:border-[color-mix(in_srgb,var(--offer-intense)_65%,var(--ui-border))]",
+                selected && "ring-2 ring-[var(--offer-intense)]",
               )}
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-semibold text-ui-primary">{pickupLabel || "Oferta"}</p>
+                  <p className="font-semibold text-[var(--offer-intense)]">
+                    {pickupLabel || "Oferta"}
+                  </p>
                   <p className="text-xs text-ui-muted">{shortId(offer.id)}</p>
                 </div>
-                <span
-                  className={cn(
-                    "mt-0.5 flex size-4 items-center justify-center rounded-full border",
-                    selected ? "border-ui-accent" : "border-ui-muted/60",
+                <span className="mt-0.5 flex size-4 items-center justify-center rounded-full border border-[var(--offer-intense)]">
+                  {selected && (
+                    <span className="size-2 rounded-full bg-[var(--offer-intense)]" />
                   )}
-                >
-                  {selected && <span className="size-2 rounded-full bg-ui-accent" />}
                 </span>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-y-3 text-sm">
                 <div>
                   <p className="text-xs text-ui-muted">Trasa</p>
-                  <p className="mt-1 line-clamp-2 font-medium text-ui-primary">{route}</p>
+                  <p className="mt-1 line-clamp-2 font-medium text-ui-primary">
+                    {route}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-xs text-ui-muted">{score != null ? "Score" : "Cena"}</p>
+                  <p className="text-xs text-ui-muted">
+                    {score != null ? "Score" : "Cena"}
+                  </p>
                   <p className="mt-1 font-medium text-ui-primary">
-                    {score != null ? score.toFixed(2) : `${offer.priceEur.toFixed(0)} EUR`}
+                    {score != null
+                      ? score.toFixed(2)
+                      : `${offer.priceEur.toFixed(0)} EUR`}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-ui-muted">EUR/LDM</p>
-                  <p className="mt-1 font-medium text-ui-primary">{offer.eurPerLdm.toFixed(2)}</p>
+                  <p className="mt-1 font-medium text-ui-primary">
+                    {offer.eurPerLdm.toFixed(2)}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-ui-muted">Trend</p>
-                  <p className="mt-1 font-medium text-ui-accent">{trendFor(offer)}</p>
+                  <p className="mt-1 font-medium text-[var(--offer-intense)]">
+                    {trendFor(offer)}
+                  </p>
                 </div>
               </div>
             </button>
@@ -378,30 +420,31 @@ function MarketPageInner() {
         <div className="flex flex-wrap items-center gap-3">
           {selectedOffer && (
             <>
-              <div className="rounded-2xl border border-ui-border/70 bg-ui-surface px-4 py-2.5">
-                <p className="text-xs text-ui-muted">EUR/LDM</p>
-                <p className="text-sm font-semibold text-ui-primary">
+              <div className="flex flex-col gap-2 rounded-md bg-ui-surface p-4">
+                <span className="text-xs text-ui-secondary">EUR/LDM</span>
+                <span className="text-sm font-semibold text-ui-primary">
                   {selectedOffer.eurPerLdm.toFixed(2)}
-                </p>
+                </span>
               </div>
-              <div className="rounded-2xl border border-ui-border/70 bg-ui-surface px-4 py-2.5">
-                <p className="text-xs text-ui-muted">LDM</p>
-                <p className="text-sm font-semibold text-ui-primary">
+              <div className="flex flex-col gap-2 rounded-md bg-ui-surface p-4">
+                <span className="text-xs text-ui-secondary">LDM</span>
+                <span className="text-sm font-semibold text-ui-primary">
                   {selectedOffer.ldm.toFixed(1)}
-                </p>
+                </span>
               </div>
-              <div className="rounded-2xl border border-ui-border/70 bg-ui-surface px-4 py-2.5">
-                <p className="text-xs text-ui-muted">Trend vs avg</p>
-                <p className="text-sm font-semibold text-ui-accent">
+              <div className="flex flex-col gap-2 rounded-md bg-ui-surface p-4">
+                <span className="text-xs text-ui-secondary">Trend vs avg</span>
+                <span className="text-sm font-semibold text-ui-primary">
                   {trendFor(selectedOffer)}
-                </p>
+                </span>
               </div>
               <Button
                 variant="primary"
                 disabled={adding}
                 onClick={() => void handleAddToPlan()}
+                className="flex items-center gap-2"
               >
-                {adding ? "Dodawanie…" : "Dodaj do planu →"}
+                {adding ? "Adding..." : "Add to plan"} <PlusIcon className="size-4" aria-hidden="true" />
               </Button>
             </>
           )}
@@ -426,7 +469,10 @@ function MarketPageInner() {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="size-4 text-ui-muted" aria-hidden="true" />
+              <ChevronDown
+                className="size-4 text-ui-muted"
+                aria-hidden="true"
+              />
             </span>
           </label>
         </div>
@@ -438,7 +484,10 @@ function MarketPageInner() {
           </p>
           <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weekly} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
+              <BarChart
+                data={weekly}
+                margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
+              >
                 <XAxis
                   dataKey="label"
                   tickLine={false}
@@ -456,7 +505,7 @@ function MarketPageInner() {
                       key={week.label}
                       fill={
                         week.avgValue >= weeklyMax && weeklyMax > 0
-                          ? "#1a38f5"
+                          ? (selectedColorHex ?? "#1a38f5")
                           : "#d1d5db"
                       }
                     />

@@ -16,7 +16,7 @@ interface DriverComplianceResponse {
 const fetcher = async (url: string): Promise<DriverComplianceResponse> => {
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Nie udało się pobrać walidacji czasu pracy (${response.status}).`);
+    throw new Error(`Failed to fetch driver compliance (${response.status}).`);
   }
   return (await response.json()) as DriverComplianceResponse;
 };

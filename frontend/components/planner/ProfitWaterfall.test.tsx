@@ -247,7 +247,7 @@ describe("ProfitWaterfall", () => {
     render(<ProfitWaterfall />);
 
     expect(
-      screen.getByText("Dodaj ładunki, aby zobaczyć kalkulację"),
+      screen.getByText("Add loads to see calculations"),
     ).toBeInTheDocument();
   });
 

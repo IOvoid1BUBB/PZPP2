@@ -109,7 +109,7 @@ export async function fetchSessionRouteMap(sessionId: string): Promise<RouteMapD
   if (!response.ok) {
     throw new RouteMapFetchError(
       response.status,
-      `Nie udało się pobrać mapy trasy (${response.status})`,
+      `Failed to fetch route map (${response.status})`,
     );
   }
   return mapRouteMapResponse((await response.json()) as RouteMapResponseApi);

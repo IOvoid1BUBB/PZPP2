@@ -225,7 +225,7 @@ function EmptyState() {
       aria-label="Brak danych kalkulacji"
     >
       <p className="profit-waterfall__empty-text">
-        Dodaj ładunki, aby zobaczyć kalkulację
+        Add loads to see calculations
       </p>
     </section>
   );

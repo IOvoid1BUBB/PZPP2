@@ -463,11 +463,10 @@ function EmptyState() {
       aria-label="Brak danych analitycznych"
     >
       <p className="text-sm font-medium text-[var(--ui-text-primary)]">
-        Dodaj ładunki, aby zobaczyć kalkulacje
+        Add loads to see calculations
       </p>
       <p className="mt-1 max-w-sm text-xs text-[var(--ui-text-secondary)]">
-        Wykres zysków i udział klientów pojawi się po załadowaniu co najmniej
-        jednej oferty do sesji.
+        The profit chart and client share will appear after loading at least one offer into the session.
       </p>
     </section>
   );
