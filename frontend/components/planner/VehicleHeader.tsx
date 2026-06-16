@@ -8,17 +8,45 @@ import { Drawer } from "@/components/ui/Drawer";
 import { ProgressBar } from "../ui/ProgressBar";
 import { cn } from "@/lib/utils";
 import { useVehicleStore } from "@/lib/stores/vehicleStore";
+import {
+  fetchDriverProfiles,
+  type DriverProfileRecord,
+} from "@/lib/api/sessionClient";
 
 // ─── DriverProfileTile ────────────────────────────────────────────────────────
 
-const DRIVER_PROFILE_OPTIONS = ["Economy", "Senior"] as const;
+interface DriverProfileTileProps {
+  /** Currently selected driver profile id (controlled). */
+  value?: string;
+  /** Fired with the chosen profile id when the user picks a different profile. */
+  onChange?: (profileId: string) => void;
+  disabled?: boolean;
+}
 
-function DriverProfileTile() {
+function DriverProfileTile({ value, onChange, disabled = false }: DriverProfileTileProps) {
   const [open, setOpen] = useState(false);
-  const [profile, setProfile] = useState<(typeof DRIVER_PROFILE_OPTIONS)[number]>(
-    "Economy",
-  );
+  const [profiles, setProfiles] = useState<DriverProfileRecord[]>([]);
+  const [loading, setLoading] = useState(true);
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Load driver profiles from the API once on mount (BUG-06: no hardcoded options).
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    void fetchDriverProfiles()
+      .then((records) => {
+        if (!cancelled) setProfiles(records);
+      })
+      .catch(() => {
+        if (!cancelled) setProfiles([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -31,6 +59,12 @@ function DriverProfileTile() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [open]);
 
+  const selectedProfile =
+    profiles.find((p) => p.id === value) ?? (value == null ? profiles[0] : undefined);
+  const label = loading
+    ? "Ładowanie…"
+    : (selectedProfile?.name ?? selectedProfile?.code ?? "—");
+
   return (
     <div ref={wrapperRef} className="relative">
       <button
@@ -38,7 +72,8 @@ function DriverProfileTile() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className="flex w-full flex-col gap-2 rounded-md bg-ui-surface p-4 text-left transition-colors hover:bg-ui-nav"
+        disabled={disabled || loading}
+        className="flex w-full flex-col gap-2 rounded-md bg-ui-surface p-4 text-left transition-colors hover:bg-ui-nav disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span className="flex items-center justify-between text-xs text-ui-secondary">
           Profile
@@ -49,37 +84,49 @@ function DriverProfileTile() {
             )}
           />
         </span>
-        <span className="truncate text-sm font-semibold text-ui-primary">{profile}</span>
+        {loading ? (
+          <span className="h-4 w-20 animate-pulse rounded bg-ui-raised" aria-hidden="true" />
+        ) : (
+          <span className="truncate text-sm font-semibold text-ui-primary">{label}</span>
+        )}
       </button>
 
-      {open && (
+      {open && !loading && (
         <div
           role="listbox"
           aria-label="Wybierz profil kierowcy"
           className="absolute left-0 top-full z-50 mt-1 min-w-[220px] overflow-hidden rounded-md bg-ui-surface shadow-lg"
         >
-          {DRIVER_PROFILE_OPTIONS.map((option) => {
-            const selected = profile === option;
-            return (
-              <button
-                key={option}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                onClick={() => {
-                  setProfile(option);
-                  setOpen(false);
-                }}
-                className={cn(
-                  "flex w-full items-center justify-between px-3 py-2.5 text-sm transition-colors hover:bg-gray/30",
-                  selected && "bg-gray/60",
-                )}
-              >
-                <span className="font-medium text-ui-primary">{option}</span>
-                {selected ? <span className="text-xs text-ui-secondary">selected</span> : null}
-              </button>
-            );
-          })}
+          {profiles.length === 0 ? (
+            <p className="px-3 py-2.5 text-sm text-ui-secondary">Brak profili</p>
+          ) : (
+            profiles.map((option) => {
+              const selected = selectedProfile?.id === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    onChange?.(option.id);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between px-3 py-2.5 text-sm transition-colors hover:bg-gray/30",
+                    selected && "bg-gray/60",
+                  )}
+                >
+                  <span className="font-medium text-ui-primary">
+                    {option.name ?? option.code}
+                  </span>
+                  {selected ? (
+                    <span className="text-xs text-ui-secondary">selected</span>
+                  ) : null}
+                </button>
+              );
+            })
+          )}
         </div>
       )}
     </div>
@@ -109,6 +156,9 @@ interface VehicleHeaderProps {
   onCancelRoute?: () => void;
   sessionId?: string;
   sessionStatus?: string;
+  /** Selected driver profile id (controlled — wired to session creation / cost). */
+  driverProfileId?: string;
+  onDriverProfileChange?: (profileId: string) => void;
   /** Controls the two-step flow buttons */
   routeMode?: "none" | "create-route" | "route-preview" | "confirmed";
 }
@@ -118,8 +168,8 @@ export function VehicleHeader({
   itemsCount = 0,
   usedWeightKg = 0,
   maxWeightKg,
-  usedLdm: _usedLdm = 0,
-  maxLdm: _maxLdm = 0,
+  usedLdm = 0,
+  maxLdm = 0,
   profitEur,
   saving,
   onSave,
@@ -129,11 +179,16 @@ export function VehicleHeader({
   onCancelRoute,
   sessionId,
   sessionStatus,
+  driverProfileId,
+  onDriverProfileChange,
   routeMode = "none",
 }: VehicleHeaderProps) {
-  const lfilPercent = 50;
+  // BUG-04: LFIL reflects real loading-meter utilisation, not a constant.
+  const lfilPercent = maxLdm > 0 ? Math.round((usedLdm / maxLdm) * 100) : 0;
   const [briefingOpen, setBriefingOpen] = useState(false);
   const selectedVehicle = useVehicleStore((state) => state.selectedVehicle);
+  const readOnly =
+    sessionStatus === "confirmed" || sessionStatus === "dispatched";
 
   const metrics = [
     { label: "Driver", value: driverName },
@@ -149,8 +204,12 @@ export function VehicleHeader({
   ];
 
   return (
-    <header className="flex items-center justify-between gap-4">
-      <div className="flex flex-1 gap-2" role="group" aria-label="Statystyki pojazdu">
+    <header className="flex flex-wrap items-center justify-between gap-4">
+      <div
+        className="flex flex-1 flex-wrap gap-2"
+        role="group"
+        aria-label="Statystyki pojazdu"
+      >
         {/* Static vehicle display tile — vehicle selection happens via VehicleSelector */}
         <div className="flex flex-col gap-2 rounded-md bg-ui-surface p-4">
           <span className="text-xs text-ui-secondary">Vehicle</span>
@@ -159,7 +218,11 @@ export function VehicleHeader({
           </span>
         </div>
 
-        <DriverProfileTile />
+        <DriverProfileTile
+          value={driverProfileId}
+          onChange={onDriverProfileChange}
+          disabled={readOnly}
+        />
 
         {metrics.map((metric) => (
           <div
@@ -182,7 +245,7 @@ export function VehicleHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 [&>button]:min-h-[44px]">
         {sessionId ? (
           <button
             type="button"
