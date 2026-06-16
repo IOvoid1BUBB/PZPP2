@@ -19,15 +19,15 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column(
         "market_offers",
-        sa.Column("pickup_label", sa.String(length=120), nullable=True),
+        sa.Column("pickup_label", sa.String(length=200), nullable=True),
     )
     op.add_column(
         "market_offers",
-        sa.Column("delivery_label", sa.String(length=120), nullable=True),
+        sa.Column("delivery_label", sa.String(length=200), nullable=True),
     )
     op.add_column(
         "market_offers",
-        sa.Column("shipper_company", sa.String(length=80), nullable=True),
+        sa.Column("shipper_company", sa.String(length=100), nullable=True),
     )
 
 
