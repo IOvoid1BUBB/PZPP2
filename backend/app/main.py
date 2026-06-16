@@ -14,6 +14,8 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.api import build_api_router
@@ -22,6 +24,7 @@ from app.core.database import get_engine, get_sessionmaker
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging
 from app.core.middleware import AccessLogMiddleware, RequestIDMiddleware
+from app.core.rate_limit import limiter
 from app.lib.routing import shutdown_routing_provider
 from app.lib.redis_client import get_redis, shutdown_redis
 from app.schemas.common import DependencyStatus, HealthResponse, ReadinessResponse
@@ -186,7 +189,15 @@ def _register_routes(app: FastAPI, settings: Settings) -> None:
         except Exception as exc:  # noqa: BLE001
             checks.append(DependencyStatus(name="redis", ok=False, detail=str(exc)))
 
-        if not settings.ORS_API_KEY:
+        if settings.USE_ROUTING_MOCK:
+            checks.append(
+                DependencyStatus(
+                    name="routing",
+                    ok=True,
+                    detail="mock routing enabled (USE_ROUTING_MOCK=true)",
+                ),
+            )
+        elif not settings.ORS_API_KEY:
             checks.append(
                 DependencyStatus(
                     name="routing",
@@ -256,6 +267,8 @@ def create_app() -> FastAPI:
         version=settings.APP_VERSION,
         lifespan=_lifespan,
     )
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     _register_middleware(app, settings)
     _register_exception_handlers(app)
     _register_routes(app, settings)
