@@ -10,7 +10,7 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Loadmax AI — Planning lab",
+  title: "LoadMax — Planning lab",
 };
 
 export default function RootLayout({
