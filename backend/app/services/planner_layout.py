@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import NotFoundError, ValidationAppError
-from app.models import ConsolidationSession, Vehicle
+from app.models import ConsolidationSession, MarketOffer, RouteStop, Vehicle
 from app.schemas.planner import (
     LoadLayoutResponse,
     LoadLayoutUpdate,
@@ -117,6 +117,15 @@ def _repair_overlapping_slots(
                 break
 
     return fixed if patched else slots
+
+
+def client_name_from_offer(offer: MarketOffer) -> str:
+    """Prefer shipper company or pickup label for planner pallet coloring."""
+    if offer.shipper_company:
+        return offer.shipper_company
+    if offer.pickup_label:
+        return offer.pickup_label.split(" · ", 1)[0].strip()
+    return f"Oferta {str(offer.id)[:8]}"
 
 
 def vehicle_to_planner(vehicle: Vehicle) -> PlannerVehicle:
