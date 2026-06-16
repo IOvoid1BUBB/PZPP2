@@ -55,15 +55,21 @@ class DashboardService:
         summaries: list[DashboardSessionSummary] = []
 
         for session in sessions:
-            offers = [stop.offer for stop in session.route_stops if stop.offer is not None]
-            unique_offer_ids = {stop.offer_id for stop in session.route_stops}
+            seen_offers: dict = {}
+            for stop in session.route_stops:
+                if stop.offer is not None and stop.offer_id not in seen_offers:
+                    seen_offers[stop.offer_id] = stop.offer
+            offers = list(seen_offers.values())
+            unique_offer_ids = set(seen_offers.keys())
             vehicle = session.vehicle
             used_ldm = sum(float(o.ldm) for o in offers)
             max_ldm = float(vehicle.max_ldm) if vehicle else 0.0
             fill_pct = round((used_ldm / max_ldm) * 100, 2) if max_ldm > 0 else 0.0
-            revenue = sum(float(o.price_eur) for o in offers)
-            stop_costs = sum(float(s.stop_cost_eur or 0) for s in session.route_stops)
-            estimated_profit = round(revenue - stop_costs, 2) if offers else None
+            estimated_profit = (
+                float(session.net_profit_eur)
+                if session.net_profit_eur is not None
+                else None
+            )
 
             # Only include in KPI aggregation: confirmed/dispatched and created today
             is_realized = session.status in ("confirmed", "dispatched")

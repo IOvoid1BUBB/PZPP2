@@ -27,7 +27,7 @@ export function AppHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-ui-border grid grid-cols-[auto_1fr_auto] items-center gap-2 bg-bg/80 px-3 py-4 backdrop-blur sm:grid-cols-[0.5fr_1fr_0.5fr] sm:px-6">
 
-        <div className="text-md flex h-full items-center truncate">Loadmax AI</div>
+        <div className="text-md h-full flex items-center">LoadMax</div>
 
         <nav
           aria-label="Primary"
