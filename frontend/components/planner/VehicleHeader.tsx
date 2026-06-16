@@ -244,6 +244,7 @@ interface VehicleHeaderProps {
   saving?: boolean;
   onSave?: () => void;
   sessionId?: string;
+  isReadOnly?: boolean;
 }
 
 export function VehicleHeader({
@@ -257,6 +258,7 @@ export function VehicleHeader({
   saving,
   onSave,
   sessionId,
+  isReadOnly = false,
 }: VehicleHeaderProps) {
   const lfilPercent = 50; //maxLdm > 0 ? (usedLdm / maxLdm) * 100 : 0;
   const [briefingOpen, setBriefingOpen] = useState(false);
@@ -321,7 +323,11 @@ export function VehicleHeader({
           <span className="flex size-6 items-center justify-center rounded-full bg-white/15">
             <Send className="size-3" aria-hidden="true" />
           </span>
-          {saving ? "Wysyłanie…" : "Send to driver"}
+          {saving
+            ? "Wysyłanie…"
+            : isReadOnly
+              ? "Send again"
+              : "Send to driver"}
         </button>
       </div>
 

@@ -32,6 +32,9 @@ class MarketOfferCreate(BaseModel):
     time_window_close: datetime
     handling_time_minutes: int
     stackable: bool
+    pickup_label: str | None = None
+    delivery_label: str | None = None
+    shipper_company: str | None = None
 
 
 class SimulateOffersResponse(BaseModel):
@@ -60,6 +63,9 @@ class OfferRead(BaseModel):
     handling_time_minutes: int | None = None
     stackable: bool = True
     is_within_corridor: bool = False
+    pickup_label: str | None = None
+    delivery_label: str | None = None
+    shipper_company: str | None = None
 
 
 class OfferScore(BaseModel):

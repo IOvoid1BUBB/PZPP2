@@ -10,6 +10,8 @@ from decimal import Decimal
 from app.lib.geo import haversine_km
 from app.schemas.offer import MarketOfferCreate
 
+PALLET_LDM = 0.4
+
 LOGISTICS_HUBS: dict[str, tuple[float, float]] = {
     "warszawa": (21.01, 52.22),
     "lodz": (19.46, 51.75),

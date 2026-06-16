@@ -657,6 +657,9 @@ class SessionService:
             handling_time_minutes=offer.handling_time_minutes,
             stackable=bool(offer.stackable),
             is_within_corridor=bool(offer.is_within_corridor),
+            pickup_label=offer.pickup_label,
+            delivery_label=offer.delivery_label,
+            shipper_company=offer.shipper_company,
         )
 
     @staticmethod

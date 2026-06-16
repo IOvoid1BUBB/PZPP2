@@ -55,6 +55,7 @@ import {
 
 import type { ContextMenuItem, PalletData } from "@/lib/types/load";
 import type { RankedOfferRow } from "@/lib/types/offers";
+import { useSessionStore } from "@/lib/stores/sessionStore";
 
 const SHAKE_MS = 600;
 
@@ -167,13 +168,19 @@ export function SlotEditor() {
 
   const [saving, setSaving] = useState(false);
   const [driverName, setDriverName] = useState("—");
-  const [sessionStatus, setSessionStatus] = useState<string>("draft");
+  const { status: sessionStatus, setStatus: setGlobalStatus, isReadOnly } = useSessionStore(
+    (state) => ({
+      status: state.status,
+      setStatus: state.setStatus,
+      isReadOnly: state.isReadOnly,
+    }),
+  );
   const { data: profitData } = useProfitBreakdown(sessionId);
 
   useEffect(() => {
     if (!sessionId) {
       setDriverName("—");
-      setSessionStatus("draft");
+      setGlobalStatus("draft");
       return;
     }
 
@@ -184,7 +191,7 @@ export function SlotEditor() {
           return;
         }
         setDriverName(detail.driver_profile.name);
-        setSessionStatus(detail.status);
+        setGlobalStatus(detail.status);
       })
       .catch(() => {
         if (!cancelled) {
@@ -197,7 +204,8 @@ export function SlotEditor() {
     };
   }, [sessionId]);
 
-  const isReadOnly = sessionStatus === "confirmed" || sessionStatus === "dispatched";
+  const computedReadOnly =
+    sessionStatus === "confirmed" || sessionStatus === "dispatched";
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -245,47 +253,59 @@ export function SlotEditor() {
   }, []);
 
   const contextMenuItems = useMemo<ContextMenuItem[]>(
-    () => [
-      {
-        label: "Usuń ładunek",
-        destructive: true,
-        action: (slotId) => {
-          void removePallet(slotId);
-        },
-      },
-      {
-        label: "Odłóż na listę ofert",
-        action: (slotId) => {
-          const pallet = slots[slotId];
-          if (!pallet) return;
-          // Remove from session (API) then from layout
-          if (sessionId) {
-            void removeOfferFromSession(sessionId, pallet.offerId)
-              .then(() => {
+    () => {
+      const items: ContextMenuItem[] = [];
+
+      if (!computedReadOnly) {
+        items.push(
+          {
+            label: "Usuń ładunek",
+            destructive: true,
+            action: (slotId) => {
+              void removePallet(slotId);
+            },
+          },
+          {
+            label: "Odłóż na listę ofert",
+            action: (slotId) => {
+              const pallet = slots[slotId];
+              if (!pallet) return;
+              // Remove from session (API) then from layout
+              if (sessionId) {
+                void removeOfferFromSession(sessionId, pallet.offerId)
+                  .then(() => {
+                    libraryRemoveRef.current?.(pallet.offerId);
+                    void removePallet(slotId);
+                  })
+                  .catch(() => {
+                    showToast({
+                      type: "error",
+                      message: "Nie udało się odłożyć oferty.",
+                    });
+                  });
+              } else {
                 libraryRemoveRef.current?.(pallet.offerId);
                 void removePallet(slotId);
-              })
-              .catch(() => {
-                showToast({ type: "error", message: "Nie udało się odłożyć oferty." });
-              });
-          } else {
-            libraryRemoveRef.current?.(pallet.offerId);
-            void removePallet(slotId);
-          }
-        },
-      },
-      {
-        label: "Przenieś do pierwszego wolnego slotu",
-        action: (slotId) => {
-          void handleMoveToFirstFree(slotId);
-        },
-      },
-      {
+              }
+            },
+          },
+          {
+            label: "Przenieś do pierwszego wolnego slotu",
+            action: (slotId) => {
+              void handleMoveToFirstFree(slotId);
+            },
+          },
+        );
+      }
+
+      items.push({
         label: "Szczegóły ładunku",
         action: openDrawer,
-      },
-    ],
-    [handleMoveToFirstFree, openDrawer, removePallet, showToast],
+      });
+
+      return items;
+    },
+    [computedReadOnly, handleMoveToFirstFree, openDrawer, removePallet, sessionId, showToast, slots],
   );
 
   const { bindSlot } = useContextMenuTrigger({
@@ -309,6 +329,9 @@ export function SlotEditor() {
   }, [slots]);
 
   const handleDragStart = (event: DragStartEvent) => {
+    if (computedReadOnly) {
+      return;
+    }
     const dragData = event.active.data.current;
     if (dragData?.type === "library-offer") {
       setDraggingLibraryOffer(dragData.offer as RankedOfferRow);
@@ -321,6 +344,9 @@ export function SlotEditor() {
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
+    if (computedReadOnly) {
+      return;
+    }
     const dragData = event.active.data.current;
     const toSlot = event.over ? String(event.over.id) : null;
 
@@ -411,6 +437,9 @@ export function SlotEditor() {
   );
 
   const handleSendToDriver = useCallback(async () => {
+    if (computedReadOnly) {
+      return;
+    }
     if (!sessionId) {
       showToast({ type: "error", message: "Brak aktywnej sesji." });
       return;
@@ -435,7 +464,7 @@ export function SlotEditor() {
         await updateSessionStatus(sessionId, "optimizing");
       }
       const confirmed = await updateSessionStatus(sessionId, "confirmed");
-      setSessionStatus(confirmed.status);
+      setGlobalStatus(confirmed.status);
       showToast({ type: "success", message: "Sesja potwierdzona i wysłana do kierowcy." });
     } catch (err) {
       showToast({
@@ -531,6 +560,7 @@ export function SlotEditor() {
                 libraryRemoveRef.current = removeOffer;
               }}
               onOfferAdded={() => void reload()}
+              isReadOnly={computedReadOnly}
             />
           ) : (
             <aside className="offer-sidebar" aria-label="Biblioteka ofert">
@@ -550,8 +580,9 @@ export function SlotEditor() {
               maxLdm={vehicle.maxLdm}
               profitEur={profitData ? Math.round(profitData.netProfitEur) : undefined}
               saving={saving}
-              onSave={isReadOnly ? undefined : () => void handleSendToDriver()}
+              onSave={computedReadOnly ? undefined : () => void handleSendToDriver()}
               sessionId={sessionId ?? undefined}
+              isReadOnly={computedReadOnly}
             />
 
             {conflicts.length > 0 && (
@@ -574,6 +605,7 @@ export function SlotEditor() {
                 shakingSlotIds={shakingSlotIds}
                 activeSlotId={activeSlotId}
                 bindSlotMenu={bindSlot}
+                isReadOnly={computedReadOnly}
               />
             </div>
 

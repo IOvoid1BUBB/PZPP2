@@ -120,6 +120,15 @@ def _repair_overlapping_slots(
     return fixed if patched else slots
 
 
+def client_name_from_offer(offer: MarketOffer) -> str:
+    """Prefer shipper company or pickup label for planner pallet coloring."""
+    if offer.shipper_company:
+        return offer.shipper_company
+    if offer.pickup_label:
+        return offer.pickup_label.split(" · ", 1)[0].strip()
+    return f"Oferta {str(offer.id)[:8]}"
+
+
 def vehicle_to_planner(vehicle: Vehicle) -> PlannerVehicle:
     return PlannerVehicle(
         id=str(vehicle.id),
