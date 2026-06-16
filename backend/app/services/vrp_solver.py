@@ -11,16 +11,16 @@ import asyncio
 import logging
 import time
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import NotFoundError, ValidationAppError
+from app.core.exceptions import AppException, NotFoundError, ValidationAppError
 from app.lib.geo import lat_lon_from_geometry
 from app.lib.routing import RoutingProvider, get_routing_provider
+from app.lib.session_loader import load_session
 from app.models import ConsolidationSession, MarketOffer, RouteStop, SolverResult
 from app.schemas.solver import (
     SolverJobStatus,
@@ -33,8 +33,13 @@ from app.services.solver_job import SolverJobStore
 from app.services.offer_detour import COST_PER_KM_EUR, haversine_added_detour_km
 from app.services.offer_scorer import OfferScorerService
 from app.services.planner_layout import build_layout_from_offers, slots_to_storage, vehicle_to_planner
-from app.services.sessions import SessionService
+from app.services.sequence_optimizer import (
+    Stop,
+    build_node_indices,
+    optimize_stop_sequence,
+)
 from app.services.stop_cost_calculator import StopCostRates, calculate_stop_cost
+from app.services.sessions import SessionService
 
 _logger = logging.getLogger(__name__)
 
@@ -182,6 +187,16 @@ class VRPSolver:
 
         SessionService._ensure_draft(session)
 
+        if session.origin_lat is None or session.origin_lon is None:
+            raise AppException(
+                detail=(
+                    f"Session {session_id} has no origin coordinates. "
+                    "Set origin_lat/origin_lon before running the solver."
+                ),
+                status_code=422,
+                error_code="missing_origin",
+            )
+
         vehicle = session.vehicle
         if vehicle is None:
             raise ValidationAppError("Session vehicle is not set.")
@@ -227,11 +242,7 @@ class VRPSolver:
         candidates_by_id = {o.id: o for o in candidates}
         candidates = [candidates_by_id[oid] for oid in candidate_offer_ids if oid in candidates_by_id]
 
-        origin = (
-            (float(session.origin_lat), float(session.origin_lon))
-            if session.origin_lat is not None and session.origin_lon is not None
-            else (52.22, 21.01)
-        )
+        origin = (float(session.origin_lat), float(session.origin_lon))
         existing_waypoints: list[tuple[float, float]] = [origin]
 
         net_cents: list[int] = []
@@ -285,9 +296,10 @@ class VRPSolver:
         objective_eur = round(obj_cents / 100, 2)
 
         current_offer_ids = await self._session_service._session_offer_ids(session_id)
-        # Preview-only: persist proposal without mutating session offers/route.
-        stop_sequence: list[StopSequenceEntry] = []
-        stop_sequence_json: list[dict[str, object]] | None = None
+        stop_sequence = await self._build_stop_sequence(session, selected_offers, origin)
+        stop_sequence_json: list[dict[str, object]] | None = (
+            [entry.model_dump(mode="json") for entry in stop_sequence] if stop_sequence else None
+        )
 
         orm_result = SolverResult(
             session_id=session_id,
@@ -407,17 +419,60 @@ class VRPSolver:
     # ------------------------------------------------------------------
 
     async def _load_session(self, session_id: UUID) -> ConsolidationSession | None:
-        stmt = (
-            select(ConsolidationSession)
-            .where(ConsolidationSession.id == session_id)
-            .options(
-                selectinload(ConsolidationSession.vehicle),
-                selectinload(ConsolidationSession.driver_profile),
-                selectinload(ConsolidationSession.route_stops).selectinload(RouteStop.offer),
+        return await load_session(self._db, session_id)
+
+    async def _build_stop_sequence(
+        self,
+        session: ConsolidationSession,
+        selected_offers: list[MarketOffer],
+        origin: tuple[float, float],
+    ) -> list[StopSequenceEntry]:
+        """Build an optimized stop sequence for selected offers (preview, no DB mutation)."""
+        if not selected_offers:
+            return []
+
+        selected_ids = {offer.id for offer in selected_offers}
+        existing_by_offer: dict[UUID, dict[str, RouteStop]] = {}
+        for stop in session.route_stops:
+            if stop.offer_id in selected_ids:
+                existing_by_offer.setdefault(stop.offer_id, {})[stop.stop_type] = stop
+
+        stops: list[Stop] = []
+        route_stop_ids: dict[str, UUID] = {}
+        for offer in selected_offers:
+            pair = existing_by_offer.get(offer.id)
+            handling = offer.handling_time_minutes or 30
+            for stop_type, location_geom in (
+                ("pickup", offer.pickup_point),
+                ("delivery", offer.delivery_point),
+            ):
+                existing = pair.get(stop_type) if pair else None
+                stop_id = existing.id if existing is not None else uuid4()
+                route_stop_ids[str(stop_id)] = stop_id
+                stops.append(
+                    Stop(
+                        id=str(stop_id),
+                        offer_id=offer.id,
+                        stop_type=stop_type,  # type: ignore[arg-type]
+                        location=lat_lon_from_geometry(location_geom),
+                        handling_time_minutes=handling,
+                    ),
+                )
+
+        waypoints = [origin] + [stop.location for stop in stops]
+        matrix = await self._routing.get_distance_matrix(waypoints)
+        node_indices = build_node_indices(stops)
+        ordered = optimize_stop_sequence(stops, matrix=matrix, node_indices=node_indices)
+
+        return [
+            StopSequenceEntry(
+                route_stop_id=route_stop_ids[stop.id],
+                offer_id=stop.offer_id,
+                stop_type=stop.stop_type,
+                sequence_order=index,
             )
-        )
-        result = await self._db.execute(stmt)
-        return result.scalars().first()
+            for index, stop in enumerate(ordered)
+        ]
 
     async def _load_latest_result(self, session_id: UUID) -> SolverResult | None:
         stmt = (
