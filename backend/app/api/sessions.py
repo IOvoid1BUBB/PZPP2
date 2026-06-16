@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.rate_limit import limiter
+from app.core.rate_limit import rate_limit
 from app.lib.routing import RoutingProvider, get_routing_provider
 from app.schemas.offer import RankedOffersResponse, SimulateOffersResponse
 from app.schemas.profit import SessionProfitBreakdown
@@ -276,10 +276,9 @@ async def get_session_profit(
     "/{session_id}/simulate",
     response_model=SimulateOffersResponse,
     summary="Generate synthetic market offers for testing VRP/UI",
+    dependencies=[Depends(rate_limit(limit=20))],
 )
-@limiter.limit("20/minute")
 async def simulate_market_offers(
-    request: Request,
     session_id: UUID,
     count: int = Query(200, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
