@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { DriverHoursWarning } from "@/components/planner/DriverHoursWarning";
 import { SlotEditor } from "@/components/planner/SlotEditor";
-import { SolverPanel } from "@/components/planner/SolverPanel";
+import { SolverPanel } from "@/components/sessions/SolverPanel";
 import { VehicleSelector } from "@/components/planner/VehicleSelector";
 import { useHydratedSessionId } from "@/hooks/useHydratedSessionId";
 import { usePlannerLayout } from "@/hooks/usePlannerLayout";
@@ -41,6 +41,8 @@ export default function PlannerPage() {
   const vehicleDbId = selectedVehicle?.id ?? storeVehicle?.id ?? null;
 
   const [mapKey, setMapKey] = useState(0);
+  // Bumped after a solver apply so PalletLibrary refetches ranked-offers (5.3/5.4).
+  const [libraryRefresh, setLibraryRefresh] = useState(0);
   const [isRefreshingRoute, setIsRefreshingRoute] = useState(false);
   const [confirmedBanner, setConfirmedBanner] = useState(false);
   // mapSessionId: the session to show on the route map (may be temp preview session from SlotEditor)
@@ -76,6 +78,7 @@ export default function PlannerPage() {
   const handleSolverApplied = useCallback(() => {
     void reload();
     setMapKey((k) => k + 1);
+    setLibraryRefresh((v) => v + 1);
     setIsRefreshingRoute(false);
   }, [reload]);
 
@@ -126,6 +129,7 @@ export default function PlannerPage() {
         onOfferAdded={handleOfferChange}
         onOfferRemoved={handleOfferChange}
         onRouteConfirmed={handleRouteConfirmed}
+        libraryRefreshSignal={libraryRefresh}
       />
 
       {/* ── Solver VRP — always available once vehicle is selected */}

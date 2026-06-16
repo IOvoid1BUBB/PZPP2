@@ -1,6 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+/**
+ * @file SolverPanel.tsx — kanoniczny panel solvera VRP (Tasks 5.1–5.3).
+ *
+ * Odpowiada za uruchomienie optymalizacji, prezentację różnicy (diff) między
+ * aktualnym a proponowanym zestawem ofert oraz zastosowanie / odrzucenie wyniku.
+ *
+ * Architektura:
+ *   - Maszyna stanów (idle | running | done | error) — lib/solver/solverMachine.
+ *   - Logika diff (added/removed/unchanged) — lib/solver/buildOfferDiff.
+ *   - Live timer w izolowanym komponencie (SolverElapsedTimer), aby tykanie co
+ *     sekundę nie rerenderowało SlotEditor/TrailerCanvas.
+ *   - AbortController do anulowania POST /optimize; AbortError NIE jest błędem.
+ */
+
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/Card";
@@ -11,9 +25,13 @@ import {
   fetchSessionDetail,
   replaceSessionOffers,
   runSessionOptimize,
-  type SolverRunResult,
 } from "@/lib/api/sessionClient";
 import { buildCreateSessionParams } from "@/lib/fleet/resolveSessionOrigin";
+import { buildOfferDiff } from "@/lib/solver/buildOfferDiff";
+import {
+  INITIAL_SOLVER_STATE,
+  solverReducer,
+} from "@/lib/solver/solverMachine";
 import { useLoadStore } from "@/lib/stores/loadStore";
 import { useSessionStore } from "@/lib/stores/sessionStore";
 import { useVehicleStore } from "@/lib/stores/vehicleStore";
@@ -21,6 +39,8 @@ import { useVehicleStore } from "@/lib/stores/vehicleStore";
 interface SolverPanelProps {
   sessionId: string | null;
   vehicleId?: string | null;
+  /** Optional human-readable labels for offer ids shown in the diff rows. */
+  offerLabels?: Record<string, string>;
   onApplied?: () => void;
   onOffersPlaced?: (offerIds: string[]) => void;
 }
@@ -35,20 +55,68 @@ function shortOfferLabel(id: string): string {
   return `#${id.slice(0, 8).toUpperCase()}`;
 }
 
-interface DiffColumnProps {
+/**
+ * Isolated 1s ticker. Mounted only while the solver runs so its per-second state
+ * updates never rerender the parent panel (and therefore never the trailer
+ * canvas). Resets to 0 on every mount.
+ */
+export function SolverElapsedTimer() {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setSeconds((value) => value + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <span
+      className="font-mono text-sm tabular-nums text-ui-secondary"
+      aria-live="polite"
+      data-testid="solver-timer"
+    >
+      {formatElapsed(seconds)}
+    </span>
+  );
+}
+
+type DiffTone = "added" | "removed" | "unchanged";
+
+const DIFF_ROW_TONE: Record<DiffTone, string> = {
+  added: "bg-green-50 text-green-800",
+  removed: "bg-red-50 text-red-700 line-through",
+  unchanged: "text-ui-secondary opacity-50",
+};
+
+interface OfferDiffRowProps {
+  id: string;
+  label: string;
+  tone: DiffTone;
+  rowTestId: string;
+}
+
+export function OfferDiffRow({ id, label, tone, rowTestId }: OfferDiffRowProps) {
+  return (
+    <li
+      data-testid={rowTestId}
+      data-offer-id={id}
+      className={`truncate rounded px-1.5 py-0.5 font-mono text-xs ${DIFF_ROW_TONE[tone]}`}
+    >
+      {label}
+    </li>
+  );
+}
+
+interface DiffSectionProps {
   title: string;
   ids: string[];
   testId: string;
-  tone: "added" | "removed" | "unchanged";
+  tone: DiffTone;
+  labelFor: (id: string) => string;
 }
 
-const DIFF_TONE: Record<DiffColumnProps["tone"], string> = {
-  added: "text-green-700",
-  removed: "text-red-700 line-through",
-  unchanged: "text-ui-secondary opacity-60",
-};
-
-function DiffColumn({ title, ids, testId, tone }: DiffColumnProps) {
+function DiffSection({ title, ids, testId, tone, labelFor }: DiffSectionProps) {
   return (
     <div
       data-testid={testId}
@@ -63,14 +131,13 @@ function DiffColumn({ title, ids, testId, tone }: DiffColumnProps) {
           <li className="text-xs text-ui-muted">—</li>
         ) : (
           ids.map((id) => (
-            <li
+            <OfferDiffRow
               key={id}
-              data-testid={`${testId}-row`}
-              data-offer-id={id}
-              className={`truncate font-mono text-xs ${DIFF_TONE[tone]}`}
-            >
-              {shortOfferLabel(id)}
-            </li>
+              id={id}
+              label={labelFor(id)}
+              tone={tone}
+              rowTestId={`${testId}-row`}
+            />
           ))
         )}
       </ul>
@@ -81,28 +148,30 @@ function DiffColumn({ title, ids, testId, tone }: DiffColumnProps) {
 export function SolverPanel({
   sessionId,
   vehicleId,
+  offerLabels,
   onApplied,
   onOffersPlaced,
 }: SolverPanelProps) {
   const { showToast } = useToast();
   const sessionOrigin = useVehicleStore((state) => state.sessionOrigin);
   const fleetVehicleId = useVehicleStore((state) => state.fleetVehicleId);
-  const [running, setRunning] = useState(false);
+  const setStoreSessionId = useSessionStore((state) => state.setSessionId);
+
+  const [machine, dispatch] = useReducer(solverReducer, INITIAL_SOLVER_STATE);
+  const { status, result } = machine;
   const [applying, setApplying] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [pendingResult, setPendingResult] = useState<SolverRunResult | null>(null);
   const [useFullMarket, setUseFullMarket] = useState(true);
   const [tempSessionId, setTempSessionId] = useState<string | null>(null);
   const [sessionStatus, setSessionStatus] = useState<string>("draft");
   const [sessionOfferCount, setSessionOfferCount] = useState(0);
-  const timerRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const setStoreSessionId = useSessionStore((state) => state.setSessionId);
 
   const activeSessionId = sessionId ?? tempSessionId;
+  const isRunning = status === "running";
+  const pendingResult = status === "done" ? result : null;
 
-  // Track session status + offer count so we can disable optimisation once the
-  // route is confirmed/dispatched (UX-08: disabled when status !== 'draft').
+  // Track session status + offer count so optimisation is disabled once the
+  // route leaves draft (UX-08), and so the "<2 offers" guard works.
   useEffect(() => {
     if (!sessionId) {
       setSessionStatus("draft");
@@ -122,41 +191,37 @@ export function SolverPanel({
     return () => {
       cancelled = true;
     };
-  }, [sessionId, pendingResult]);
-
-  const stopTimer = useCallback(() => {
-    if (timerRef.current !== null) {
-      window.clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
+  }, [sessionId, status]);
 
   useEffect(() => {
     return () => {
-      stopTimer();
       abortRef.current?.abort();
     };
-  }, [stopTimer]);
+  }, []);
+
+  const labelFor = useCallback(
+    (id: string) => offerLabels?.[id] ?? shortOfferLabel(id),
+    [offerLabels],
+  );
 
   const diff = useMemo(() => {
-    if (!pendingResult) {
-      return null;
-    }
-    const before = new Set(pendingResult.current_offer_ids);
-    const after = new Set(pendingResult.selected_offer_ids);
-    const added = pendingResult.selected_offer_ids.filter((id) => !before.has(id));
-    const removed = pendingResult.current_offer_ids.filter((id) => !after.has(id));
-    const unchanged = pendingResult.selected_offer_ids.filter((id) => before.has(id));
-    return { added, removed, unchanged };
+    if (!pendingResult) return null;
+    return buildOfferDiff(
+      pendingResult.current_offer_ids,
+      pendingResult.selected_offer_ids,
+    );
   }, [pendingResult]);
 
   const statusBadge = useMemo(() => {
     if (!pendingResult) return null;
-    const status = pendingResult.solver_status;
-    if (status === "OPTIMAL") return { label: "OPTIMAL", cls: "bg-green-100 text-green-800" };
-    if (status === "FEASIBLE") return { label: "FEASIBLE", cls: "bg-yellow-100 text-yellow-800" };
-    if (status === "INFEASIBLE") return { label: "INFEASIBLE", cls: "bg-red-100 text-red-800" };
-    return { label: status, cls: "bg-gray-100 text-gray-700" };
+    const solverStatus = pendingResult.solver_status;
+    if (solverStatus === "OPTIMAL")
+      return { label: "OPTIMAL", cls: "bg-green-100 text-green-800" };
+    if (solverStatus === "FEASIBLE")
+      return { label: "FEASIBLE", cls: "bg-yellow-100 text-yellow-800" };
+    if (solverStatus === "INFEASIBLE")
+      return { label: "INFEASIBLE", cls: "bg-red-100 text-red-800" };
+    return { label: solverStatus, cls: "bg-gray-100 text-gray-700" };
   }, [pendingResult]);
 
   const isReadOnlyStatus =
@@ -193,14 +258,7 @@ export function SolverPanel({
 
     const controller = new AbortController();
     abortRef.current = controller;
-
-    setRunning(true);
-    setElapsedSeconds(0);
-    setPendingResult(null);
-    stopTimer();
-    timerRef.current = window.setInterval(() => {
-      setElapsedSeconds((value) => value + 1);
-    }, 1000);
+    dispatch({ type: "run" });
 
     try {
       const next = await runSessionOptimize(
@@ -209,7 +267,7 @@ export function SolverPanel({
         useFullMarket,
         controller.signal,
       );
-      setPendingResult(next);
+      dispatch({ type: "resolved", result: next });
       if (next.solver_status === "INFEASIBLE") {
         showToast({
           type: "error",
@@ -222,33 +280,33 @@ export function SolverPanel({
         });
       }
     } catch (err) {
-      // Cancellation is not an error — stay in idle.
+      // Cancellation is not an error — handleCancel already reset to idle.
       if (err instanceof DOMException && err.name === "AbortError") {
         return;
       }
+      dispatch({
+        type: "failed",
+        error: err instanceof Error ? err.message : "Optymalizacja nie powiodła się.",
+      });
       showToast({
         type: "error",
         message: err instanceof Error ? err.message : "Optymalizacja nie powiodła się.",
       });
     } finally {
-      stopTimer();
       abortRef.current = null;
-      setRunning(false);
     }
-  }, [activeSessionId, vehicleId, showToast, useFullMarket, stopTimer, sessionOrigin, fleetVehicleId]);
+  }, [activeSessionId, vehicleId, showToast, useFullMarket, sessionOrigin, fleetVehicleId]);
 
   const handleCancel = useCallback(async () => {
     abortRef.current?.abort();
     abortRef.current = null;
-    stopTimer();
-    setRunning(false);
-    setElapsedSeconds(0);
+    dispatch({ type: "reset" });
     if (activeSessionId) {
       // Best-effort server-side cancel (DELETE /optimize); ignore failures.
       await cancelSessionOptimize(activeSessionId).catch(() => undefined);
     }
     showToast({ type: "info", message: "Optymalizacja anulowana." });
-  }, [activeSessionId, stopTimer, showToast]);
+  }, [activeSessionId, showToast]);
 
   const handleApply = useCallback(async () => {
     if (!activeSessionId || !pendingResult) {
@@ -261,27 +319,33 @@ export function SolverPanel({
       return;
     }
     if (pendingResult.selected_offer_ids.length === 0) {
-      setPendingResult(null);
+      dispatch({ type: "reset" });
       return;
     }
 
+    const selected = pendingResult.selected_offer_ids;
     setApplying(true);
     try {
       if (sessionId) {
-        await replaceSessionOffers(activeSessionId, pendingResult.selected_offer_ids);
-        await cancelSessionOptimize(activeSessionId);
-        setPendingResult(null);
+        // PUT must succeed BEFORE any store mutation — guarantees no partial UI
+        // update when the request fails.
+        await replaceSessionOffers(activeSessionId, selected);
+        useLoadStore.getState().applyBulkOffers(selected);
+        await cancelSessionOptimize(activeSessionId).catch(() => undefined);
+        dispatch({ type: "reset" });
         showToast({ type: "success", message: "Propozycja solvera zastosowana." });
         onApplied?.();
       } else {
+        // Pre-session: promote the temp session to the active one.
         setStoreSessionId(activeSessionId);
         useLoadStore.getState().setSessionId(activeSessionId);
-        setPendingResult(null);
+        dispatch({ type: "reset" });
         showToast({ type: "success", message: "Propozycja solvera zastosowana." });
-        onOffersPlaced?.(pendingResult.selected_offer_ids);
+        onOffersPlaced?.(selected);
         onApplied?.();
       }
     } catch (err) {
+      // No store mutation happened (PUT threw) — UI stays on the proposal.
       showToast({
         type: "error",
         message: err instanceof Error ? err.message : "Nie udało się zastosować propozycji.",
@@ -292,7 +356,8 @@ export function SolverPanel({
   }, [onApplied, onOffersPlaced, pendingResult, activeSessionId, sessionId, showToast, setStoreSessionId]);
 
   const handleReject = useCallback(() => {
-    setPendingResult(null);
+    // Discard: reset UI only, never touch the offers attached to the session.
+    dispatch({ type: "reset" });
     showToast({ type: "success", message: "Propozycja odrzucona — układ bez zmian." });
   }, [showToast]);
 
@@ -312,7 +377,7 @@ export function SolverPanel({
         <div>
           <CardTitle>Solver VRP</CardTitle>
           <CardDescription>
-            Automatic selection of offers and optimization of stop sequences.
+            Automatyczny dobór ofert i optymalizacja kolejności przystanków.
           </CardDescription>
         </div>
         <div className="flex flex-col items-end gap-2">
@@ -322,19 +387,13 @@ export function SolverPanel({
               className="size-3.5 rounded"
               checked={useFullMarket}
               onChange={(e) => setUseFullMarket(e.target.checked)}
-              disabled={running || applying}
+              disabled={isRunning || applying}
             />
             Użyj pełnej giełdy
           </label>
-          {running ? (
+          {isRunning ? (
             <div className="flex items-center gap-2">
-              <span
-                className="font-mono text-sm tabular-nums text-ui-secondary"
-                aria-live="polite"
-                data-testid="solver-timer"
-              >
-                {formatElapsed(elapsedSeconds)}
-              </span>
+              <SolverElapsedTimer />
               <Button
                 variant="secondary"
                 data-testid="solver-cancel-btn"
@@ -343,31 +402,31 @@ export function SolverPanel({
                 Anuluj
               </Button>
             </div>
-          ) : (
+          ) : !isReadOnlyStatus ? (
             <Button
               variant="primary"
               data-testid="solver-optimize-btn"
               disabled={applying || Boolean(pendingResult) || !canOptimize}
               onClick={() => void handleRun()}
               title={
-                isReadOnlyStatus
-                  ? "Trasa jest zatwierdzona — optymalizacja zablokowana."
-                  : tooFewOffers
-                    ? "Dodaj co najmniej 2 oferty lub włącz pełną giełdę."
-                    : undefined
+                tooFewOffers
+                  ? "Dodaj co najmniej 2 oferty lub włącz pełną giełdę."
+                  : undefined
               }
             >
               Optymalizuj załadunek
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
 
-      {!canOptimize && !running && !pendingResult ? (
+      {isReadOnlyStatus && !isRunning && !pendingResult ? (
         <p className="text-xs text-ui-muted">
-          {isReadOnlyStatus
-            ? "Trasa jest zatwierdzona — solver jest dostępny tylko dla wersji roboczej."
-            : "Dodaj co najmniej 2 oferty do sesji lub włącz „Użyj pełnej giełdy”, aby uruchomić solver."}
+          Trasa jest zatwierdzona — solver jest dostępny tylko dla wersji roboczej.
+        </p>
+      ) : !canOptimize && !isRunning && !pendingResult ? (
+        <p className="text-xs text-ui-muted">
+          Dodaj co najmniej 2 oferty do sesji lub włącz „Użyj pełnej giełdy”, aby uruchomić solver.
         </p>
       ) : null}
 
@@ -396,23 +455,26 @@ export function SolverPanel({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <DiffColumn
+            <DiffSection
               title="Dodane"
               ids={diff.added}
               testId="diff-added"
               tone="added"
+              labelFor={labelFor}
             />
-            <DiffColumn
+            <DiffSection
               title="Usunięte"
               ids={diff.removed}
               testId="diff-removed"
               tone="removed"
+              labelFor={labelFor}
             />
-            <DiffColumn
+            <DiffSection
               title="Bez zmian"
               ids={diff.unchanged}
               testId="diff-unchanged"
               tone="unchanged"
+              labelFor={labelFor}
             />
           </div>
 
@@ -429,7 +491,7 @@ export function SolverPanel({
                 disabled={applying}
                 onClick={() => void handleApply()}
               >
-                {applying ? "Stosowanie…" : "Zastosuj sugestię"}
+                {applying ? "Stosowanie…" : "Zastosuj"}
               </Button>
             ) : null}
             <Button
