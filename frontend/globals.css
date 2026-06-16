@@ -371,6 +371,11 @@ select {
   color: #15803d;
 }
 
+.offer-card__badge--on-route {
+  background: rgba(83, 74, 183, 0.12);
+  color: #4338ca;
+}
+
 .score-bar {
   display: flex;
   flex: 1;

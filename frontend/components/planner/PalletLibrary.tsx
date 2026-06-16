@@ -21,7 +21,7 @@ import {
 import { getCompanyColorPair } from "@/lib/colors/companyColors";
 import type { OfferScore, RankedOfferRow } from "@/lib/types/offers";
 
-const ROW_HEIGHT = 72;
+const ROW_HEIGHT = 88;
 const LIST_HEIGHT = 400;
 const VIRTUAL_THRESHOLD = 50;
 const FETCH_LIMIT = 50;
@@ -96,19 +96,20 @@ export function OfferRow({
       ? `${offer.pickup_label} → ${offer.delivery_label}`
       : offer.offer_id.slice(0, 8).toUpperCase();
 
-  const badge =
-    offer.total_score > 0.75 ? (
-      <span className="offer-card__badge offer-card__badge--recommended">POLECANE</span>
-    ) : offer.total_score < 0.2 ? (
-      <span className="offer-card__badge offer-card__badge--discouraged">ODRADZONE</span>
-    ) : isLoaded ? (
-      <span className="offer-card__badge offer-card__badge--loaded">
-        <span className="offer-card__badge-dot" aria-hidden="true" />
-        Załadowano
-      </span>
-    ) : isLoading ? (
-      <span className="offer-card__badge offer-card__badge--loading">Ładuje…</span>
-    ) : null;
+  const badge = isLoading ? (
+    <span className="offer-card__badge offer-card__badge--loading">Ładuje…</span>
+  ) : isLoaded ? (
+    <span className="offer-card__badge offer-card__badge--loaded">
+      <span className="offer-card__badge-dot" aria-hidden="true" />
+      Załadowano
+    </span>
+  ) : offer.total_score > 0.75 ? (
+    <span className="offer-card__badge offer-card__badge--recommended">POLECANE</span>
+  ) : offer.total_score < 0.2 ? (
+    <span className="offer-card__badge offer-card__badge--discouraged">ODRADZONE</span>
+  ) : offer.added_km < 10 ? (
+    <span className="offer-card__badge offer-card__badge--on-route">NA TRASIE</span>
+  ) : null;
 
   return (
     <article
@@ -454,6 +455,7 @@ export function PalletLibrary({
         <p className="pallet-library__status">Brak ofert dla wybranych filtrów.</p>
       ) : filteredOffers.length > VIRTUAL_THRESHOLD ? (
         <List
+          data-testid="pallet-library-virtual-list"
           rowCount={filteredOffers.length}
           rowHeight={ROW_HEIGHT}
           rowComponent={VirtualOfferRow}
