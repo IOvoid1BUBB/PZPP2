@@ -7,6 +7,7 @@ during import of :mod:`app.main`.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from collections.abc import AsyncIterator
 
@@ -65,3 +66,15 @@ async def client() -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture(autouse=True)
+async def _reset_async_engine_after_integration(request: pytest.FixtureRequest) -> AsyncIterator[None]:
+    """Close pooled asyncpg connections between integration tests."""
+    yield
+    if "integration" not in request.keywords:
+        return
+    from app.core import database
+
+    with contextlib.suppress(Exception):
+        await database.get_engine().dispose()
