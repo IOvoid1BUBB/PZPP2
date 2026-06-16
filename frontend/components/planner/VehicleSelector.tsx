@@ -60,7 +60,7 @@ export const VEHICLE_CONFIGS: VehicleSelectorConfig[] = [
     trailerLengthCm: 420,
     trailerWidthCm: 220,
     maxLdm: 6.4,
-    maxWeightKg: 3500,
+    maxWeightKg: 1500,
     maxStops: 6,
     fuelPer100kmBase: 18.5,
   },
@@ -70,7 +70,7 @@ export const VEHICLE_CONFIGS: VehicleSelectorConfig[] = [
     trailerLengthCm: 440,
     trailerWidthCm: 220,
     maxLdm: 7.2,
-    maxWeightKg: 3600,
+    maxWeightKg: 1500,
     maxStops: 6,
     fuelPer100kmBase: 18.5,
   },
@@ -80,7 +80,7 @@ export const VEHICLE_CONFIGS: VehicleSelectorConfig[] = [
     trailerLengthCm: 484,
     trailerWidthCm: 220,
     maxLdm: 8.0,
-    maxWeightKg: 3800,
+    maxWeightKg: 1500,
     maxStops: 6,
     fuelPer100kmBase: 19.0,
   },
@@ -90,7 +90,7 @@ export const VEHICLE_CONFIGS: VehicleSelectorConfig[] = [
     trailerLengthCm: 890,
     trailerWidthCm: 245,
     maxLdm: 17.6,
-    maxWeightKg: 24000,
+    maxWeightKg: 12000,
     maxStops: 10,
     fuelPer100kmBase: 28.0,
   },
@@ -152,6 +152,10 @@ export function VehicleSelector() {
   const [fleetRegistrationByType, setFleetRegistrationByType] = useState<
     Map<string, string>
   >(new Map());
+  const [fleetHomeByType, setFleetHomeByType] = useState<
+    Map<string, { lat: number; lon: number }>
+  >(new Map());
+  const [fleetIdByType, setFleetIdByType] = useState<Map<string, string>>(new Map());
 
   /** Roving tabindex — indeks aktywnej karty w obrębie radiogroup */
   const [rovingIndex, setRovingIndex] = useState(0);
@@ -191,12 +195,20 @@ export function VehicleSelector() {
       .then((fleetVehicles) => {
         if (cancelled) return;
         const regMap = new Map<string, string>();
+        const homeMap = new Map<string, { lat: number; lon: number }>();
+        const idMap = new Map<string, string>();
         for (const fv of fleetVehicles) {
           if (fv.status !== "retired" && !regMap.has(fv.typeKey)) {
             regMap.set(fv.typeKey, fv.registration);
+            idMap.set(fv.typeKey, fv.id);
+            if (fv.homeLat != null && fv.homeLon != null) {
+              homeMap.set(fv.typeKey, { lat: fv.homeLat, lon: fv.homeLon });
+            }
           }
         }
         setFleetRegistrationByType(regMap);
+        setFleetHomeByType(homeMap);
+        setFleetIdByType(idMap);
       })
       .catch(() => {
         /* fleet endpoint optional */
@@ -222,8 +234,13 @@ export function VehicleSelector() {
       setError(null);
 
       try {
+        const home = fleetHomeByType.get(uiConfig.type);
+        const fleetVehicleId = fleetIdByType.get(uiConfig.type);
         // 1. Update selected vehicle (vehicleStore + loadStore.vehicle)
-        selectVehicle(vehicle);
+        selectVehicle(vehicle, {
+          origin: home,
+          fleetVehicleId,
+        });
 
         // 2. Clear slots synchronously — show empty canvas immediately
         clearAllSlots();
@@ -240,7 +257,7 @@ export function VehicleSelector() {
         setLoading(false);
       }
     },
-    [vehicleMap, selectVehicle, clearAllSlots, setSessionId],
+    [vehicleMap, selectVehicle, clearAllSlots, setSessionId, fleetHomeByType, fleetIdByType],
   );
 
   // ── Roving tabindex keyboard navigation ────────────────────────────────────
