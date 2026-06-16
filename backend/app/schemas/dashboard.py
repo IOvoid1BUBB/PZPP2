@@ -20,6 +20,7 @@ class DashboardKpi(BaseModel):
     total_estimated_profit_eur: float
     average_fill_pct: float
     market_offers_count: int = Field(..., ge=0)
+    vehicles_in_route: int = Field(..., ge=0)
 
 
 class DashboardSessionSummary(BaseModel):

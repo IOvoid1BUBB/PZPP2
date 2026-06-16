@@ -21,6 +21,11 @@ import {
   type DashboardMarker,
 } from "@/lib/dashboard/buildDashboardMarkers";
 import { buildAlerts, type Alert } from "@/lib/dashboard/buildAlerts";
+import {
+  centerFromMarkers,
+  pickFocusSessionId,
+  sessionStatusLabel,
+} from "@/lib/dashboard/pickFocusSession";
 import { interpolatePosition, type SimStop } from "@/lib/simulation/interpolatePosition";
 import type { RankedOfferRow } from "@/lib/types/offers";
 
@@ -78,6 +83,7 @@ interface KpiTile {
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
+  const [fleetVehicles, setFleetVehicles] = useState<FleetVehicle[]>([]);
   const [markers, setMarkers] = useState<DashboardMarker[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [selectedFleetVehicleId, setSelectedFleetVehicleId] = useState<string | null>(null);
@@ -128,6 +134,7 @@ export default function DashboardPage() {
         ]);
         if (cancelled) return;
         setData(response);
+        setFleetVehicles(fleetVehicles);
 
         // Build base markers from fleet vehicles
         const baseMarkers = buildFleetMarkers(fleetVehicles);
@@ -156,7 +163,10 @@ export default function DashboardPage() {
 
         const recent = response.recent_sessions.slice(0, 6);
         if (recent.length > 0) {
-          setSelectedSessionId((current) => current ?? recent[0].id);
+          const focusId = pickFocusSessionId(recent, fleetVehicles);
+          if (focusId) {
+            setSelectedSessionId((current) => current ?? focusId);
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -240,16 +250,31 @@ export default function DashboardPage() {
 
   const kpis: KpiTile[] = useMemo(() => {
     if (!data) return [];
+    const profit =
+      data.kpis.total_estimated_profit_eur > 0
+        ? Math.round(data.kpis.total_estimated_profit_eur).toLocaleString("pl-PL")
+        : "0";
     return [
       {
-        value: `${Math.round(data.kpis.total_estimated_profit_eur).toLocaleString("pl-PL")} EUR`,
+        value: `${profit} EUR`,
         label: "Dzisiejszy zysk netto",
       },
-      { value: `${data.kpis.average_fill_pct.toFixed(0)}%`, label: "Średni LFILL" },
-      { value: String(data.kpis.active_sessions), label: "Aktywne sesje" },
+      {
+        value: `${Math.min(100, data.kpis.average_fill_pct).toFixed(0)}%`,
+        label: "Średni LFILL (załadowane)",
+      },
+      {
+        value: String(data.kpis.vehicles_in_route),
+        label: "Pojazdy w trasie",
+      },
       { value: String(data.kpis.market_offers_count), label: "Oferty na rynku" },
     ];
   }, [data]);
+
+  const mapCenter = useMemo(
+    () => centerFromMarkers(markers),
+    [markers],
+  );
 
   const alerts: Alert[] = useMemo(() => {
     if (!data) return [];
@@ -304,13 +329,24 @@ export default function DashboardPage() {
             {selectedDetail ? (
               <div className="flex flex-col gap-3">
                 <div>
-                  <p className="text-xs text-ui-muted">Aktywna sesja</p>
+                  <p className="text-xs text-ui-muted">
+                    {sessionStatusLabel(selectedDetail.status)}
+                  </p>
                   <p className="text-lg font-semibold text-ui-primary">
                     {selectedDetail.vehicle.name}
                   </p>
                   <p className="text-sm text-ui-secondary">
                     Kierowca: {selectedDetail.driver_profile.name}
                   </p>
+                  {selectedDetail.metrics.estimated_net_profit_eur != null ? (
+                    <p className="text-sm text-ui-muted">
+                      Szac. zysk:{" "}
+                      {Math.round(selectedDetail.metrics.estimated_net_profit_eur).toLocaleString(
+                        "pl-PL",
+                      )}{" "}
+                      EUR
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <div className="flex items-center justify-between text-xs">
@@ -351,7 +387,7 @@ export default function DashboardPage() {
         </div>
 
         <Card className="h-[520px] overflow-hidden p-0">
-          <EuropeMap center={[18, 52.2]} scale={2600}>
+          <EuropeMap center={mapCenter} scale={2600}>
             {markers.map((marker) => (
               <SquareMarker
                 key={marker.id}
@@ -361,9 +397,12 @@ export default function DashboardPage() {
                 onClick={() => {
                   if (marker.fleetVehicleId) {
                     setSelectedFleetVehicleId(marker.fleetVehicleId);
-                    // If the vehicle has an active session, also load session detail
-                    if (marker.sessionId && marker.sessionId !== marker.fleetVehicleId) {
-                      setSelectedSessionId(marker.sessionId);
+                    const fleetVehicle = fleetVehicles.find(
+                      (v) => v.id === marker.fleetVehicleId,
+                    );
+                    const sessionId = fleetVehicle?.currentSessionId ?? null;
+                    if (sessionId) {
+                      setSelectedSessionId(sessionId);
                     } else {
                       setSelectedSessionId(null);
                     }
