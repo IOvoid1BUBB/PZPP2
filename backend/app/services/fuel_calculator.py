@@ -31,6 +31,7 @@ class LegFuelCost:
     consumption_l100km: float
     liters: float
     cost_eur: float
+    ldm_at_leg: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,16 @@ def _apply_stop_cargo_delta(current_cargo_kg: float, stop: RouteStop) -> float:
     raise ValueError(msg)
 
 
+def _apply_stop_ldm_delta(current_ldm: float, stop: RouteStop) -> float:
+    ldm = float(stop.offer.ldm)
+    if stop.stop_type == "pickup":
+        return current_ldm + ldm
+    if stop.stop_type == "delivery":
+        return max(0.0, current_ldm - ldm)
+    msg = f"Unsupported stop_type: {stop.stop_type!r}"
+    raise ValueError(msg)
+
+
 def calculate_multi_stop_fuel(
     legs: Sequence[RouteLeg],
     stops: Sequence[RouteStop],
@@ -89,6 +100,7 @@ def calculate_multi_stop_fuel(
     max_weight = float(vehicle.max_weight_kg)
 
     current_cargo_kg = 0.0
+    current_ldm = 0.0
     leg_costs: list[LegFuelCost] = []
     total_liters = 0.0
     total_cost_eur = 0.0
@@ -112,6 +124,7 @@ def calculate_multi_stop_fuel(
                 consumption_l100km=consumption,
                 liters=liters,
                 cost_eur=cost_eur,
+                ldm_at_leg=current_ldm,
             ),
         )
 
@@ -126,6 +139,7 @@ def calculate_multi_stop_fuel(
         if leg.to_index >= 1:
             stop = stops[leg.to_index - 1]
             current_cargo_kg = _apply_stop_cargo_delta(current_cargo_kg, stop)
+            current_ldm = _apply_stop_ldm_delta(current_ldm, stop)
 
     avg_consumption = (total_liters / total_distance_km) * 100.0 if total_distance_km > 0 else 0.0
 
