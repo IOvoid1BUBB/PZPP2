@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import ConsolidationSession, MarketOffer, RouteStop
+from app.models import ConsolidationSession, FleetVehicle, MarketOffer, RouteStop
 from app.schemas.dashboard import DashboardKpi, DashboardResponse, DashboardSessionSummary
+
+_OPERATIONAL_STATUSES = ("draft", "optimizing", "confirmed", "dispatched")
 
 
 class DashboardService:
@@ -22,16 +24,39 @@ class DashboardService:
         total_sessions = int(
             await self._db.scalar(select(func.count()).select_from(ConsolidationSession)) or 0,
         )
+
+        has_offers = (
+            select(RouteStop.id)
+            .where(
+                RouteStop.session_id == ConsolidationSession.id,
+                RouteStop.offer_id.isnot(None),
+            )
+            .limit(1)
+        )
         active_sessions = int(
             await self._db.scalar(
                 select(func.count())
                 .select_from(ConsolidationSession)
-                .where(ConsolidationSession.status.in_(("draft", "optimizing"))),
+                .where(
+                    ConsolidationSession.status.in_(("optimizing", "confirmed", "dispatched"))
+                    | (
+                        (ConsolidationSession.status == "draft")
+                        & exists(has_offers).correlate(ConsolidationSession)
+                    ),
+                ),
             )
             or 0,
         )
         market_offers_count = int(
             await self._db.scalar(select(func.count()).select_from(MarketOffer)) or 0,
+        )
+        vehicles_in_route = int(
+            await self._db.scalar(
+                select(func.count())
+                .select_from(FleetVehicle)
+                .where(FleetVehicle.status == "in_route"),
+            )
+            or 0,
         )
 
         stmt = (
@@ -47,7 +72,6 @@ class DashboardService:
         sessions = list(result.scalars().all())
 
         # KPI profit: only sum confirmed/dispatched sessions created today (UTC).
-        # Excludes draft/optimizing — those are planning artifacts, not realized revenue.
         today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
         profit_values: list[float] = []
@@ -65,13 +89,13 @@ class DashboardService:
             used_ldm = sum(float(o.ldm) for o in offers)
             max_ldm = float(vehicle.max_ldm) if vehicle else 0.0
             fill_pct = round((used_ldm / max_ldm) * 100, 2) if max_ldm > 0 else 0.0
+            fill_pct = min(fill_pct, 100.0)
             estimated_profit = (
                 float(session.net_profit_eur)
                 if session.net_profit_eur is not None
                 else None
             )
 
-            # Only include in KPI aggregation: confirmed/dispatched and created today
             is_realized = session.status in ("confirmed", "dispatched")
             created_at = session.created_at
             if created_at and created_at.tzinfo is None:
@@ -80,7 +104,7 @@ class DashboardService:
 
             if estimated_profit is not None and is_realized and is_today:
                 profit_values.append(estimated_profit)
-            if offers:
+            if offers and session.status in _OPERATIONAL_STATUSES:
                 fill_values.append(fill_pct)
 
             summaries.append(
@@ -102,6 +126,7 @@ class DashboardService:
                 total_estimated_profit_eur=round(sum(profit_values), 2),
                 average_fill_pct=round(sum(fill_values) / len(fill_values), 2) if fill_values else 0.0,
                 market_offers_count=market_offers_count,
+                vehicles_in_route=vehicles_in_route,
             ),
             recent_sessions=summaries,
         )

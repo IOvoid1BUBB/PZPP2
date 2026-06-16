@@ -16,6 +16,7 @@ function kpi(overrides: Partial<DashboardKpi> = {}): DashboardKpi {
     total_estimated_profit_eur: 0,
     average_fill_pct: 0,
     market_offers_count: 0,
+    vehicles_in_route: 0,
     ...overrides,
   };
 }
