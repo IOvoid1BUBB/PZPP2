@@ -6,7 +6,6 @@ export interface DashboardKpi {
   total_estimated_profit_eur: number;
   average_fill_pct: number;
   market_offers_count: number;
-  vehicles_in_route: number;
 }
 
 export interface DashboardSessionSummary {
