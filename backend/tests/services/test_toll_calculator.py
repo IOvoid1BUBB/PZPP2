@@ -10,7 +10,7 @@ import pytest
 from app.core.logging import JsonFormatter
 from app.services.toll_calculator import (
     _GEOJSON_PATH,
-    ESTIMATE_RATES_EUR_PER_KM,
+    DEFAULT_TOLL_RATE_EUR_PER_KM,
     TOLL_RATES,
     calculate_leg_tolls,
     calculate_route_tolls,
