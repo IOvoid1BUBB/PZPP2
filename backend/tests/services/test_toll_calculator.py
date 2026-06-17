@@ -205,7 +205,7 @@ def test_estimate_toll_per_country_rates(
         "bus",
         total_distance_km=length_km,
     )
-    expected = length_km * ESTIMATE_RATES_EUR_PER_KM[country]
+    expected = length_km * TOLL_RATES[country]["bus"]
     assert toll == pytest.approx(expected, rel=0.05)
     assert is_estimated is True
 
