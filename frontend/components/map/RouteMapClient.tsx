@@ -375,8 +375,8 @@ export default function RouteMapClient({
   }
 
   return (
-    <div className="grid min-h-[calc(100vh-10rem)] gap-4 lg:grid-cols-[2fr_1fr]">
-      <Card className="flex min-h-[480px] flex-col overflow-hidden p-0">
+    <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+      <Card className="flex min-h-[480px] max-h-[600px] flex-col overflow-hidden p-0">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--ui-border)] px-4 py-3">
           <div>
             <CardTitle>Mapa trasy</CardTitle>
