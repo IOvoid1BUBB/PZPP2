@@ -28,16 +28,8 @@ TOLL_RATES: dict[str, dict[str, float]] = {
     "HU": {"bus": 0.12, "solo": 0.18},
 }
 
-# Phase-1 flat EUR/km rates used by ``estimate_toll_eur``.
-ESTIMATE_RATES_EUR_PER_KM: dict[str, float] = {
-    "DE": 0.187,
-    "AT": 0.220,
-    "CZ": 0.145,
-    "PL": 0.095,
-    "FR": 0.280,
-    "CH": 0.350,
-    "DEFAULT": 0.05,
-}
+# Fallback rate for countries absent from TOLL_RATES (single source of truth).
+DEFAULT_TOLL_RATE_EUR_PER_KM = 0.05
 
 
 class LegToll(BaseModel):
