@@ -40,6 +40,22 @@ _LDM_CHOICES: tuple[float, ...] = tuple(round(k * PALLET_LDM, 1) for k in range(
 _HANDLING_CHOICES: tuple[int, ...] = (15, 30, 45, 60)
 _HANDLING_WEIGHTS: tuple[float, ...] = (0.2, 0.5, 0.2, 0.1)
 
+# ---------------------------------------------------------------------------
+# Masa ladunku: ~600-1800 kg/LDM (realna paleta EUR wazy 300-900 kg -> 750-2250
+# kg/LDM). Gorny cap tuz pod ladownoscia solowki 12 t.
+# ---------------------------------------------------------------------------
+WEIGHT_MIN_KG_PER_LDM = 600.0
+WEIGHT_MAX_KG_PER_LDM = 1800.0
+MAX_WEIGHT_CAP_KG = 11900
+
+# ---------------------------------------------------------------------------
+# Stawka frachtu EUR/LDM*km. Rynkowe LTL to 0.10-0.18 EUR/LDM*km; srodek ~0.13.
+# ---------------------------------------------------------------------------
+RATE_MIN = 0.08
+RATE_MAX = 0.25
+RATE_MEAN = 0.13
+RATE_STDDEV = 0.03
+
 
 @dataclass(frozen=True, slots=True)
 class GeneratedOffer:
