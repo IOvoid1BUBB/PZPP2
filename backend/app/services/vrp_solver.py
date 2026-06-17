@@ -327,7 +327,27 @@ class VRPSolver:
             )
             detour_cost = detour_km * COST_PER_KM_EUR
             net = float(offer.price_eur) - 2 * stop_cost.total_eur - detour_cost
-            net_cents.append(int(net * 100))
+            # FIX-03-B: hard-exclude unprofitable offers via a sentinel objective
+            # so CP-SAT can never select a loss-making offer (even when it would
+            # raise the summed objective). The mock solver drops them outright.
+            if net < self._settings.MIN_OFFER_NET_EUR:
+                net_cents.append(-10_000_000)
+            else:
+                net_cents.append(int(net * 100))
+
+        min_net_cents = int(self._settings.MIN_OFFER_NET_EUR * 100)
+        excluded = [
+            (i, candidates[i].id, net_cents[i])
+            for i in range(len(candidates))
+            if net_cents[i] < min_net_cents
+        ]
+        if excluded:
+            _logger.info(
+                "Excluding %d offers with net < %.2f EUR from solver: %s",
+                len(excluded),
+                self._settings.MIN_OFFER_NET_EUR,
+                [(str(oid), c / 100) for _, oid, c in excluded],
+            )
 
         if self._settings.USE_SOLVER_MOCK:
             selected_idx, obj_cents, status_str, is_optimal, elapsed_ms = _solve_mock(
