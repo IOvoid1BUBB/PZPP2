@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from collections.abc import Sequence
 from decimal import Decimal
@@ -13,6 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import AppException, NotFoundError, ValidationAppError
+from app.lib import eu_regulations
 from app.lib.session_loader import load_session
 from app.lib.geo import geo_point_from_geometry, lat_lon_from_geometry
 from app.lib.routing import RoutingProvider, get_routing_provider
@@ -30,6 +32,11 @@ from app.schemas.session import (
     VehicleResponse,
 )
 from app.schemas.solver import StopSequenceEntry
+from app.services.driver_compliance import (
+    DriverComplianceService,
+    compute_break_overhead_minutes,
+    iso_week_start,
+)
 from app.services.sequence_optimizer import SequenceOptimizerService, Stop
 from app.services.stop_cost_calculator import (
     StopCostRates,
@@ -37,6 +44,8 @@ from app.services.stop_cost_calculator import (
 )
 from app.services.profit_utils import calculate_net_profit, estimate_fuel_cost
 from app.services.stop_labels import ensure_stop_label
+
+_logger = logging.getLogger(__name__)
 
 _ALLOWED_TRANSITIONS: dict[str, str] = {
     "draft": "optimizing",
@@ -250,6 +259,7 @@ class SessionService:
         session_id: UUID,
         new_status: SessionStatus,
         fleet_vehicle_id: UUID | None = None,
+        force_weekly_override: bool = False,
     ) -> SessionFullResponse:
         session = await self.get(session_id)
 
@@ -260,6 +270,9 @@ class SessionService:
         allowed_next = _ALLOWED_TRANSITIONS.get(session.status)
         if allowed_next != new_status:
             raise ValidationAppError("forbidden status transition")
+
+        if new_status == "confirmed":
+            await self._enforce_weekly_driving_limit(session, force_weekly_override)
 
         session.status = new_status
 
@@ -273,9 +286,84 @@ class SessionService:
             if fv is not None:
                 fv.status = "in_route"
 
+        # On dispatch: fold this session's hours into the driver's weekly record.
+        if new_status == "dispatched":
+            compliance = DriverComplianceService(
+                self._db, routing=self._routing, settings=self._settings
+            )
+            await compliance.update_weekly_record_from_session(session_id)
+
         await self._db.flush()
         await self._db.refresh(session)
         return await self._build_full_response(session)
+
+    async def _enforce_weekly_driving_limit(
+        self,
+        session: ConsolidationSession,
+        force_weekly_override: bool,
+    ) -> None:
+        """Block confirmation when the driver's weekly driving limit would be exceeded.
+
+        Adds this session's estimated driving time to the hours already logged in
+        the driver's :class:`WeeklyDrivingRecord`; raises unless a dispatcher
+        override is supplied (EU 561/2006 art. 6(2)).
+        """
+        compliance = DriverComplianceService(
+            self._db, routing=self._routing, settings=self._settings
+        )
+        record = await compliance.get_weekly_record(
+            session.driver_profile_id, iso_week_start()
+        )
+        if record is None or record.total_driving_minutes <= 0:
+            return
+
+        estimated_session_minutes = await self._estimated_driving_minutes(session)
+        projected_hours = (record.total_driving_minutes + estimated_session_minutes) / 60
+        limit_hours = eu_regulations.MAX_WEEKLY_DRIVING_H_SAFE
+
+        if projected_hours <= limit_hours:
+            return
+
+        if force_weekly_override:
+            _logger.warning(
+                "Weekly driving limit override by dispatcher",
+                extra={
+                    "event": "session:weekly_limit_override",
+                    "session_id": str(session.id),
+                    "hours_used": round(record.total_driving_minutes / 60, 2),
+                    "hours_estimated": round(estimated_session_minutes / 60, 2),
+                    "hours_limit": limit_hours,
+                },
+            )
+            return
+
+        raise ValidationAppError(
+            "Confirming this session would exceed the driver's weekly driving limit.",
+            error_code="weekly_driving_limit_exceeded",
+            context={
+                "hours_used": round(record.total_driving_minutes / 60, 2),
+                "hours_estimated": round(estimated_session_minutes / 60, 2),
+                "hours_limit": limit_hours,
+            },
+        )
+
+    async def _estimated_driving_minutes(self, session: ConsolidationSession) -> int:
+        """Estimate driving minutes for the session's current stop sequence."""
+        stmt = (
+            select(RouteStop)
+            .where(RouteStop.session_id == session.id)
+            .order_by(RouteStop.sequence_order)
+        )
+        result = await self._db.execute(stmt)
+        stops = list(result.scalars().all())
+        if not stops or session.origin_lat is None or session.origin_lon is None:
+            return 0
+        origin = (float(session.origin_lat), float(session.origin_lon))
+        waypoints: list[tuple[float, float]] = [origin]
+        for stop in stops:
+            waypoints.append(lat_lon_from_geometry(stop.location))
+        route = await self._routing.get_route_multi(waypoints)
+        return int(round(sum(leg.duration_minutes for leg in route.legs)))
 
     async def _link_fleet_vehicle_on_confirm(
         self,
@@ -587,10 +675,23 @@ class SessionService:
         rates = StopCostRates.from_driver_profile(driver_profile)
         fuel_price = self._settings.FUEL_PRICE_EUR_PER_LITER
 
+        leg_minutes = [float(leg.duration_minutes) for leg in route.legs]
+        stop_handling_minutes = [
+            float(
+                stop.offer.handling_time_minutes
+                if stop.offer is not None and stop.offer.handling_time_minutes is not None
+                else self._settings.STOP_COST_MINUTES
+            )
+            for stop in stops
+        ]
+        break_overhead = compute_break_overhead_minutes(leg_minutes, stop_handling_minutes)
+
         cumulative_minutes = 0
         for index, stop in enumerate(stops):
             if index < len(route.legs):
                 cumulative_minutes += route.legs[index].duration_minutes
+            if index < len(break_overhead):
+                cumulative_minutes += break_overhead[index]
             stop.eta_minutes_from_start = cumulative_minutes
             handling = None
             if stop.offer is not None:

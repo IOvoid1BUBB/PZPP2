@@ -63,6 +63,10 @@ class SessionStatusUpdate(BaseModel):
 
     status: SessionStatus
     fleet_vehicle_id: UUID | None = None
+    force_weekly_override: bool = Field(
+        default=False,
+        description="Dispatcher override: confirm session even if weekly driving limit would be exceeded.",
+    )
 
 
 class SessionOffersReplace(BaseModel):

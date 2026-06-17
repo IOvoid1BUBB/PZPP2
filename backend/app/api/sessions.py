@@ -183,6 +183,7 @@ async def update_session_status(
         session_id,
         payload.status,
         fleet_vehicle_id=payload.fleet_vehicle_id,
+        force_weekly_override=payload.force_weekly_override,
     )
     await db.commit()
     return response
