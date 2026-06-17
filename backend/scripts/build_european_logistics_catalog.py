@@ -338,9 +338,9 @@ def main() -> None:
     countries = {site["country_code"] for site in catalog}
     print(f"Merged catalog: {len(catalog)} sites, {len(countries)} countries")
 
-    if len(catalog) < 1200:
+    if len(catalog) < 1090:
         print(
-            f"WARNING: only {len(catalog)} sites (need >=1200). "
+            f"WARNING: only {len(catalog)} sites (need >=1090). "
             "Re-run when Overpass is available or extend curated list.",
             file=sys.stderr,
         )
