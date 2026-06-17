@@ -89,13 +89,17 @@ def calculate_leg_tolls(
             continue
 
         dist_km = intersection.length * 111.0
-        rate = TOLL_RATES.get(country_code, {}).get(vehicle_class, 0.0)
-        if rate == 0.0 and country_code not in TOLL_RATES:
+        country_rates = TOLL_RATES.get(country_code)
+        if country_rates is None:
             _logger.warning(
-                "Brak stawki myto dla kraju: %s",
+                "Brak stawki myto dla kraju: %s (fallback %.3f EUR/km)",
                 country_code,
+                DEFAULT_TOLL_RATE_EUR_PER_KM,
                 extra={"country_code": country_code, "event": "toll:unknown_country"},
             )
+            rate = DEFAULT_TOLL_RATE_EUR_PER_KM
+        else:
+            rate = country_rates.get(vehicle_class, DEFAULT_TOLL_RATE_EUR_PER_KM)
 
         cost = dist_km * rate
         if cost > 0:
