@@ -18,9 +18,12 @@ import {
   type CSSProperties,
 } from "react";
 
+import { Truck } from "lucide-react";
+
 import { useClientHydrated } from "@/hooks/useClientHydrated";
 
 import { PalletLibrarySuspense } from "@/components/planner/PalletLibrary";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 import { ProfitWaterfall } from "@/components/planner/ProfitWaterfall";
 
@@ -691,7 +694,7 @@ export function SlotEditor({
   if (!vehicle) {
     // No vehicle at all — show library + empty placeholder
     return (
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
         <PalletLibrarySuspense
           sessionId={sessionId}
           loadedOfferIds={loadedOfferIds}
@@ -706,12 +709,27 @@ export function SlotEditor({
           onOfferAdded={() => { void reload(); onOfferAdded?.(); }}
         />
         <div className="flex flex-col gap-4">
-          <VehicleHeader />
-          <div className="rounded-2xl border border-dashed border-ui-border/50 bg-ui-surface p-8 text-center">
-            <p className="text-sm text-ui-secondary">
-              Wybierz pojazd powyżej, aby zobaczyć naczepę.
-            </p>
+          <div id="planner-vehicle-anchor">
+            <VehicleHeader />
           </div>
+          <EmptyState
+            icon={Truck}
+            title="Wybierz pojazd, aby rozpocząć planowanie"
+            description="Po wybraniu pojazdu zobaczysz naczepę i będziesz mógł układać ładunki."
+            action={
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={() =>
+                  document
+                    .getElementById("planner-vehicle-anchor")
+                    ?.scrollIntoView?.({ behavior: "smooth", block: "start" })
+                }
+              >
+                Przejdź do wyboru pojazdu
+              </button>
+            }
+          />
         </div>
       </div>
     );
@@ -741,7 +759,7 @@ export function SlotEditor({
           setActiveSlotId(over ? String(over.id) : null)
         }
       >
-        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]">
           {/* PalletLibrary: shows ranked offers with session, raw market offers without */}
           <PalletLibrarySuspense
             sessionId={effectiveSessionId}

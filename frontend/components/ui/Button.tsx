@@ -21,7 +21,7 @@ export function Button({
 
   const variantClass =
     variant === "primary"
-      ? "bg-[var(--ui-accent)] text-white hover:bg-[color-mix(in_srgb,var(--ui-accent)_85%,black)] focus-visible:outline-[var(--ui-accent)]"
+      ? "min-h-11 bg-[var(--ui-accent)] text-white hover:bg-[color-mix(in_srgb,var(--ui-accent)_85%,black)] focus-visible:outline-[var(--ui-accent)]"
       : variant === "secondary"
         ? "border border-[var(--ui-border)] bg-[var(--ui-surface)] text-[var(--ui-text-primary)] hover:bg-[var(--ui-surface-raised)] focus-visible:outline-[var(--ui-border-strong)]"
         : variant === "danger"

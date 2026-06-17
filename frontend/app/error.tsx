@@ -31,7 +31,7 @@ export default function RootError({
       <button
         type="button"
         onClick={reset}
-        className="inline-flex items-center gap-2 rounded-full bg-ui-black px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+        className="inline-flex min-h-11 items-center gap-2 rounded-full bg-ui-black px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
       >
         <RotateCcw className="size-4" aria-hidden="true" />
         Spróbuj ponownie

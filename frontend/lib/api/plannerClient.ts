@@ -1,3 +1,4 @@
+import { fetchWithRetry, type FetchWithRetryOptions } from "@/lib/api/fetchWithRetry";
 import { normalizePalletDims, normalizePayloadSlots } from "@/lib/load/capacity";
 import type { LoadLayoutResponse, PalletData, SlotConflict, VehicleConfig } from "@/lib/types/load";
 
@@ -35,8 +36,22 @@ function normalizeLayout(payload: LoadLayoutResponse): PlannerLayoutState {
 
 // ─── Session-scoped layout API ───────────────────────────────────────────────
 
-export async function fetchSessionLayout(sessionId: string): Promise<PlannerLayoutState> {
-  const response = await fetch(`${API_BASE}/api/v1/planner/sessions/${sessionId}/layout`);
+/**
+ * Load the session layout. This is a GET (idempotent), so it uses
+ * {@link fetchWithRetry} with exponential backoff (1s, 2s, 4s) so a short
+ * backend hiccup recovers without forcing the user to refresh (UX-05).
+ *
+ * The mutating layout endpoints below intentionally use plain `fetch` — a
+ * POST/PUT/DELETE must never be silently replayed.
+ */
+export async function fetchSessionLayout(
+  sessionId: string,
+  options?: { onRetry?: FetchWithRetryOptions["onRetry"]; signal?: AbortSignal },
+): Promise<PlannerLayoutState> {
+  const response = await fetchWithRetry(
+    `${API_BASE}/api/v1/planner/sessions/${sessionId}/layout`,
+    { onRetry: options?.onRetry, signal: options?.signal },
+  );
   if (!response.ok) {
     throw new Error(`Failed to load session layout (${response.status})`);
   }

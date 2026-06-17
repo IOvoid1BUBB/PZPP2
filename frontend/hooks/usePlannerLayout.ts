@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/shallow";
 
 import { useClientHydrated } from "@/hooks/useClientHydrated";
+import { useToast } from "@/components/ui/Toast";
 
 import {
   fetchSessionLayout,
@@ -41,6 +42,7 @@ interface UsePlannerLayoutResult {
 
 export function usePlannerLayout(): UsePlannerLayoutResult {
   const hydrated = useClientHydrated();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { vehicle, slots, sessionId } = useLoadStore(
@@ -74,7 +76,24 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
         setLoading(false);
         return;
       }
-      const next = await fetchSessionLayout(activeSessionId);
+      // UX-05: a flaky backend recovers via fetchWithRetry's exponential backoff.
+      // Surface a single info toast per reload cycle (don't spam on every attempt).
+      let retryNotified = false;
+      const next = await fetchSessionLayout(activeSessionId, {
+        onRetry: ({ delayMs }) => {
+          if (retryNotified) {
+            return;
+          }
+          retryNotified = true;
+          showToast({
+            type: "info",
+            message: `Brak połączenia, ponowienie za ${Math.max(
+              1,
+              Math.round(delayMs / 1000),
+            )}s…`,
+          });
+        },
+      });
       applyLayout(next);
     } catch (err) {
       setError(
@@ -83,7 +102,7 @@ export function usePlannerLayout(): UsePlannerLayoutResult {
     } finally {
       setLoading(false);
     }
-  }, [applyLayout]);
+  }, [applyLayout, showToast]);
 
   useEffect(() => {
     if (!hydrated) {
