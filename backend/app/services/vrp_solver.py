@@ -322,6 +322,11 @@ class VRPSolver:
             )
             pickup_ll = lat_lon_from_geometry(offer.pickup_point)
             delivery_ll = lat_lon_from_geometry(offer.delivery_point)
+            # Detour is computed relative to origin for all candidates because the
+            # solver does not know the final sequence yet. This is a deliberate
+            # approximation — FIX-02 in Agent A branch corrects the detour formula
+            # to true added_km (via_pickup - direct), which reduces systematic
+            # overestimation. Post-solve validation below logs actual vs estimated net.
             detour_km = haversine_added_detour_km(
                 existing_waypoints, pickup_ll, delivery_ll
             )
@@ -389,6 +394,24 @@ class VRPSolver:
 
         current_offer_ids = await self._session_service._session_offer_ids(session_id)
         stop_sequence = await self._build_stop_sequence(session, selected_offers, origin)
+
+        # FIX-04: post-solve validation — log actual selected net vs objective and
+        # assert no sentinel-priced (loss-making) offer slipped into the selection.
+        selected_net_eur = sum(net_cents[i] / 100 for i in selected_idx)
+        _logger.info(
+            "Solver result: %d offers selected, objective=%.2f EUR, estimated_total_net=%.2f EUR",
+            len(selected_offers),
+            objective_eur,
+            selected_net_eur,
+        )
+        for j, idx in enumerate(selected_idx):
+            if net_cents[idx] == -10_000_000:
+                _logger.error(
+                    "INVARIANT VIOLATION: selected offer %s has sentinel net — "
+                    "should not happen after FIX-03-B",
+                    selected_offers[j].id,
+                )
+
         stop_sequence_json: list[dict[str, object]] | None = (
             [entry.model_dump(mode="json") for entry in stop_sequence] if stop_sequence else None
         )
