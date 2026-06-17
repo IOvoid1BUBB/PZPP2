@@ -141,14 +141,18 @@ def estimate_toll_eur(
 ) -> tuple[float, bool]:
     """Estimate total toll cost from route geometry and country boundaries.
 
+    Uses the single source of truth :data:`TOLL_RATES` (per-country, per
+    vehicle-class), falling back to :data:`DEFAULT_TOLL_RATE_EUR_PER_KM` for
+    countries without an explicit rate.
+
     Returns ``(toll_eur, is_estimated)``. On empty or invalid geometry the
     function falls back to ``(0.0, True)`` without raising.
     """
-    _ = vehicle_type  # reserved for future vehicle-class rate tables
     route_line = _parse_route_linestring(route_geometry)
     if route_line is None:
         return 0.0, True
 
+    vehicle_class = _toll_vehicle_class(vehicle_type)
     per_country_km = _per_country_km_from_line(route_line)
     geometry_total_km = sum(per_country_km.values())
     if geometry_total_km <= 0.0:
