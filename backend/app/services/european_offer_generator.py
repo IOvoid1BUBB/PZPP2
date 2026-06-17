@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
+import functools
+import json
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from app.lib.geo import haversine_km
 from app.schemas.offer import MarketOfferCreate
 from app.services.market_simulator import (
-    PALLET_LDM,
     _HANDLING_CHOICES,
     _HANDLING_WEIGHTS,
+    PALLET_LDM,
+    RATE_MAX,
+    RATE_MEAN,
+    RATE_MIN,
+    RATE_STDDEV,
 )
 
 ALLOWED_LDM: tuple[float, ...] = tuple(round(k * PALLET_LDM, 1) for k in range(1, 11))
