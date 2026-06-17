@@ -123,6 +123,16 @@ export function RouteTimeline({
 }: RouteTimelineProps) {
   const events = buildTimelineEvents(stops ?? [], restPoints ?? []);
 
+  const safeRestPoints = restPoints ?? [];
+  const REST_DURATION_MIN: Record<DriverRestPoint["restType"], number> = {
+    break_45: 45,
+    rest_11h: 660,
+  };
+  const mandatoryBreakMinutes = safeRestPoints.reduce(
+    (sum, rest) => sum + REST_DURATION_MIN[rest.restType],
+    0,
+  );
+
   // Only the origin event present → no actual stops yet.
   if (events.length <= 1) {
     return (
@@ -167,6 +177,11 @@ export function RouteTimeline({
                     {event.subtitle}
                   </p>
                 )}
+                {(event.kind === "break_45" || event.kind === "rest_11h") && (
+                  <p className="mt-0.5 text-xs italic text-[var(--ui-text-muted)]">
+                    (wliczone w ETA kolejnych przystanków)
+                  </p>
+                )}
               </div>
             </li>
           );
@@ -175,6 +190,12 @@ export function RouteTimeline({
       {totalDurationMinutes > 0 && (
         <p className="mt-2 border-t border-[var(--ui-border)] pt-2 text-xs text-[var(--ui-text-muted)]">
           Całkowity czas trasy: {formatRouteOffset(totalDurationMinutes).replace("+ ", "")}
+        </p>
+      )}
+      {safeRestPoints.length > 0 && (
+        <p className="mt-1 text-xs text-[var(--ui-text-muted)]">
+          W tym {safeRestPoints.length} przerw obowiązkowych (łącznie{" "}
+          {mandatoryBreakMinutes} min)
         </p>
       )}
     </div>

@@ -45,6 +45,20 @@ export interface RouteStop {
   pinLabel: string;
 }
 
+/** Driver-hours compliance summary (EU 561/2006) for the planner UI. */
+export interface DriverComplianceResponse {
+  compliant: boolean;
+  violations: string[];
+  totalDays: number;
+  recommendedOvernightStops: number[];
+  /** Total driving hours planned across the whole route. */
+  totalDrivingHours: number;
+  /** Driving hours within the most recent (rolling) 7-day window. */
+  weeklyDrivingHours: number;
+  /** Conservative weekly driving budget (EU 561/2006 art. 6(2)). */
+  weeklyLimitHours: number;
+}
+
 export interface RouteMapData {
   sessionId: string;
   origin: GeoPoint;
