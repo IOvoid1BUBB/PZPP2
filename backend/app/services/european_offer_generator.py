@@ -179,7 +179,7 @@ def _pick_site_pair(
 
 
 def generate_european_offer(
-    sites: list[LogisticsSite],
+    sites: Sequence[LogisticsSite],
     base_time: datetime,
     *,
     index: int = 0,
