@@ -86,7 +86,7 @@ def test_pl_de_route_solo_within_five_percent(mock_countries: dict[str, object])
     assert result.per_leg[1].leg_total_eur == pytest.approx(41.1, rel=0.05)
 
 
-def test_unknown_country_zero_cost_and_json_warning(
+def test_unknown_country_uses_default_rate_and_json_warning(
     mock_countries: dict[str, object],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
