@@ -46,7 +46,7 @@ function FitBounds({ points }: { points: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
     if (points.length > 0) {
-      map.fitBounds(points, { padding: [40, 40], maxZoom: 8 });
+      map.fitBounds(points, { padding: [40, 40], maxZoom: 7 });
     }
   }, [map, points]);
   return null;
@@ -120,7 +120,7 @@ export default function MarketHeatMap({
   );
 
   const center = useMemo<[number, number]>(() => {
-    if (allClusters.length === 0) return [51.5, 19.0];
+    if (allClusters.length === 0) return [54.0, 15.0]; // centrum Europy
     const avgLat =
       allClusters.reduce((sum, p) => sum + p.lat, 0) / allClusters.length;
     const avgLon =
@@ -146,7 +146,7 @@ export default function MarketHeatMap({
   return (
     <MapContainer
       center={center}
-      zoom={5}
+      zoom={4}
       className="route-map-leaflet"
       style={{ width: "100%", height: "100%", minHeight: 460, position: "relative" }}
       scrollWheelZoom
