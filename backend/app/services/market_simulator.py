@@ -49,12 +49,61 @@ WEIGHT_MAX_KG_PER_LDM = 1800.0
 MAX_WEIGHT_CAP_KG = 11900
 
 # ---------------------------------------------------------------------------
-# Stawka frachtu EUR/LDM*km. Rynkowe LTL to 0.10-0.18 EUR/LDM*km; srodek ~0.13.
+# Stawka frachtu EUR/LDM*km.
+#
+# Dane rynkowe Europa 2024/2025 (Trans.eu, Timocom, Freightos):
+#   LTL małe (1-3 palety, 100-500km):  0.45-0.90 EUR/LDM/km
+#   LTL średnie (4-6 palet, 300-800km): 0.35-0.70 EUR/LDM/km
+#   LTL duże (7-10 palet, 500-1500km):  0.30-0.65 EUR/LDM/km
+#
+# Koszt własny (Master L4, 900km trasa, 3.6 LDM):
+#   paliwo 21.8 L/100km × 1.75 EUR = ~0.106 EUR/LDM/km
+#   myto 0.187 EUR/km / 3.6 LDM   = ~0.052 EUR/LDM/km
+#   serwis 0.08 / 3.6              = ~0.022 EUR/LDM/km
+#   kierowca 49 EUR/dzień/600km/3.6 = ~0.023 EUR/LDM/km
+#   Razem breakeven:               = ~0.203 EUR/LDM/km
+#   Przy marży 100-200%: 0.40-0.60 EUR/LDM/km
 # ---------------------------------------------------------------------------
-RATE_MIN = 0.08
-RATE_MAX = 0.25
-RATE_MEAN = 0.13
-RATE_STDDEV = 0.03
+RATE_MIN = 0.45   # Minimum rynkowe — pokrywa koszty operacyjne z minimalną marżą
+RATE_MAX = 1.20   # Maximum dla małych ładunków (1-2 palety, krótkie trasy)
+RATE_MEAN = 0.65  # Środek rynku europejskiego LTL
+RATE_STDDEV = 0.12
+
+ESTIMATED_STOP_COST_EUR = 15.0
+MIN_PRICE_COVERAGE_FACTOR = 1.5
+
+# Minimalny koszt paliwa na km (bez ładunku) — używany w dynamicznym min_viable_price.
+# Pusty Master: 18.5 L/100km × 1.75 EUR/l ≈ 0.32 EUR/km
+FUEL_COST_EMPTY_EUR_PER_KM = 0.32
+
+
+def pallet_count_from_ldm(ldm: float) -> int:
+    """Convert LDM into an integer pallet count (1 pallet = PALLET_LDM)."""
+    if ldm <= 0:
+        return 0
+    return int(round(ldm / PALLET_LDM))
+
+
+def adjust_rate_for_pallet_count(base_rate: float, pallet_count: int) -> float:
+    """Apply a size-based rate adjustment: small (1-3 pallets) costs more per LDM-km.
+
+    Based on European LTL market data (Trans.eu, Timocom 2024):
+    - 1-3 pallets: premium ~20% (small shipments have higher per-unit costs)
+    - 4-6 pallets: neutral
+    - 7+ pallets: slight discount (~10%) for larger fills
+    """
+    if pallet_count <= 0:
+        return base_rate
+
+    if pallet_count <= 3:
+        multiplier = 1.20
+    elif pallet_count <= 6:
+        multiplier = 1.0
+    else:
+        multiplier = 0.90
+
+    adjusted = base_rate * multiplier
+    return max(RATE_MIN, min(RATE_MAX, adjusted))
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +153,14 @@ def generate_single_offer(
     distance_km = haversine_km(pickup_lon, pickup_lat, delivery_lon, delivery_lat)
     rate = max(RATE_MIN, min(RATE_MAX, random.gauss(RATE_MEAN, RATE_STDDEV)))
     price_eur = max(0.01, round(ldm * distance_km * rate, 2))
+
+    # Dynamiczny min_viable_price: pokrywa koszt paliwa trasy + koszty obsługi stopów
+    # Paliwo pusty pojazd: ~0.32 EUR/km × dystans (amortyzowane przez ładunek)
+    # Stop costs: 2 × ESTIMATED_STOP_COST_EUR × MIN_PRICE_COVERAGE_FACTOR
+    fuel_floor = round(FUEL_COST_EMPTY_EUR_PER_KM * distance_km * 0.4, 2)  # 40% kosztu paliwa per ofertę
+    stop_floor = round(MIN_PRICE_COVERAGE_FACTOR * 2 * ESTIMATED_STOP_COST_EUR, 2)
+    min_viable_price = round(fuel_floor + stop_floor, 2)
+    price_eur = max(min_viable_price, price_eur)
 
     offer = MarketOfferCreate(
         pickup_point=_ewkt_point(pickup_lon, pickup_lat),
