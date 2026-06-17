@@ -17,6 +17,18 @@
 
 import { NetworkError } from "@/lib/api/errors";
 
+/** Details surfaced to {@link FetchWithRetryOptions.onRetry} before each retry. */
+export interface RetryInfo {
+  /** 1-based number of the upcoming retry attempt. */
+  attempt: number;
+  /** Backoff delay (ms) before the upcoming attempt. */
+  delayMs: number;
+  /** HTTP status that triggered the retry (when the response was reachable). */
+  status?: number;
+  /** Error that triggered the retry (network failures / timeouts). */
+  error?: unknown;
+}
+
 export interface FetchWithRetryOptions extends RequestInit {
   /** Max number of *retries* after the initial attempt (default 3). */
   maxRetries?: number;
@@ -24,6 +36,12 @@ export interface FetchWithRetryOptions extends RequestInit {
   baseDelayMs?: number;
   /** Per-attempt timeout in ms (default 15000). */
   timeoutMs?: number;
+  /**
+   * Invoked right before each backoff sleep (i.e. once per retry that will
+   * actually happen). Use to surface a "retrying…" hint. Never called on the
+   * final, non-retried attempt.
+   */
+  onRetry?: (info: RetryInfo) => void;
 }
 
 const RETRYABLE_STATUS = new Set([408, 429]);
@@ -78,6 +96,7 @@ export async function fetchWithRetry(
     maxRetries = 3,
     baseDelayMs = 1000,
     timeoutMs = 15000,
+    onRetry,
     signal: externalSignal,
     ...init
   } = options;
@@ -91,7 +110,9 @@ export async function fetchWithRetry(
       cancel();
 
       if (isRetryableStatus(response.status) && attempt < maxRetries) {
-        await sleep(baseDelayMs * 2 ** attempt);
+        const delayMs = baseDelayMs * 2 ** attempt;
+        onRetry?.({ attempt: attempt + 1, delayMs, status: response.status });
+        await sleep(delayMs);
         continue;
       }
       return response;
@@ -108,7 +129,9 @@ export async function fetchWithRetry(
 
       lastError = err;
       if (attempt < maxRetries) {
-        await sleep(baseDelayMs * 2 ** attempt);
+        const delayMs = baseDelayMs * 2 ** attempt;
+        onRetry?.({ attempt: attempt + 1, delayMs, error: err });
+        await sleep(delayMs);
         continue;
       }
     }
