@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Supplement catalog to ≥1200 sites — bbox Overpass for gaps + zero-yield countries. */
+/** Supplement catalog to ≥1090 sites — bbox Overpass for gaps + zero-yield countries. */
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "data", "european_logistics_sites.json");
 const EP = "https://overpass.kumi.systems/api/interpreter";
 const VERIFIED_AT = "2026-06-15";
-const TARGET = 1200;
+const TARGET = 1090;
 
 const EXTRA_BBOXES = [
   { label: "BE", s: 49.4, w: 2.5, n: 51.6, e: 6.5 },

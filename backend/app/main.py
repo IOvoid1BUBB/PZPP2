@@ -22,11 +22,11 @@ from app.core.database import get_engine, get_sessionmaker
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging
 from app.core.middleware import AccessLogMiddleware, RequestIDMiddleware
-from app.lib.routing import shutdown_routing_provider
 from app.lib.redis_client import get_redis, shutdown_redis
+from app.lib.routing import shutdown_routing_provider
 from app.schemas.common import DependencyStatus, HealthResponse, ReadinessResponse
+from app.services.european_offer_generator import generate_european_batch, get_catalog
 from app.services.market_offers import bulk_insert_offers
-from app.services.market_simulator import generate_batch
 
 _logger = logging.getLogger("app")
 
@@ -48,7 +48,11 @@ async def _offer_refresh_loop() -> None:
     session_factory = get_sessionmaker()
     while True:
         try:
-            generated = generate_batch(_OFFER_REFRESH_BATCH, base_time=datetime.now(UTC))
+            generated = generate_european_batch(
+                get_catalog(),
+                _OFFER_REFRESH_BATCH,
+                base_time=datetime.now(UTC),
+            )
             async with session_factory() as session:
                 inserted, skipped = await bulk_insert_offers(session, [g.offer for g in generated])
                 await session.commit()
@@ -71,6 +75,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     from app.services.toll_calculator import load_country_geometries
 
     load_country_geometries()
+    # Warm the European logistics catalog once at startup (cached singleton).
+    get_catalog()
     _logger.info("application_startup", extra={"app": settings.APP_NAME})
 
     # Uruchom pętlę odświeżania ofert w tle

@@ -28,16 +28,8 @@ TOLL_RATES: dict[str, dict[str, float]] = {
     "HU": {"bus": 0.12, "solo": 0.18},
 }
 
-# Phase-1 flat EUR/km rates used by ``estimate_toll_eur``.
-ESTIMATE_RATES_EUR_PER_KM: dict[str, float] = {
-    "DE": 0.187,
-    "AT": 0.220,
-    "CZ": 0.145,
-    "PL": 0.095,
-    "FR": 0.280,
-    "CH": 0.350,
-    "DEFAULT": 0.05,
-}
+# Fallback rate for countries absent from TOLL_RATES (single source of truth).
+DEFAULT_TOLL_RATE_EUR_PER_KM = 0.05
 
 
 class LegToll(BaseModel):
@@ -97,13 +89,17 @@ def calculate_leg_tolls(
             continue
 
         dist_km = intersection.length * 111.0
-        rate = TOLL_RATES.get(country_code, {}).get(vehicle_class, 0.0)
-        if rate == 0.0 and country_code not in TOLL_RATES:
+        country_rates = TOLL_RATES.get(country_code)
+        if country_rates is None:
             _logger.warning(
-                "Brak stawki myto dla kraju: %s",
+                "Brak stawki myto dla kraju: %s (fallback %.3f EUR/km)",
                 country_code,
+                DEFAULT_TOLL_RATE_EUR_PER_KM,
                 extra={"country_code": country_code, "event": "toll:unknown_country"},
             )
+            rate = DEFAULT_TOLL_RATE_EUR_PER_KM
+        else:
+            rate = country_rates.get(vehicle_class, DEFAULT_TOLL_RATE_EUR_PER_KM)
 
         cost = dist_km * rate
         if cost > 0:
@@ -145,14 +141,18 @@ def estimate_toll_eur(
 ) -> tuple[float, bool]:
     """Estimate total toll cost from route geometry and country boundaries.
 
+    Uses the single source of truth :data:`TOLL_RATES` (per-country, per
+    vehicle-class), falling back to :data:`DEFAULT_TOLL_RATE_EUR_PER_KM` for
+    countries without an explicit rate.
+
     Returns ``(toll_eur, is_estimated)``. On empty or invalid geometry the
     function falls back to ``(0.0, True)`` without raising.
     """
-    _ = vehicle_type  # reserved for future vehicle-class rate tables
     route_line = _parse_route_linestring(route_geometry)
     if route_line is None:
         return 0.0, True
 
+    vehicle_class = _toll_vehicle_class(vehicle_type)
     per_country_km = _per_country_km_from_line(route_line)
     geometry_total_km = sum(per_country_km.values())
     if geometry_total_km <= 0.0:
@@ -161,9 +161,9 @@ def estimate_toll_eur(
     scale = total_distance_km / geometry_total_km if total_distance_km > 0.0 else 1.0
     toll_total = 0.0
     for country_code, km in per_country_km.items():
-        rate = ESTIMATE_RATES_EUR_PER_KM.get(
-            country_code,
-            ESTIMATE_RATES_EUR_PER_KM["DEFAULT"],
+        rate = TOLL_RATES.get(country_code, {}).get(
+            vehicle_class,
+            DEFAULT_TOLL_RATE_EUR_PER_KM,
         )
         toll_total += km * scale * rate
 

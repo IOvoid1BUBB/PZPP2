@@ -407,6 +407,12 @@ class OfferScorerService:
     async def _fetch_candidate_offers(self, session: ConsolidationSession) -> list[MarketOffer]:
         stmt = select(MarketOffer)
         bbox = session.target_region_bbox
+        # TODO(agent1_backend_data_rates): offers now span all of Europe (25+
+        # countries via european_offer_generator). target_region_bbox is opt-in
+        # (only filters when explicitly set on the session), so it does not drop
+        # pan-European offers by default. If a session sets a narrow bbox, ensure
+        # it is wide enough for cross-continental routes (~3000 km) — do not
+        # tighten this filter here.
         if bbox is not None and len(bbox) == 4:
             min_lon, min_lat, max_lon, max_lat = bbox
             envelope = func.ST_MakeEnvelope(min_lon, min_lat, max_lon, max_lat, 4326)

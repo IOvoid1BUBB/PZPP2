@@ -1,4 +1,8 @@
-"""Synthetic market-offer generator for logistics-hub-based transport lanes."""
+"""Synthetic market-offer generator for logistics-hub-based transport lanes.
+
+DEPRECATED: używany tylko w testach regionalnych. Do live seedingu używaj
+european_offer_generator.
+"""
 
 from __future__ import annotations
 
@@ -35,6 +39,22 @@ _LDM_CHOICES: tuple[float, ...] = tuple(round(k * PALLET_LDM, 1) for k in range(
 # → (0.4, 0.8, 1.2, 1.6, 2.0, 2.4, 2.8, 3.2, 3.6, 4.0)
 _HANDLING_CHOICES: tuple[int, ...] = (15, 30, 45, 60)
 _HANDLING_WEIGHTS: tuple[float, ...] = (0.2, 0.5, 0.2, 0.1)
+
+# ---------------------------------------------------------------------------
+# Masa ladunku: ~600-1800 kg/LDM (realna paleta EUR wazy 300-900 kg -> 750-2250
+# kg/LDM). Gorny cap tuz pod ladownoscia solowki 12 t.
+# ---------------------------------------------------------------------------
+WEIGHT_MIN_KG_PER_LDM = 600.0
+WEIGHT_MAX_KG_PER_LDM = 1800.0
+MAX_WEIGHT_CAP_KG = 11900
+
+# ---------------------------------------------------------------------------
+# Stawka frachtu EUR/LDM*km. Rynkowe LTL to 0.10-0.18 EUR/LDM*km; srodek ~0.13.
+# ---------------------------------------------------------------------------
+RATE_MIN = 0.08
+RATE_MAX = 0.25
+RATE_MEAN = 0.13
+RATE_STDDEV = 0.03
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,9 +97,12 @@ def generate_single_offer(
     window_close = window_open + timedelta(hours=window_width)
 
     ldm = round(random.choice(_LDM_CHOICES), 1)
-    weight_kg = int(ldm * random.uniform(150, 400))
+    weight_kg = min(
+        int(ldm * random.uniform(WEIGHT_MIN_KG_PER_LDM, WEIGHT_MAX_KG_PER_LDM)),
+        MAX_WEIGHT_CAP_KG,
+    )
     distance_km = haversine_km(pickup_lon, pickup_lat, delivery_lon, delivery_lat)
-    rate = max(0.60, min(2.50, random.gauss(1.20, 0.25)))
+    rate = max(RATE_MIN, min(RATE_MAX, random.gauss(RATE_MEAN, RATE_STDDEV)))
     price_eur = max(0.01, round(ldm * distance_km * rate, 2))
 
     offer = MarketOfferCreate(

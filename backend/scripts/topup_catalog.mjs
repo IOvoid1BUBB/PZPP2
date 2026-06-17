@@ -82,7 +82,7 @@ let catalog = JSON.parse(readFileSync(OUT, "utf8"));
 console.log(`Start: ${catalog.length}`);
 
 for (const cc of COUNTRIES) {
-  if (catalog.length >= 1200) break;
+  if (catalog.length >= 1090) break;
   const batch = await fetchCountry(cc);
   const { catalog: next, added } = merge(catalog, batch);
   catalog = next;

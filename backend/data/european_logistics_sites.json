@@ -928,21 +928,6 @@
     "verified_at": "2026-06-15"
   },
   {
-    "id": "osm-abbatoire-abbatoire-unknown-fr-9884355014",
-    "company": "Abbatoire",
-    "facility_name": "Abbatoire",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": 16.32241,
-    "lon": -61.3995,
-    "source": "https://www.openstreetmap.org/node/9884355014",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
     "id": "osm-acanfora-acanfora-unknown-it-11187430202",
     "company": "Acanfora",
     "facility_name": "Acanfora",
@@ -2338,21 +2323,6 @@
     "verified_at": "2026-06-15"
   },
   {
-    "id": "osm-autososo-autososo-noum-a-nc-1218285186",
-    "company": "Autososo",
-    "facility_name": "Autososo",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": "Rue des Frères Terrasson",
-    "postal_code": null,
-    "city": "Nouméa",
-    "country_code": "NC",
-    "lat": -22.23889,
-    "lon": 166.41765,
-    "source": "https://www.openstreetmap.org/node/1218285186",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
     "id": "osm-autoverwertung-autoverwertung-arb-autorecycling-bruns-barsinghausen-de-1843733977",
     "company": "Autoverwertung",
     "facility_name": "Autoverwertung ARB Autorecycling Bruns",
@@ -3178,21 +3148,6 @@
     "verified_at": "2026-06-15"
   },
   {
-    "id": "osm-brasserie-brasserie-de-tahiti-s-a-unknown-fr-6928973462",
-    "company": "Brasserie",
-    "facility_name": "Brasserie de Tahiti S.A.",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": -17.5403,
-    "lon": -149.56617,
-    "source": "https://www.openstreetmap.org/node/6928973462",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
     "id": "osm-breitenmoser-breitenmoser-appenzeller-fleischspezialit-ten-ag-unknown-ch-11240658635",
     "company": "Breitenmoser",
     "facility_name": "Breitenmoser Appenzeller Fleischspezialitäten AG",
@@ -3444,36 +3399,6 @@
     "lat": 49.42789,
     "lon": 2.83409,
     "source": "https://www.openstreetmap.org/node/10242897219",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
-    "id": "osm-casa-casa-da-matan-a-nordeste-pt-5327605941",
-    "company": "Casa",
-    "facility_name": "Casa da Matança",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": "Rua do Rosário",
-    "postal_code": "9630-179",
-    "city": "Nordeste",
-    "country_code": "PT",
-    "lat": 37.83717,
-    "lon": -25.14713,
-    "source": "https://www.openstreetmap.org/node/5327605941",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
-    "id": "osm-casa-casa-de-matan-a-da-ilha-do-corvo-unknown-pt-13923254977",
-    "company": "Casa",
-    "facility_name": "Casa de Matança da Ilha do Corvo",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "PT",
-    "lat": 39.67499,
-    "lon": -31.11363,
-    "source": "https://www.openstreetmap.org/node/13923254977",
     "geocode_method": "osm_overpass",
     "verified_at": "2026-06-15"
   },
@@ -3853,21 +3778,6 @@
     "verified_at": "2026-06-15"
   },
   {
-    "id": "osm-concassage-concassage-unknown-fr-7039375802",
-    "company": "Concassage",
-    "facility_name": "Concassage",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": -17.6335,
-    "lon": -149.59639,
-    "source": "https://www.openstreetmap.org/node/7039375802",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
     "id": "osm-connect-connect-bus-nora-unknown-se-8848933622",
     "company": "Connect",
     "facility_name": "Connect Bus Nora",
@@ -3969,21 +3879,6 @@
     "lat": 46.10416,
     "lon": 21.62913,
     "source": "https://www.openstreetmap.org/node/385374112",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
-    "id": "osm-coop-rative-coop-rative-des-p-cheurs-de-guyane-unknown-fr-1807564681",
-    "company": "Coopérative",
-    "facility_name": "Coopérative des pêcheurs de Guyane",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": 4.93478,
-    "lon": -52.33523,
-    "source": "https://www.openstreetmap.org/node/1807564681",
     "geocode_method": "osm_overpass",
     "verified_at": "2026-06-15"
   },
@@ -4614,21 +4509,6 @@
     "lat": 38.71326,
     "lon": -4.09099,
     "source": "https://www.openstreetmap.org/node/6732643915",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
-    "id": "osm-desguaces-desguaces-insulares-unknown-es-10013026403",
-    "company": "Desguaces",
-    "facility_name": "Desguaces Insulares",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "ES",
-    "lat": 28.37033,
-    "lon": -16.72358,
-    "source": "https://www.openstreetmap.org/node/10013026403",
     "geocode_method": "osm_overpass",
     "verified_at": "2026-06-15"
   },
@@ -5514,21 +5394,6 @@
     "lat": 46.76987,
     "lon": 24.68134,
     "source": "https://www.openstreetmap.org/node/10121792106",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
-    "id": "osm-ewt-ewt-unknown-nl-3632464706",
-    "company": "EWT",
-    "facility_name": "EWT",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": "Bombardiersweg",
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "NL",
-    "lat": 12.15025,
-    "lon": -68.91396,
-    "source": "https://www.openstreetmap.org/node/3632464706",
     "geocode_method": "osm_overpass",
     "verified_at": "2026-06-15"
   },
@@ -9358,21 +9223,6 @@
     "verified_at": "2026-06-15"
   },
   {
-    "id": "osm-megabriel-megabriel-unknown-fr-1782788437",
-    "company": "Megabriel",
-    "facility_name": "Megabriel",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": 4.89279,
-    "lon": -52.33592,
-    "source": "https://www.openstreetmap.org/node/1782788437",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
     "id": "osm-mek-mek-sp-z-o-o-unknown-pl-8375508837",
     "company": "MEK",
     "facility_name": "MEK sp. z o.o.",
@@ -9399,21 +9249,6 @@
     "lat": 39.88988,
     "lon": 4.24997,
     "source": "https://www.openstreetmap.org/node/12385219172",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
-    "id": "osm-menuiserie-menuiserie-aluminium-unknown-fr-7065439474",
-    "company": "Menuiserie",
-    "facility_name": "Menuiserie aluminium",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": -17.72896,
-    "lon": -149.30711,
-    "source": "https://www.openstreetmap.org/node/7065439474",
     "geocode_method": "osm_overpass",
     "verified_at": "2026-06-15"
   },
@@ -9624,21 +9459,6 @@
     "lat": 44.52785,
     "lon": 11.31674,
     "source": "https://www.openstreetmap.org/node/13288968926",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
-    "id": "osm-minimercado-minimercado-s-lvia-paiva-achadinha-pt-5142910126",
-    "company": "Minimercado",
-    "facility_name": "Minimercado Sílvia Paiva",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": "Caminho Fundo",
-    "postal_code": "9630-049",
-    "city": "Achadinha",
-    "country_code": "PT",
-    "lat": 37.85433,
-    "lon": -25.28146,
-    "source": "https://www.openstreetmap.org/node/5142910126",
     "geocode_method": "osm_overpass",
     "verified_at": "2026-06-15"
   },
@@ -10494,21 +10314,6 @@
     "lat": 50.53277,
     "lon": 12.86936,
     "source": "https://www.openstreetmap.org/node/2537127409",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
-    "id": "osm-parc-parc-d-activit-unknown-fr-1782961523",
-    "company": "Parc",
-    "facility_name": "Parc d'Activité",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": 4.8934,
-    "lon": -52.33549,
-    "source": "https://www.openstreetmap.org/node/1782961523",
     "geocode_method": "osm_overpass",
     "verified_at": "2026-06-15"
   },
@@ -12643,21 +12448,6 @@
     "verified_at": "2026-06-15"
   },
   {
-    "id": "osm-station-station-d-extraction-et-de-concassage-unknown-fr-7065226772",
-    "company": "Station",
-    "facility_name": "Station d'extraction et de concassage",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": -17.53989,
-    "lon": -149.43386,
-    "source": "https://www.openstreetmap.org/node/7065226772",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
     "id": "osm-steel-steel-impex-unknown-bg-9447756417",
     "company": "Steel",
     "facility_name": "Steel Impex",
@@ -14638,21 +14428,6 @@
     "verified_at": "2026-06-15"
   },
   {
-    "id": "osm-za-za-cabalou-unknown-fr-2177689241",
-    "company": "ZA",
-    "facility_name": "ZA Cabalou",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": 5.15347,
-    "lon": -52.64672,
-    "source": "https://www.openstreetmap.org/node/2177689241",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
     "id": "osm-za-za-chemin-romain-unknown-fr-311647909",
     "company": "ZA",
     "facility_name": "ZA Chemin Romain",
@@ -14893,21 +14668,6 @@
     "verified_at": "2026-06-15"
   },
   {
-    "id": "osm-zi-zi-pariacabo-unknown-fr-2177689242",
-    "company": "ZI",
-    "facility_name": "ZI Pariacabo",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": 5.1569,
-    "lon": -52.66962,
-    "source": "https://www.openstreetmap.org/node/2177689242",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
     "id": "osm-zi-zi-sud-unknown-fr-8357104877",
     "company": "ZI",
     "facility_name": "ZI Sud",
@@ -15028,21 +14788,6 @@
     "verified_at": "2026-06-15"
   },
   {
-    "id": "osm-zone-zone-artisanale-galmot-unknown-fr-1128632934",
-    "company": "Zone",
-    "facility_name": "Zone Artisanale Galmot",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": 4.93032,
-    "lon": -52.32811,
-    "source": "https://www.openstreetmap.org/node/1128632934",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
     "id": "osm-zone-zone-artisanale-les-rivets-unknown-fr-8357104865",
     "company": "Zone",
     "facility_name": "Zone artisanale les Rivets",
@@ -15054,21 +14799,6 @@
     "lat": 45.29858,
     "lon": 4.57303,
     "source": "https://www.openstreetmap.org/node/8357104865",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
-    "id": "osm-zone-zone-d-activit-conomique-d-amoe-unknown-fr-7039375800",
-    "company": "Zone",
-    "facility_name": "Zone d'activité économique d'Amoe",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": -17.50884,
-    "lon": -149.47632,
-    "source": "https://www.openstreetmap.org/node/7039375800",
     "geocode_method": "osm_overpass",
     "verified_at": "2026-06-15"
   },
@@ -15208,36 +14938,6 @@
     "verified_at": "2026-06-15"
   },
   {
-    "id": "osm-zone-zone-industrielle-de-faratea-unknown-fr-7065439475",
-    "company": "Zone",
-    "facility_name": "Zone industrielle de Faratea",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": -17.72429,
-    "lon": -149.30503,
-    "source": "https://www.openstreetmap.org/node/7065439475",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
-    "id": "osm-zone-zone-industrielle-de-fare-ute-unknown-fr-7039375819",
-    "company": "Zone",
-    "facility_name": "Zone industrielle de Fare Ute",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": -17.53094,
-    "lon": -149.57115,
-    "source": "https://www.openstreetmap.org/node/7039375819",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
     "id": "osm-zone-zone-industrielle-de-kerdoncuff-conval-unknown-fr-3208163390",
     "company": "Zone",
     "facility_name": "Zone industrielle de Kerdoncuff-Conval",
@@ -15268,21 +14968,6 @@
     "verified_at": "2026-06-15"
   },
   {
-    "id": "osm-zone-zone-industrielle-de-titioro-unknown-fr-7039375804",
-    "company": "Zone",
-    "facility_name": "Zone industrielle de Titioro",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": -17.54314,
-    "lon": -149.55352,
-    "source": "https://www.openstreetmap.org/node/7039375804",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
     "id": "osm-zone-zone-industrielle-henri-paul-unknown-fr-3248118928",
     "company": "Zone",
     "facility_name": "Zone Industrielle Henri Paul",
@@ -15294,21 +14979,6 @@
     "lat": 46.7426,
     "lon": 4.48347,
     "source": "https://www.openstreetmap.org/node/3248118928",
-    "geocode_method": "osm_overpass",
-    "verified_at": "2026-06-15"
-  },
-  {
-    "id": "osm-zone-zone-industrielle-unknown-fr-6831759863",
-    "company": "Zone",
-    "facility_name": "Zone industrielle",
-    "facility_type": "contract_logistics_warehouse",
-    "address_line": null,
-    "postal_code": null,
-    "city": "Unknown",
-    "country_code": "FR",
-    "lat": -17.52654,
-    "lon": -149.52744,
-    "source": "https://www.openstreetmap.org/node/6831759863",
     "geocode_method": "osm_overpass",
     "verified_at": "2026-06-15"
   },

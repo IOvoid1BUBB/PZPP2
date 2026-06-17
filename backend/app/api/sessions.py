@@ -24,8 +24,8 @@ from app.schemas.session import (
     SessionStatusUpdate,
 )
 from app.services.driver_compliance import ComplianceResult, DriverComplianceService
+from app.services.european_offer_generator import generate_european_batch, get_catalog
 from app.services.market_offers import bulk_insert_offers
-from app.services.market_simulator import generate_batch
 from app.services.offer_scorer import OfferScorerService
 from app.services.profit_calculator import SessionProfitCalculator
 from app.services.route_geometry import RouteGeometryService
@@ -286,7 +286,7 @@ async def simulate_market_offers(
     session_service = SessionService(db)
     await session_service.get(session_id)
 
-    generated = generate_batch(count)
+    generated = generate_european_batch(get_catalog(), count)
     offers = [item.offer for item in generated]
     inserted, skipped = await bulk_insert_offers(db, offers)
     await db.commit()

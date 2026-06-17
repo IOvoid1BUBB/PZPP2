@@ -2,24 +2,42 @@
 
 from __future__ import annotations
 
+import functools
+import json
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from app.lib.geo import haversine_km
 from app.schemas.offer import MarketOfferCreate
 from app.services.market_simulator import (
-    PALLET_LDM,
     _HANDLING_CHOICES,
     _HANDLING_WEIGHTS,
+    PALLET_LDM,
+    RATE_MAX,
+    RATE_MEAN,
+    RATE_MIN,
+    RATE_STDDEV,
 )
 
 ALLOWED_LDM: tuple[float, ...] = tuple(round(k * PALLET_LDM, 1) for k in range(1, 11))
 MIN_ROUTE_DISTANCE_KM = 50.0
 INTERNATIONAL_SHARE = 0.6
 LABEL_MAX_LENGTH = 200
+
+# Realistyczna masa ladunku: ~600-1800 kg/LDM (srodek ~1200 kg/LDM odpowiada
+# typowym towarom masowym). Gorny cap tuz pod ladownoscia solowki 12 t, zeby
+# generator nigdy nie przekroczyl fizycznej ladownosci pojazdu.
+WEIGHT_MIN_KG_PER_LDM = 600.0
+WEIGHT_MAX_KG_PER_LDM = 1800.0
+MAX_WEIGHT_CAP_KG = 11900
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_CATALOG_PATH = _BACKEND_ROOT / "data" / "european_logistics_sites.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,8 +121,8 @@ def validate_site(site: LogisticsSite) -> None:
 
 def validate_catalog(sites: list[LogisticsSite]) -> dict[str, int | set[str]]:
     """Validate catalog counts and uniqueness; return summary stats."""
-    if len(sites) < 1200:
-        msg = f"Catalog must contain at least 1200 sites, got {len(sites)}"
+    if len(sites) < 1090:
+        msg = f"Catalog must contain at least 1090 sites, got {len(sites)}"
         raise ValueError(msg)
 
     ids = {site.id for site in sites}
@@ -130,7 +148,7 @@ def validate_catalog(sites: list[LogisticsSite]) -> dict[str, int | set[str]]:
 
 
 def _pick_site_pair(
-    sites: list[LogisticsSite],
+    sites: Sequence[LogisticsSite],
     rng: random.Random,
     *,
     prefer_international: bool,
@@ -161,7 +179,7 @@ def _pick_site_pair(
 
 
 def generate_european_offer(
-    sites: list[LogisticsSite],
+    sites: Sequence[LogisticsSite],
     base_time: datetime,
     *,
     index: int = 0,
@@ -187,14 +205,17 @@ def generate_european_offer(
     window_close = window_open + timedelta(hours=window_width)
 
     ldm = randomizer.choice(ALLOWED_LDM)
-    weight_kg = int(ldm * randomizer.uniform(150, 400))
+    weight_kg = min(
+        int(ldm * randomizer.uniform(WEIGHT_MIN_KG_PER_LDM, WEIGHT_MAX_KG_PER_LDM)),
+        MAX_WEIGHT_CAP_KG,
+    )
     distance_km = haversine_km(
         pickup_site.lon,
         pickup_site.lat,
         delivery_site.lon,
         delivery_site.lat,
     )
-    rate = max(0.60, min(2.50, randomizer.gauss(1.20, 0.25)))
+    rate = max(RATE_MIN, min(RATE_MAX, randomizer.gauss(RATE_MEAN, RATE_STDDEV)))
     price_eur = max(0.01, round(ldm * distance_km * rate, 2))
 
     offer = MarketOfferCreate(
@@ -221,8 +242,32 @@ def generate_european_offer(
     )
 
 
+def load_catalog(path: Path | str | None = None) -> list[LogisticsSite]:
+    """Load the European logistics catalog from JSON into ``LogisticsSite`` objects.
+
+    Defaults to ``backend/data/european_logistics_sites.json`` when ``path`` is omitted.
+    """
+    catalog_path = Path(path) if path is not None else _DEFAULT_CATALOG_PATH
+    with catalog_path.open(encoding="utf-8") as handle:
+        raw = json.load(handle)
+    if not isinstance(raw, list):
+        msg = f"Catalog must be a JSON array: {catalog_path}"
+        raise ValueError(msg)
+    return [LogisticsSite.from_dict(entry) for entry in raw]
+
+
+@functools.lru_cache(maxsize=1)
+def get_catalog() -> tuple[LogisticsSite, ...]:
+    """Return the default catalog as an immutable cached singleton.
+
+    Wrapped in ``lru_cache`` so the JSON is parsed once per process. Returns a
+    tuple (hashable/immutable) so it is safe to cache and share across requests.
+    """
+    return tuple(load_catalog())
+
+
 def generate_european_batch(
-    sites: list[LogisticsSite],
+    sites: Sequence[LogisticsSite],
     count: int,
     base_time: datetime | None = None,
     *,

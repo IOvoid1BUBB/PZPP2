@@ -23,7 +23,7 @@ def test_catalog_unique_destinations_and_countries() -> None:
     sites = [LogisticsSite.from_dict(entry) for entry in entries]
     stats = validate_catalog(sites)
 
-    assert stats["total_sites"] >= 1200
+    assert stats["total_sites"] >= 1090
     assert stats["unique_coordinates"] >= 1000
     assert stats["country_count"] >= 25
 

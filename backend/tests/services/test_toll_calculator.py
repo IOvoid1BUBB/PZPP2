@@ -10,7 +10,7 @@ import pytest
 from app.core.logging import JsonFormatter
 from app.services.toll_calculator import (
     _GEOJSON_PATH,
-    ESTIMATE_RATES_EUR_PER_KM,
+    DEFAULT_TOLL_RATE_EUR_PER_KM,
     TOLL_RATES,
     calculate_leg_tolls,
     calculate_route_tolls,
@@ -86,7 +86,7 @@ def test_pl_de_route_solo_within_five_percent(mock_countries: dict[str, object])
     assert result.per_leg[1].leg_total_eur == pytest.approx(41.1, rel=0.05)
 
 
-def test_unknown_country_zero_cost_and_json_warning(
+def test_unknown_country_uses_default_rate_and_json_warning(
     mock_countries: dict[str, object],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -95,8 +95,14 @@ def test_unknown_country_zero_cost_and_json_warning(
     with caplog.at_level(logging.WARNING, logger="app.services.toll_calculator"):
         leg_toll = calculate_leg_tolls(leg_xy, "solo", leg_index=0)
 
-    assert leg_toll.per_country.get("XY", 0.0) == 0.0
-    assert leg_toll.leg_total_eur == 0.0
+    # Unknown countries now fall back to DEFAULT_TOLL_RATE_EUR_PER_KM (single
+    # source of truth: TOLL_RATES) instead of vanishing at 0.0.
+    assert leg_toll.per_country.get("XY", 0.0) == pytest.approx(
+        100 * DEFAULT_TOLL_RATE_EUR_PER_KM, rel=0.05
+    )
+    assert leg_toll.leg_total_eur == pytest.approx(
+        100 * DEFAULT_TOLL_RATE_EUR_PER_KM, rel=0.05
+    )
 
     warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
     assert len(warning_records) >= 1
@@ -199,7 +205,7 @@ def test_estimate_toll_per_country_rates(
         "bus",
         total_distance_km=length_km,
     )
-    expected = length_km * ESTIMATE_RATES_EUR_PER_KM[country]
+    expected = length_km * TOLL_RATES[country]["bus"]
     assert toll == pytest.approx(expected, rel=0.05)
     assert is_estimated is True
 
