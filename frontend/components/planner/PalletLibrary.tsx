@@ -13,7 +13,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { PackageSearch } from "lucide-react";
-import { List, type RowComponentProps } from "react-window";
+import { List, type ListImperativeAPI, type RowComponentProps } from "react-window";
 
 import { useToast } from "@/components/ui/Toast";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -249,6 +249,9 @@ type VirtualRowProps = {
   loadingOfferId: string | null;
   loadedOfferIds: Set<string>;
   onAddClick: (offerId: string) => void;
+  /** Roving tabindex — index of the currently keyboard-focused row (FEAT-08). */
+  focusedIndex: number;
+  isReadOnly: boolean;
 };
 
 function VirtualOfferRow({
@@ -258,6 +261,8 @@ function VirtualOfferRow({
   loadingOfferId,
   loadedOfferIds,
   onAddClick,
+  focusedIndex,
+  isReadOnly,
 }: RowComponentProps<VirtualRowProps>) {
   const offer = offers[index];
   if (!offer) {
@@ -271,6 +276,9 @@ function VirtualOfferRow({
       isLoading={loadingOfferId === offer.offer_id}
       isLoaded={loadedOfferIds.has(offer.offer_id)}
       onAddClick={() => onAddClick(offer.offer_id)}
+      isReadOnly={isReadOnly}
+      optionIndex={index}
+      optionTabIndex={index === focusedIndex ? 0 : -1}
     />
   );
 }
@@ -340,6 +348,7 @@ export function PalletLibrary({
   const [localLoadedIds, setLocalLoadedIds] = useState<Set<string>>(new Set());
   const [focusedIndex, setFocusedIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  const virtualListRef = useRef<ListImperativeAPI>(null);
   /** true = ranked session mode; false = raw market mode */
   const isRankedMode = Boolean(sessionId);
 
@@ -370,6 +379,14 @@ export function PalletLibrary({
     },
     [pathname, router, searchParams],
   );
+
+  const resetFilters = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("stackable");
+    params.delete("min_score");
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   const filteredOffers = useMemo(() => {
     return offers.filter((offer) => {
@@ -561,11 +578,33 @@ export function PalletLibrary({
     if (!container || !container.contains(document.activeElement)) {
       return;
     }
-    const target = container.querySelector<HTMLElement>(
-      `[data-row-index="${focusedIndex}"]`,
-    );
-    target?.focus();
-    target?.scrollIntoView({ block: "nearest" });
+
+    // Virtualized list (react-window): bring the row into view first so it is
+    // mounted before we try to focus it.
+    virtualListRef.current?.scrollToRow({ index: focusedIndex, align: "auto" });
+
+    const focusRow = () => {
+      const target = container.querySelector<HTMLElement>(
+        `[data-row-index="${focusedIndex}"]`,
+      );
+      target?.focus();
+      if (typeof target?.scrollIntoView === "function") {
+        target.scrollIntoView({ block: "nearest" });
+      }
+    };
+
+    // Non-virtual rows are already mounted — focus immediately. The virtual list
+    // may need a frame to mount the row after scrolling, so retry on next frame.
+    focusRow();
+    const raf =
+      typeof requestAnimationFrame === "function"
+        ? requestAnimationFrame(focusRow)
+        : null;
+    return () => {
+      if (raf != null) {
+        cancelAnimationFrame(raf);
+      }
+    };
   }, [focusedIndex]);
 
   const handleListKeyDown = useCallback(
@@ -673,10 +712,10 @@ export function PalletLibrary({
         </label>
       </div>
 
-      {loading && offers.length === 0 ? (
-        <OfferLibrarySkeleton count={6} />
+      {loading && offers.length === 0 && !fetchError ? (
+        <OfferLibrarySkeleton count={7} />
       ) : loading ? (
-        <p className="pallet-library__status">Wczytywanie ofert…</p>
+        <p className="pallet-library__status" aria-live="polite">Wczytywanie ofert…</p>
       ) : fetchError ? (
         <p className="pallet-library__status pallet-library__status--error" role="alert">
           {fetchError}
@@ -709,25 +748,46 @@ export function PalletLibrary({
         ) : (
           <EmptyState
             icon={PackageSearch}
-            title="Brak ofert dla wybranych filtrów."
+            title="Brak ofert spełniających kryteria. Zmień filtry."
             description="Zmień próg score lub wyłącz filtr „tylko stackowalne”."
+            action={
+              <button
+                type="button"
+                className="button bg-ui-surface hover:bg-gray/20"
+                onClick={resetFilters}
+              >
+                Wyczyść filtry
+              </button>
+            }
           />
         )
       ) : filteredOffers.length > VIRTUAL_THRESHOLD ? (
-        <List
-          data-testid="pallet-library-virtual-list"
-          rowCount={filteredOffers.length}
-          rowHeight={ROW_HEIGHT}
-          rowComponent={VirtualOfferRow}
-          rowProps={{
-            offers: filteredOffers,
-            loadingOfferId,
-            loadedOfferIds,
-            onAddClick: (offerId) => void addOffer(offerId),
-          }}
-          style={{ height: LIST_HEIGHT, width: "100%" }}
-          className="pallet-library__list"
-        />
+        <div
+          ref={listRef}
+          role="listbox"
+          aria-label="Lista ofert"
+          aria-orientation="vertical"
+          onKeyDown={handleListKeyDown}
+        >
+          <List
+            data-testid="pallet-library-virtual-list"
+            listRef={virtualListRef}
+            rowCount={filteredOffers.length}
+            rowHeight={ROW_HEIGHT}
+            defaultHeight={LIST_HEIGHT}
+            rowComponent={VirtualOfferRow}
+            rowProps={{
+              offers: filteredOffers,
+              loadingOfferId,
+              loadedOfferIds,
+              onAddClick: (offerId) => void addOffer(offerId),
+              focusedIndex,
+              isReadOnly,
+            }}
+            style={{ height: LIST_HEIGHT, width: "100%" }}
+            className="pallet-library__list"
+          />
+        </div>
       ) : (
         <div
           ref={listRef}
@@ -754,7 +814,7 @@ export function PalletLibrarySuspense(props: PalletLibraryProps) {
     <Suspense
       fallback={
         <aside className="pallet-library offer-sidebar" aria-label="Biblioteka ofert">
-          <p className="pallet-library__status">Wczytywanie ofert…</p>
+          <OfferLibrarySkeleton count={7} />
         </aside>
       }
     >

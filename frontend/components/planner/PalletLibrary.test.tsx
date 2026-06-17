@@ -367,17 +367,17 @@ describe("PalletLibrary", () => {
     expect(screen.getByRole("button", { name: "Dodaj" })).toBeInTheDocument();
   });
 
-  it("zmiana max_detour wywołuje router.replace z query", async () => {
+  it("zmiana min_score wywołuje router.replace z query", async () => {
     mockFetch(defaultFetchHandler());
 
     await renderLibrary();
 
-    const slider = screen.getByRole("slider", { name: /max detour/i });
+    const slider = screen.getByRole("slider", { name: /min score/i });
     await act(async () => {
-      fireEvent.change(slider, { target: { value: "100" } });
+      fireEvent.change(slider, { target: { value: "0.5" } });
     });
 
-    expect(mockReplace).toHaveBeenCalledWith("/planner?max_detour=100", {
+    expect(mockReplace).toHaveBeenCalledWith("/planner?min_score=0.5", {
       scroll: false,
     });
   });
@@ -436,12 +436,29 @@ describe("PalletLibrary", () => {
     await renderLibrary();
 
     expect(
-      screen.getByText("Brak ofert dla wybranych filtrów."),
+      screen.getByText("Brak ofert spełniających kryteria. Zmień filtry."),
     ).toBeInTheDocument();
   });
 
-  it("pokazuje błąd fetch gdy API zwróci błąd", async () => {
-    mockFetch(() => ({ ok: false, status: 500 }) as Response);
+  it("CTA „Wyczyść filtry” resetuje filtry w URL (UX-03)", async () => {
+    mockSearchParams = new URLSearchParams("min_score=0.99");
+    mockFetch(defaultFetchHandler([makeApiRecord({ total_score: 0.5 })]));
+
+    await renderLibrary();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Wyczyść filtry" }));
+    });
+
+    expect(mockReplace).toHaveBeenCalledWith("/planner", { scroll: false });
+  });
+
+  it("pokazuje błąd fetch gdy API zwróci błąd (bez skeletonów, role=alert)", async () => {
+    // 404 nie jest retryowalny → fetchWithRetry zwraca natychmiast (bez backoffu).
+    mockFetch(
+      () =>
+        ({ ok: false, status: 404, json: () => Promise.resolve({}) }) as Response,
+    );
 
     await act(async () => {
       render(<PalletLibrary sessionId={SESSION_ID} />);
@@ -452,6 +469,8 @@ describe("PalletLibrary", () => {
         /Nie udało się pobrać ofert/i,
       );
     });
+    // UX-02: po błędzie API nie pokazujemy skeletonów.
+    expect(screen.queryByTestId("offer-row-skeleton")).not.toBeInTheDocument();
   });
 
   it("filtr stackable client-side ukrywa niestackowalne oferty", async () => {
@@ -478,5 +497,154 @@ describe("PalletLibrary", () => {
     await renderLibrary({ onRegisterAddOffer });
 
     expect(onRegisterAddOffer).toHaveBeenCalledWith(expect.any(Function));
+  });
+});
+
+// ─── 9.1 Skeleton loading ──────────────────────────────────────────────────────
+
+describe("PalletLibrary — skeleton loading (9.1)", () => {
+  it("pokazuje skeleton podczas pierwszego ładowania (deferred fetch, aria-busy)", async () => {
+    let resolveFetch!: (value: Response) => void;
+    const deferred = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+
+    mockFetch((url) => {
+      if (url.includes("/ranked-offers")) {
+        return deferred;
+      }
+      throw new Error(`Unmocked URL: ${url}`);
+    });
+
+    await act(async () => {
+      render(<PalletLibrary sessionId={SESSION_ID} />);
+    });
+
+    // Skeleton widoczny przy pierwszym fetch (≥6 wierszy).
+    const skeletons = screen.getAllByTestId("offer-row-skeleton");
+    expect(skeletons.length).toBeGreaterThanOrEqual(6);
+    const busy = screen.getByRole("status", { name: "Wczytywanie ofert" });
+    expect(busy).toHaveAttribute("aria-busy", "true");
+
+    // Po resolve fetch → skeletony znikają, karty ofert widoczne.
+    await act(async () => {
+      resolveFetch({
+        ok: true,
+        json: () =>
+          Promise.resolve(
+            rankedOffersResponse([makeApiRecord({ offer_id: "offer-1" })]),
+          ),
+      } as Response);
+      await deferred;
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("offer-row-skeleton")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Warszawa → Kraków")).toBeInTheDocument();
+  });
+});
+
+// ─── 9.2 Keyboard navigation (roving tabindex) ──────────────────────────────────
+
+describe("PalletLibrary — nawigacja klawiaturą (9.2)", () => {
+  function makeRows(count: number) {
+    return Array.from({ length: count }, (_, i) =>
+      makeApiRecord({
+        offer_id: `offer-${String(i).padStart(8, "0")}-aaaa-bbbb-cccc-dddddddddddd`,
+        total_score: 0.5,
+        added_km: 20,
+      }),
+    );
+  }
+
+  it("ArrowDown przesuwa roving tabindex i fokus na kolejny wiersz", async () => {
+    mockFetch(defaultFetchHandler(makeRows(3)));
+
+    await renderLibrary();
+
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(3);
+    expect(options[0]).toHaveAttribute("tabindex", "0");
+    expect(options[1]).toHaveAttribute("tabindex", "-1");
+
+    options[0].focus();
+    await act(async () => {
+      fireEvent.keyDown(options[0], { key: "ArrowDown" });
+    });
+
+    const updated = screen.getAllByRole("option");
+    expect(updated[0]).toHaveAttribute("tabindex", "-1");
+    expect(updated[1]).toHaveAttribute("tabindex", "0");
+    expect(document.activeElement).toBe(updated[1]);
+  });
+
+  it("Enter wywołuje addOffer (POST) i nie propaguje do formularza nadrzędnego", async () => {
+    let postedOfferId: string | null = null;
+    mockFetch((url, options) => {
+      if (url.includes("/ranked-offers")) {
+        return {
+          ok: true,
+          json: () =>
+            Promise.resolve(
+              rankedOffersResponse([
+                makeApiRecord({ offer_id: "offer-enter", total_score: 0.5 }),
+              ]),
+            ),
+        } as Response;
+      }
+      if (url.includes("/offers/") && options?.method === "POST") {
+        postedOfferId = url.split("/offers/")[1] ?? null;
+        return {
+          ok: true,
+          json: () => Promise.resolve({ id: SESSION_ID, status: "draft" }),
+        } as Response;
+      }
+      throw new Error(`Unmocked URL: ${url}`);
+    });
+
+    const parentKeyDown = vi.fn();
+    await act(async () => {
+      render(
+        <div onKeyDown={parentKeyDown}>
+          <PalletLibrary sessionId={SESSION_ID} />
+        </div>,
+      );
+    });
+
+    const option = await screen.findByRole("option");
+    option.focus();
+    await act(async () => {
+      fireEvent.keyDown(option, { key: "Enter" });
+    });
+
+    await waitFor(() => {
+      expect(postedOfferId).toBe("offer-enter");
+    });
+    // Enter zatrzymany przez stopPropagation — nie dociera do nadrzędnego handlera.
+    expect(parentKeyDown).not.toHaveBeenCalled();
+  });
+
+  it("nawigacja klawiaturą działa z listą wirtualną (>50 ofert)", async () => {
+    mockFetch(defaultFetchHandler(makeRows(60)));
+
+    await renderLibrary();
+
+    expect(
+      screen.getByTestId("pallet-library-virtual-list"),
+    ).toBeInTheDocument();
+
+    const options = screen.getAllByRole("option");
+    expect(options.length).toBeGreaterThan(1);
+    expect(options[0]).toHaveAttribute("tabindex", "0");
+
+    options[0].focus();
+    await act(async () => {
+      fireEvent.keyDown(options[0], { key: "ArrowDown" });
+    });
+
+    const row1 = document.querySelector('[data-row-index="1"]');
+    expect(row1).toHaveAttribute("tabindex", "0");
+    expect(document.activeElement).toBe(row1);
   });
 });
