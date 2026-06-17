@@ -19,6 +19,10 @@ export interface OfferScore {
   time_window_score: number;
   added_km: number;
   estimated_added_cost_eur: number;
+  /** Estimated net contribution after stop costs and detour fuel (EUR). */
+  net_eur?: number;
+  /** Net EUR per loading metre. */
+  profit_per_ldm?: number;
 }
 
 export interface RankedOffersResponse {
