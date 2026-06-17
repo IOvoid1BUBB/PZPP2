@@ -161,9 +161,9 @@ def estimate_toll_eur(
     scale = total_distance_km / geometry_total_km if total_distance_km > 0.0 else 1.0
     toll_total = 0.0
     for country_code, km in per_country_km.items():
-        rate = ESTIMATE_RATES_EUR_PER_KM.get(
-            country_code,
-            ESTIMATE_RATES_EUR_PER_KM["DEFAULT"],
+        rate = TOLL_RATES.get(country_code, {}).get(
+            vehicle_class,
+            DEFAULT_TOLL_RATE_EUR_PER_KM,
         )
         toll_total += km * scale * rate
 
