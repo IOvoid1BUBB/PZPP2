@@ -13,7 +13,8 @@ import time
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from geoalchemy2.types import Geography
+from sqlalchemy import Select, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -217,14 +218,48 @@ class VRPSolver:
 
         if not candidate_offer_ids:
             if use_full_market:
-                # Load up to 500 offers from the full market pool
-                full_market_stmt = (
-                    select(MarketOffer)
-                    .order_by(MarketOffer.price_eur.desc())
-                    .limit(500)
+                # Candidates filtered to MAX_CANDIDATE_RADIUS_KM from session origin
+                # and sorted by price/LDM density — prioritizes high-yield nearby
+                # offers over distant expensive ones.
+                radius_m = self._settings.MAX_CANDIDATE_RADIUS_KM * 1000
+                limit = self._settings.FULL_MARKET_CANDIDATE_LIMIT
+                origin_point = func.ST_SetSRID(
+                    func.ST_MakePoint(
+                        float(session.origin_lon),
+                        float(session.origin_lat),
+                    ),
+                    4326,
                 )
-                full_market_result = await self._db.execute(full_market_stmt)
-                candidate_offer_ids = [o.id for o in full_market_result.scalars().all()]
+
+                def _full_market_stmt(within_m: int) -> Select[tuple[MarketOffer]]:
+                    return (
+                        select(MarketOffer)
+                        .where(
+                            func.ST_DWithin(
+                                cast(MarketOffer.pickup_point, Geography),
+                                cast(origin_point, Geography),
+                                within_m,
+                            ),
+                            MarketOffer.ldm > 0,
+                        )
+                        .order_by((MarketOffer.price_eur / MarketOffer.ldm).desc())
+                        .limit(limit)
+                    )
+
+                result = await self._db.execute(_full_market_stmt(radius_m))
+                rows = list(result.scalars().all())
+                if len(rows) == 0:
+                    _logger.info(
+                        "No offers within %d km of origin, expanding to %d km",
+                        self._settings.MAX_CANDIDATE_RADIUS_KM,
+                        self._settings.MAX_CANDIDATE_RADIUS_KM * 2,
+                    )
+                    expanded = await self._db.execute(_full_market_stmt(radius_m * 2))
+                    rows = list(expanded.scalars().all())
+
+                candidate_offer_ids = [o.id for o in rows]
+                if not candidate_offer_ids:
+                    return await self._persist_empty_result(session_id, "INFEASIBLE", 0)
             else:
                 ranked = await OfferScorerService(self._db, routing=self._routing).rank_offers(
                     session_id,
