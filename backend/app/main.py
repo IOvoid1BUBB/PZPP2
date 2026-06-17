@@ -22,11 +22,11 @@ from app.core.database import get_engine, get_sessionmaker
 from app.core.exceptions import AppException
 from app.core.logging import configure_logging
 from app.core.middleware import AccessLogMiddleware, RequestIDMiddleware
-from app.lib.routing import shutdown_routing_provider
 from app.lib.redis_client import get_redis, shutdown_redis
+from app.lib.routing import shutdown_routing_provider
 from app.schemas.common import DependencyStatus, HealthResponse, ReadinessResponse
+from app.services.european_offer_generator import generate_european_batch, get_catalog
 from app.services.market_offers import bulk_insert_offers
-from app.services.market_simulator import generate_batch
 
 _logger = logging.getLogger("app")
 
