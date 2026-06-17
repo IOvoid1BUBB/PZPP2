@@ -275,21 +275,65 @@ def _set_offer_state(states: tuple[int, ...], offer_idx: int, new_value: int) ->
     return tuple(as_list)
 
 
+def _find_nearest_pickup_to_origin(
+    stops: list[Stop],
+    matrix: DistanceMatrix,
+    node_indices: dict[str, int],
+) -> Stop | None:
+    """Return the pickup stop closest to the origin node, or None if no pickups."""
+    nearest: Stop | None = None
+    best_distance = float("inf")
+    for stop in stops:
+        if stop.stop_type != "pickup":
+            continue
+        distance = matrix.distances_km[_ORIGIN_INDEX][node_indices[stop.id]]
+        if distance < best_distance:
+            best_distance = distance
+            nearest = stop
+    return nearest
+
+
+def _apply_first_pickup_bias(
+    sequence: list[Stop],
+    *,
+    matrix: DistanceMatrix,
+    node_indices: dict[str, int],
+) -> list[Stop]:
+    """Move the pickup closest to the origin to the front of *sequence*.
+
+    Without this bias a distance-minimal tour can legitimately start hundreds of
+    kilometres in the wrong direction from base. Relocating a pickup to index 0
+    always preserves pickup-before-delivery precedence: its paired delivery stays
+    after it, and the relative order of every other stop is unchanged.
+    """
+    if len(sequence) < 2:
+        return sequence
+    nearest = _find_nearest_pickup_to_origin(sequence, matrix, node_indices)
+    if nearest is None or sequence[0].id == nearest.id:
+        return sequence
+    return [nearest] + [stop for stop in sequence if stop.id != nearest.id]
+
+
 def optimize_stop_sequence(
     stops: list[Stop],
     *,
     matrix: DistanceMatrix,
     node_indices: dict[str, int] | None = None,
     use_exact: bool = True,
+    first_pickup_bias: bool = True,
 ) -> list[Stop]:
     """Return an optimized stop order (exact DP when ``use_exact`` and <= 10 offers)."""
     indices = node_indices or build_node_indices(stops)
     offer_count = len(_offer_ids(stops))
     if use_exact and offer_count <= _MAX_EXACT_OFFERS:
-        return optimize_exact_with_precedence(stops, matrix=matrix, node_indices=indices)
+        ordered = optimize_exact_with_precedence(stops, matrix=matrix, node_indices=indices)
+    else:
+        nn_sequence = nearest_neighbor_with_precedence(stops, matrix=matrix, node_indices=indices)
+        ordered = two_opt_with_precedence(nn_sequence, matrix=matrix, node_indices=indices)
 
-    nn_sequence = nearest_neighbor_with_precedence(stops, matrix=matrix, node_indices=indices)
-    return two_opt_with_precedence(nn_sequence, matrix=matrix, node_indices=indices)
+    if first_pickup_bias:
+        ordered = _apply_first_pickup_bias(ordered, matrix=matrix, node_indices=indices)
+    return ordered
 
 
 def compute_eta_minutes(
