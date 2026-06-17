@@ -15,6 +15,7 @@ from app.models.session import ConsolidationSession
 from app.models.solver import SolverResult
 from app.models.stop import RouteStop
 from app.models.vehicle import Vehicle, VehicleType
+from app.models.weekly_driving_record import WeeklyDrivingRecord
 
 __all__ = [
     "Base",
@@ -27,4 +28,5 @@ __all__ = [
     "SolverResult",
     "Vehicle",
     "VehicleType",
+    "WeeklyDrivingRecord",
 ]
