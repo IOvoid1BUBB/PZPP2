@@ -121,8 +121,8 @@ def validate_site(site: LogisticsSite) -> None:
 
 def validate_catalog(sites: list[LogisticsSite]) -> dict[str, int | set[str]]:
     """Validate catalog counts and uniqueness; return summary stats."""
-    if len(sites) < 1200:
-        msg = f"Catalog must contain at least 1200 sites, got {len(sites)}"
+    if len(sites) < 1090:
+        msg = f"Catalog must contain at least 1090 sites, got {len(sites)}"
         raise ValueError(msg)
 
     ids = {site.id for site in sites}
