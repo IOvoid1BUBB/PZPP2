@@ -103,6 +103,8 @@ class OfferScore(BaseModel):
     stackable: bool = Field(default=True)
     pickup_label: str = Field(default="")
     delivery_label: str = Field(default="")
+    net_eur: float = Field(default=0.0, description="Estimated net contribution in EUR after stop costs and detour fuel.")
+    profit_per_ldm: float = Field(default=0.0, description="Net EUR per loading metre.")
 
 
 class RankedOffersResponse(BaseModel):
