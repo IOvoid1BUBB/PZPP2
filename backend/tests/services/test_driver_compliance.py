@@ -17,19 +17,22 @@ def test_splits_11h2_route_into_two_days_and_stays_compliant() -> None:
     assert result.recommended_overnight_stops
 
 
-def test_single_10h_leg_without_break_reports_9h_daily_violation() -> None:
+def test_single_10h_leg_without_break_reports_missing_break_violation() -> None:
+    # A single 10h non-stop leg breaches the 4.5h mandatory-break rule (art. 7);
+    # 10h itself is legal extended driving, so the break is the binding violation.
     result = evaluate_events(
         leg_minutes=[600],
         stop_minutes=[],
     )
 
     assert result.compliant is False
-    assert "Przekroczono 9h jazdy w dobie" in result.violations
+    assert "Brak wymaganej przerwy po 4.5h jazdy" in result.violations
 
 
-def test_simple_400km_route_is_single_day_compliant() -> None:
+def test_simple_400km_route_with_break_is_single_day_compliant() -> None:
+    # ~5h / 400km split by a 45 min break keeps continuous driving under 4.5h.
     result = evaluate_events(
-        leg_minutes=[300],
+        leg_minutes=[150, 150],
         stop_minutes=[45],
     )
 
