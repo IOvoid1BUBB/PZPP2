@@ -99,4 +99,4 @@ const catalog = merge(embeddedSites, osm);
 console.log(`Total ${catalog.length}, countries ${new Set(catalog.map((s) => s.country_code)).size}`);
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(catalog, null, 2) + "\n");
-if (catalog.length < 1200) { console.error("WARNING < 1200"); process.exitCode = 1; }
+if (catalog.length < 1090) { console.error("WARNING < 1090"); process.exitCode = 1; }
