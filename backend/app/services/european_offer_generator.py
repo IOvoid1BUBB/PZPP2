@@ -242,8 +242,32 @@ def generate_european_offer(
     )
 
 
+def load_catalog(path: Path | str | None = None) -> list[LogisticsSite]:
+    """Load the European logistics catalog from JSON into ``LogisticsSite`` objects.
+
+    Defaults to ``backend/data/european_logistics_sites.json`` when ``path`` is omitted.
+    """
+    catalog_path = Path(path) if path is not None else _DEFAULT_CATALOG_PATH
+    with catalog_path.open(encoding="utf-8") as handle:
+        raw = json.load(handle)
+    if not isinstance(raw, list):
+        msg = f"Catalog must be a JSON array: {catalog_path}"
+        raise ValueError(msg)
+    return [LogisticsSite.from_dict(entry) for entry in raw]
+
+
+@functools.lru_cache(maxsize=1)
+def get_catalog() -> tuple[LogisticsSite, ...]:
+    """Return the default catalog as an immutable cached singleton.
+
+    Wrapped in ``lru_cache`` so the JSON is parsed once per process. Returns a
+    tuple (hashable/immutable) so it is safe to cache and share across requests.
+    """
+    return tuple(load_catalog())
+
+
 def generate_european_batch(
-    sites: list[LogisticsSite],
+    sites: Sequence[LogisticsSite],
     count: int,
     base_time: datetime | None = None,
     *,
