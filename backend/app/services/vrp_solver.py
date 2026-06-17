@@ -63,12 +63,44 @@ def _time_windows_overlap(
 
 def _solve_mock(
     candidate_offers: list[MarketOffer],
+    free_ldm: float,
+    free_weight_kg: int,
+    max_offer_slots: int,
+    net_contributions_cents: list[int],
+    time_limit_seconds: float,
 ) -> tuple[list[int], int, SolverRunStatus, bool, int]:
-    """Greedy mock solver for CI (no OR-Tools import)."""
-    count = min(3, len(candidate_offers))
-    selected = list(range(count))
-    obj_cents = sum(int(float(candidate_offers[i].price_eur) * 100) for i in selected)
-    return selected, obj_cents, "OPTIMAL", True, 42
+    """Greedy mock solver for CI (no OR-Tools import).
+
+    Mirrors the business logic of :func:`_solve_cp_sat`: respects LDM, weight,
+    and stop-count capacity, and only ever picks offers with a positive net
+    contribution. ``elapsed_ms`` is fixed at 1 as a marker that this is the mock.
+    """
+    ldm_cap = int(free_ldm * 10)
+    order = sorted(
+        (i for i in range(len(candidate_offers)) if net_contributions_cents[i] > 0),
+        key=lambda i: net_contributions_cents[i],
+        reverse=True,
+    )
+
+    selected: list[int] = []
+    used_ldm = 0
+    used_weight = 0
+    for i in order:
+        if len(selected) >= max_offer_slots:
+            break
+        offer = candidate_offers[i]
+        offer_ldm = int(float(offer.ldm) * 10)
+        offer_weight = int(offer.weight_kg)
+        if used_ldm + offer_ldm > ldm_cap:
+            continue
+        if used_weight + offer_weight > free_weight_kg:
+            continue
+        selected.append(i)
+        used_ldm += offer_ldm
+        used_weight += offer_weight
+
+    obj_cents = sum(net_contributions_cents[i] for i in selected)
+    return selected, obj_cents, "OPTIMAL", True, 1
 
 
 def _solve_cp_sat(
@@ -300,6 +332,11 @@ class VRPSolver:
         if self._settings.USE_SOLVER_MOCK:
             selected_idx, obj_cents, status_str, is_optimal, elapsed_ms = _solve_mock(
                 candidates,
+                free_ldm,
+                free_weight_kg,
+                max_offer_slots,
+                net_cents,
+                float(time_limit_seconds),
             )
         else:
             selected_idx, obj_cents, status_str, is_optimal, elapsed_ms = (
