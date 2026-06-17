@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from datetime import datetime
 from uuid import UUID, uuid4
@@ -17,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.lib import eu_regulations
 from app.core.exceptions import AppException, NotFoundError, ValidationAppError
 from app.lib.geo import lat_lon_from_geometry
 from app.lib.routing import RoutingProvider, get_routing_provider
@@ -46,6 +48,10 @@ _logger = logging.getLogger(__name__)
 # Sentinel solve-time above which a warning is emitted.
 _SLOW_SOLVE_MS = 8_000
 
+# Hard weekly driving ceiling (minutes) from EU 561/2006 art. 6(2); the configured
+# MAX_WEEKLY_DRIVING_MINUTES is never allowed to exceed this safe limit.
+_WEEKLY_DRIVING_CEILING_MIN = int(eu_regulations.MAX_WEEKLY_DRIVING_H_SAFE * 60)
+
 
 def _time_windows_overlap(
     open_a: datetime | None,
@@ -62,8 +68,12 @@ def _time_windows_overlap(
 
 def _solve_mock(
     candidate_offers: list[MarketOffer],
+    driving_minutes: list[int] | None = None,
+    weekly_budget_minutes: int | None = None,
 ) -> tuple[list[int], int, SolverRunStatus, bool, int]:
     """Greedy mock solver for CI (no OR-Tools import)."""
+    # The weekly driving budget is ignored in the mock path (CI determinism).
+    del driving_minutes, weekly_budget_minutes
     count = min(3, len(candidate_offers))
     selected = list(range(count))
     obj_cents = sum(int(float(candidate_offers[i].price_eur) * 100) for i in selected)
@@ -77,6 +87,8 @@ def _solve_cp_sat(
     max_offer_slots: int,
     net_contributions_cents: list[int],
     time_limit_seconds: float,
+    driving_minutes: list[int] | None = None,
+    weekly_budget_minutes: int | None = None,
 ) -> tuple[list[int], int, SolverRunStatus, bool, int]:
     """Run the CP-SAT model synchronously (called via asyncio.to_thread).
 
@@ -88,6 +100,14 @@ def _solve_cp_sat(
     is_optimal       : True when OPTIMAL
     solve_time_ms    : wall-clock solve time in milliseconds
     """
+    if weekly_budget_minutes is not None and weekly_budget_minutes <= 0:
+        _logger.info(
+            "Weekly driving budget exhausted (%d min); returning empty solution",
+            weekly_budget_minutes,
+            extra={"event": "solver:weekly_budget_exhausted"},
+        )
+        return [], 0, "INFEASIBLE", False, 0
+
     from ortools.sat.python import cp_model  # lazy import — only needed here
 
     model = cp_model.CpModel()
@@ -112,6 +132,12 @@ def _solve_cp_sat(
 
     # Max offer count
     model.add(sum(x) <= max_offer_slots)
+
+    # Weekly driving-time budget (EU 561/2006 art. 6(2))
+    if driving_minutes is not None and weekly_budget_minutes is not None:
+        model.add(
+            sum(driving_minutes[i] * x[i] for i in range(n)) <= weekly_budget_minutes
+        )
 
     # --- Soft: time-window conflicts (treated as hard exclusions) ----------
     for i in range(n):
@@ -180,6 +206,7 @@ class VRPSolver:
         max_stops_override: int | None,
         time_limit_seconds: int,
         use_full_market: bool = False,
+        weekly_driving_minutes_used: int = 0,
     ) -> SolverRunResult:
         session = await self._load_session(session_id)
         if session is None:
@@ -246,6 +273,7 @@ class VRPSolver:
         existing_waypoints: list[tuple[float, float]] = [origin]
 
         net_cents: list[int] = []
+        estimated_driving_minutes: list[int] = []
         for offer in candidates:
             stop_cost = calculate_stop_cost(
                 offer.handling_time_minutes or 30,
@@ -261,10 +289,24 @@ class VRPSolver:
             detour_cost = detour_km * COST_PER_KM_EUR
             net = float(offer.price_eur) - 2 * stop_cost.total_eur - detour_cost
             net_cents.append(int(net * 100))
+            # Estimate driving minutes for the added detour at an assumed 60 km/h.
+            estimated_driving_minutes.append(math.ceil((detour_km / 60.0) * 60))
+
+        weekly_budget_total = min(
+            self._settings.MAX_WEEKLY_DRIVING_MINUTES, _WEEKLY_DRIVING_CEILING_MIN
+        )
+        effective_weekly_budget = weekly_budget_total - weekly_driving_minutes_used
+        _logger.info(
+            "Weekly driving budget: %d min available, estimated per offer: %s",
+            effective_weekly_budget,
+            estimated_driving_minutes,
+        )
 
         if self._settings.USE_SOLVER_MOCK:
             selected_idx, obj_cents, status_str, is_optimal, elapsed_ms = _solve_mock(
                 candidates,
+                estimated_driving_minutes,
+                effective_weekly_budget,
             )
         else:
             selected_idx, obj_cents, status_str, is_optimal, elapsed_ms = (
@@ -276,6 +318,8 @@ class VRPSolver:
                     max_offer_slots,
                     net_cents,
                     float(time_limit_seconds),
+                    estimated_driving_minutes,
+                    effective_weekly_budget,
                 )
             )
 

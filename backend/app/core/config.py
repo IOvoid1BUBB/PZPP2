@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     WEIGHT_FUEL_FACTOR: float = 0.30
     MAINTENANCE_EUR_PER_KM: float = 0.08
     MAX_STOPS_PER_ROUTE: int = 12
+    MAX_WEEKLY_DRIVING_MINUTES: int = 3270  # 54.5h * 60 — EU 561/2006 art. 6(2) safe budget
     USE_SOLVER_MOCK: bool = False
     USE_ROUTING_MOCK: bool = False
 

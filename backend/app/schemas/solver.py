@@ -31,6 +31,11 @@ class SolverRequest(BaseModel):
         default=False,
         description="When True, pull candidates from all market_offers (up to 500) instead of session-scoped rank.",
     )
+    weekly_driving_minutes_used: int = Field(
+        default=0,
+        ge=0,
+        description="Minutes already driven this week by the driver across other sessions.",
+    )
 
 
 class StopSequenceEntry(BaseModel):
