@@ -12,8 +12,8 @@ from app.core.database import get_db
 from app.lib.geo import geo_point_from_geometry
 from app.models import MarketOffer
 from app.schemas.offer import OfferRead, SimulateOffersResponse
+from app.services.european_offer_generator import generate_european_batch, get_catalog
 from app.services.market_offers import bulk_insert_offers
-from app.services.market_simulator import generate_batch
 
 router = APIRouter(prefix="/offers", tags=["offers"])
 
@@ -66,7 +66,7 @@ async def simulate_offers(
     count: int = Query(200, ge=1, le=500),
 ) -> SimulateOffersResponse:
     """Seed the market_offers table with synthetic data without needing a session."""
-    generated = generate_batch(count)
+    generated = generate_european_batch(get_catalog(), count)
     offer_creates = [item.offer for item in generated]
     inserted, skipped = await bulk_insert_offers(db, offer_creates)
     await db.commit()
