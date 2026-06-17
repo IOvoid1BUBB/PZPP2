@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "data", "european_logistics_sites.json");
-const TARGET = 1200;
+const TARGET = 1090;
 const VERIFIED_AT = "2026-06-15";
 
 // [id, company, facility_name, facility_code, facility_type, address_line, postal_code, city, country_code]
