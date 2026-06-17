@@ -29,6 +29,16 @@ MIN_ROUTE_DISTANCE_KM = 50.0
 INTERNATIONAL_SHARE = 0.6
 LABEL_MAX_LENGTH = 200
 
+# Realistyczna masa ladunku: ~600-1800 kg/LDM (srodek ~1200 kg/LDM odpowiada
+# typowym towarom masowym). Gorny cap tuz pod ladownoscia solowki 12 t, zeby
+# generator nigdy nie przekroczyl fizycznej ladownosci pojazdu.
+WEIGHT_MIN_KG_PER_LDM = 600.0
+WEIGHT_MAX_KG_PER_LDM = 1800.0
+MAX_WEIGHT_CAP_KG = 11900
+
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_CATALOG_PATH = _BACKEND_ROOT / "data" / "european_logistics_sites.json"
+
 
 @dataclass(frozen=True, slots=True)
 class LogisticsSite:
