@@ -75,6 +75,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     from app.services.toll_calculator import load_country_geometries
 
     load_country_geometries()
+    # Warm the European logistics catalog once at startup (cached singleton).
+    get_catalog()
     _logger.info("application_startup", extra={"app": settings.APP_NAME})
 
     # Uruchom pętlę odświeżania ofert w tle
