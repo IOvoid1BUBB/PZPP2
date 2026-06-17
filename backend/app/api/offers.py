@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -48,10 +48,22 @@ async def list_offers(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ) -> list[OfferRead]:
-    total = int(await db.scalar(select(func.count()).select_from(MarketOffer)) or 0)
+    # Minimalna cena odpowiadająca min_viable_price z generatorów.
+    # Nowe generatory (RATE_MIN=0.45): min ~51 EUR dla najkrótszych tras.
+    # Próg 50 EUR eliminuje stare oferty bez odcinania nowych.
+    MIN_PRICE_EUR = 50.0
+    total = int(
+        await db.scalar(
+            select(func.count()).select_from(MarketOffer).where(MarketOffer.price_eur >= MIN_PRICE_EUR)
+        ) or 0
+    )
     response.headers["X-Total-Count"] = str(total)
     result = await db.execute(
-        select(MarketOffer).order_by(MarketOffer.time_window_open.desc()).limit(limit).offset(offset),
+        select(MarketOffer)
+        .where(MarketOffer.price_eur >= MIN_PRICE_EUR)
+        .order_by(MarketOffer.time_window_open.desc())
+        .limit(limit)
+        .offset(offset),
     )
     return [_offer_to_read(row) for row in result.scalars().all()]
 
@@ -71,3 +83,24 @@ async def simulate_offers(
     inserted, skipped = await bulk_insert_offers(db, offer_creates)
     await db.commit()
     return SimulateOffersResponse(requested=count, inserted=inserted, skipped=skipped)
+
+
+@router.delete(
+    "/stale",
+    summary="Remove market offers with price below minimum viable threshold (45 EUR)",
+    status_code=status.HTTP_200_OK,
+)
+async def delete_stale_offers(
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, int]:
+    """Delete market offers with price_eur < 50 EUR (generated before rate fix).
+
+    Safe to call multiple times — idempotent.
+    """
+    MIN_PRICE_EUR = 50.0
+    del_result = await db.execute(
+        delete(MarketOffer).where(MarketOffer.price_eur < MIN_PRICE_EUR)
+    )
+    deleted: int = getattr(del_result, "rowcount", None) or 0
+    await db.commit()
+    return {"deleted": deleted, "min_price_threshold_eur": int(MIN_PRICE_EUR)}
