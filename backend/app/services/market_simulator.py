@@ -1,4 +1,8 @@
-"""Synthetic market-offer generator for logistics-hub-based transport lanes."""
+"""Synthetic market-offer generator for logistics-hub-based transport lanes.
+
+DEPRECATED: używany tylko w testach regionalnych. Do live seedingu używaj
+european_offer_generator.
+"""
 
 from __future__ import annotations
 
