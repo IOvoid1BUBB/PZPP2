@@ -25,6 +25,7 @@ from app.schemas.profit import (
     ProfitFormulas,
     SessionProfitBreakdown,
 )
+from app.services.driver_compliance import MAX_DAILY_DRIVING_HOURS
 from app.services.fuel_calculator import calculate_multi_stop_fuel
 from app.services.stop_cost_calculator import StopCostRates, calculate_stop_cost
 from app.services.toll_calculator import calculate_route_tolls
@@ -170,9 +171,16 @@ class SessionProfitCalculator:
             round(stop_costs_eur / stop_count, 2) if stop_count > 0 else 0.0
         )
 
-        # Step 5 — Driver (daily allowance: 1 day per 24 hours on road)
-        total_duration_hours = sum(leg.duration_minutes for leg in route.legs) / 60.0
-        days_on_road = max(1, math.ceil(total_duration_hours / 24.0))
+        # Step 5 — Driver (daily allowance). Days-on-road must match the EU 561/2006
+        # day split used by DriverComplianceService.evaluate_session, which starts a
+        # new driving day once accumulated driving exceeds MAX_DAILY_DRIVING_HOURS (9h).
+        # Using the same formula here keeps diet (allowance) and compliance day counts
+        # consistent: days = ceil(total_driving_minutes / (9h * 60)).
+        total_driving_minutes = sum(leg.duration_minutes for leg in route.legs)
+        days_on_road = max(
+            1,
+            math.ceil(total_driving_minutes / (MAX_DAILY_DRIVING_HOURS * 60.0)),
+        )
         driver_eur = round(days_on_road * self._settings.DRIVER_DAILY_ALLOWANCE_EUR, 2)
 
         # Step 6 — Maintenance
