@@ -17,15 +17,23 @@ from app.schemas.offer import MarketOfferCreate
 from app.services.market_simulator import (
     _HANDLING_CHOICES,
     _HANDLING_WEIGHTS,
+    ESTIMATED_STOP_COST_EUR,
+    FUEL_COST_EMPTY_EUR_PER_KM,
+    MIN_PRICE_COVERAGE_FACTOR,
     PALLET_LDM,
     RATE_MAX,
     RATE_MEAN,
     RATE_MIN,
     RATE_STDDEV,
+    adjust_rate_for_pallet_count,
+    pallet_count_from_ldm,
 )
 
 ALLOWED_LDM: tuple[float, ...] = tuple(round(k * PALLET_LDM, 1) for k in range(1, 11))
 MIN_ROUTE_DISTANCE_KM = 50.0
+# ORS limit: 6000 km per request. Z sesją 4-6 ofert po ~800km każda można przekroczyć limit.
+# Ograniczamy dystans pojedynczej oferty do 1200 km żeby sesja z 4 ofertami = max 4800 km.
+MAX_ROUTE_DISTANCE_KM = 1200.0
 INTERNATIONAL_SHARE = 0.6
 LABEL_MAX_LENGTH = 200
 
@@ -161,6 +169,8 @@ def _pick_site_pair(
         distance = haversine_km(pickup.lon, pickup.lat, delivery.lon, delivery.lat)
         if distance < MIN_ROUTE_DISTANCE_KM:
             continue
+        if distance > MAX_ROUTE_DISTANCE_KM:
+            continue
         if prefer_international and pickup.country_code == delivery.country_code:
             if rng.random() < 0.5:
                 continue
@@ -170,8 +180,16 @@ def _pick_site_pair(
         site
         for site in sites
         if site.id != pickup.id
-        and haversine_km(pickup.lon, pickup.lat, site.lon, site.lat) >= MIN_ROUTE_DISTANCE_KM
+        and MIN_ROUTE_DISTANCE_KM <= haversine_km(pickup.lon, pickup.lat, site.lon, site.lat) <= MAX_ROUTE_DISTANCE_KM
     ]
+    if not candidates:
+        # Fallback: relax MAX constraint, just enforce MIN
+        candidates = [
+            site
+            for site in sites
+            if site.id != pickup.id
+            and haversine_km(pickup.lon, pickup.lat, site.lon, site.lat) >= MIN_ROUTE_DISTANCE_KM
+        ]
     if not candidates:
         msg = "Unable to find valid pickup/delivery pair with min distance"
         raise ValueError(msg)
@@ -184,6 +202,7 @@ def generate_european_offer(
     *,
     index: int = 0,
     rng: random.Random | None = None,
+    ldm_override: float | None = None,
 ) -> GeneratedEuropeanOffer:
     """Build one :class:`MarketOfferCreate` from catalog sites."""
     if len(sites) < 2:
@@ -204,7 +223,7 @@ def generate_european_offer(
     window_width = max(2.0, randomizer.gauss(4.0, 1.5))
     window_close = window_open + timedelta(hours=window_width)
 
-    ldm = randomizer.choice(ALLOWED_LDM)
+    ldm = float(ldm_override) if ldm_override is not None else randomizer.choice(ALLOWED_LDM)
     weight_kg = min(
         int(ldm * randomizer.uniform(WEIGHT_MIN_KG_PER_LDM, WEIGHT_MAX_KG_PER_LDM)),
         MAX_WEIGHT_CAP_KG,
@@ -215,8 +234,16 @@ def generate_european_offer(
         delivery_site.lon,
         delivery_site.lat,
     )
-    rate = max(RATE_MIN, min(RATE_MAX, randomizer.gauss(RATE_MEAN, RATE_STDDEV)))
+    base_rate = max(RATE_MIN, min(RATE_MAX, randomizer.gauss(RATE_MEAN, RATE_STDDEV)))
+    pallets = pallet_count_from_ldm(ldm)
+    rate = adjust_rate_for_pallet_count(base_rate, pallets)
     price_eur = max(0.01, round(ldm * distance_km * rate, 2))
+
+    # Dynamiczny min_viable_price: pokrywa koszt paliwa trasy + koszty obsługi stopów
+    fuel_floor = round(FUEL_COST_EMPTY_EUR_PER_KM * distance_km * 0.4, 2)
+    stop_floor = round(MIN_PRICE_COVERAGE_FACTOR * 2 * ESTIMATED_STOP_COST_EUR, 2)
+    min_viable_price = round(fuel_floor + stop_floor, 2)
+    price_eur = max(min_viable_price, price_eur)
 
     offer = MarketOfferCreate(
         pickup_point=_ewkt_point(pickup_site.lon, pickup_site.lat),
@@ -272,6 +299,8 @@ def generate_european_batch(
     base_time: datetime | None = None,
     *,
     seed: int | None = None,
+    min_small_ldm_offers: int = 0,
+    ldm_bucket_shares: tuple[float, float, float] | None = None,
 ) -> list[GeneratedEuropeanOffer]:
     if count < 1:
         msg = "count must be at least 1"
@@ -282,7 +311,70 @@ def generate_european_batch(
         anchor = anchor.replace(tzinfo=UTC)
 
     rng = random.Random(seed)
-    return [
-        generate_european_offer(sites, anchor, index=index, rng=rng)
-        for index in range(count)
-    ]
+
+    # Optional LDM mix:
+    #  - bucket 1: 0.4–0.8 LDM   (1–2 pallets)
+    #  - bucket 2: 0.8–2.0 LDM   (3–5 pallets)
+    #  - bucket 3: >2.0 LDM      (6+ pallets)
+    #
+    # This is used by seed scripts to ensure a healthy small/medium tail.
+    bucket_ldm: tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]] = (
+        (PALLET_LDM, round(2 * PALLET_LDM, 1)),
+        (
+            round(3 * PALLET_LDM, 1),
+            round(4 * PALLET_LDM, 1),
+            round(5 * PALLET_LDM, 1),
+        ),
+        (
+            round(6 * PALLET_LDM, 1),
+            round(7 * PALLET_LDM, 1),
+            round(8 * PALLET_LDM, 1),
+            round(9 * PALLET_LDM, 1),
+            round(10 * PALLET_LDM, 1),
+        ),
+    )
+
+    ldm_overrides: list[float | None] = [None] * count
+    if ldm_bucket_shares is not None:
+        import math
+
+        small_share, medium_share, large_share = ldm_bucket_shares
+        if small_share < 0 or medium_share < 0 or large_share < 0:
+            raise ValueError("ldm_bucket_shares cannot contain negative values")
+        if (small_share + medium_share + large_share) > 1.0 + 1e-9:
+            raise ValueError("ldm_bucket_shares must sum to <= 1.0")
+
+        small_n = min(count, int(math.ceil(count * small_share)))
+        medium_n = min(count - small_n, int(math.ceil(count * medium_share)))
+        large_n = min(count - small_n - medium_n, int(math.ceil(count * large_share)))
+        remainder = count - small_n - medium_n - large_n
+        # Fill any remainder into the "large" bucket by default.
+        large_n += remainder
+
+        chosen: list[float] = []
+        chosen.extend(rng.choices(bucket_ldm[0], k=small_n))
+        chosen.extend(rng.choices(bucket_ldm[1], k=medium_n))
+        chosen.extend(rng.choices(bucket_ldm[2], k=large_n))
+        rng.shuffle(chosen)
+        ldm_overrides = chosen  # type: ignore[assignment]
+    else:
+        # Backwards-compatible behavior: enforce a minimum number of small offers.
+        small_count = max(0, min(int(min_small_ldm_offers), count))
+        if small_count > 0:
+            forced = rng.choices(bucket_ldm[0], k=small_count)
+            for i in range(small_count):
+                ldm_overrides[i] = forced[i]
+
+    items: list[GeneratedEuropeanOffer] = []
+    for index in range(count):
+        ldm_override = ldm_overrides[index]
+        items.append(
+            generate_european_offer(
+                sites,
+                anchor,
+                index=index,
+                rng=rng,
+                ldm_override=ldm_override,
+            )
+        )
+    return items
