@@ -12,9 +12,12 @@ import {
   useMap,
 } from "react-leaflet";
 
+import { Map as MapIcon } from "lucide-react";
+
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { DriverRouteBriefing } from "@/components/driver/DriverRouteBriefing";
 import { RouteTimeline } from "@/components/planner/RouteTimeline";
 import {
@@ -338,7 +341,7 @@ export default function RouteMapClient({
 
   if (loading) {
     return (
-      <Card className="grid min-h-[420px] place-items-center p-8">
+      <Card className="grid min-h-[40vh] place-items-center p-8 md:min-h-[420px]">
         <p className="text-sm text-[var(--ui-text-secondary)]">
           Wczytywanie mapy trasy…
         </p>
@@ -350,29 +353,23 @@ export default function RouteMapClient({
     // Distinguish "no offers yet" (normal empty state) from real errors
     const isEmpty = !error && (!routeData || routeData.stops.length === 0);
     return (
-      <Card className="grid min-h-[420px] place-items-center p-8">
-        <div className="text-center">
-          {isEmpty ? (
-            <>
-              <p className="text-2xl">🗺️</p>
-              <p className="mt-3 text-sm font-medium text-[var(--ui-text-secondary)]">
-                Dodaj ładunki, aby zobaczyć trasę
-              </p>
-              <p className="mt-1 text-xs text-[var(--ui-text-muted)]">
-                Mapa pojawi się po przypisaniu co najmniej jednej oferty.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm font-medium text-[var(--ui-error,#dc2626)]">
-                {error ?? "Brak danych trasy"}
-              </p>
-              <p className="mt-2 text-xs text-[var(--ui-text-secondary)]">
-                Dodaj oferty do sesji i uruchom optymalizację, aby zobaczyć mapę trasy.
-              </p>
-            </>
-          )}
-        </div>
+      <Card className="grid min-h-[40vh] place-items-center p-8 md:min-h-[420px]">
+        {isEmpty ? (
+          <EmptyState
+            icon={MapIcon}
+            title="Dodaj oferty, aby zobaczyć trasę"
+            description="Mapa pojawi się po przypisaniu co najmniej jednej oferty."
+          />
+        ) : (
+          <div className="text-center">
+            <p className="text-sm font-medium text-[var(--ui-error,#dc2626)]">
+              {error ?? "Brak danych trasy"}
+            </p>
+            <p className="mt-2 text-xs text-[var(--ui-text-secondary)]">
+              Dodaj oferty do sesji i uruchom optymalizację, aby zobaczyć mapę trasy.
+            </p>
+          </div>
+        )}
       </Card>
     );
   }
@@ -404,7 +401,7 @@ export default function RouteMapClient({
           <p className="px-4 py-2 text-sm text-[var(--ui-error)]">{error}</p>
         ) : null}
 
-        <div className="relative min-h-[420px] flex-1">
+        <div className="relative min-h-[40vh] flex-1 md:min-h-[420px]">
           {/* Preview badge — shown while route is being debounce-refreshed */}
           {isPreview && (
             <div
