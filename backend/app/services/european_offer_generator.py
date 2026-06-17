@@ -148,7 +148,7 @@ def validate_catalog(sites: list[LogisticsSite]) -> dict[str, int | set[str]]:
 
 
 def _pick_site_pair(
-    sites: list[LogisticsSite],
+    sites: Sequence[LogisticsSite],
     rng: random.Random,
     *,
     prefer_international: bool,
