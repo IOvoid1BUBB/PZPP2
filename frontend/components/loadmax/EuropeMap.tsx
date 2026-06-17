@@ -23,8 +23,8 @@ type EuropeMapProps = {
  * Markery/linie przekazuje się jako children.
  */
 export function EuropeMap({
-  center = [16, 52],
-  scale = 2200,
+  center = [14, 54],
+  scale = 650,
   children,
   className,
 }: EuropeMapProps) {

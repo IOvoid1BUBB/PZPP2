@@ -44,9 +44,10 @@ export const DEFAULT_SESSION_ORIGIN = {
 } as const;
 
 /**
- * Bounding box docelowego regionu: Polska / środkowa Europa.
+ * Bounding box docelowego regionu: cała Europa zachodnia i centralna.
+ * Rozszerzony z [18,49,24,55] (Polska) na [-10,35,40,72] (cała Europa).
  */
-const DEFAULT_BBOX: [number, number, number, number] = [18.0, 49.0, 24.0, 55.0];
+const DEFAULT_BBOX: [number, number, number, number] = [-10.0, 35.0, 40.0, 72.0];
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -183,6 +184,8 @@ interface OfferScoreApiRecord {
   stackable?: boolean;
   pickup_label?: string;
   delivery_label?: string;
+  net_eur?: number | string;
+  profit_per_ldm?: number | string;
 }
 
 interface RankedOffersApiResponse {
@@ -212,6 +215,8 @@ function mapOfferScore(raw: OfferScoreApiRecord): OfferScore {
     time_window_score: toNumber(raw.time_window_score),
     added_km: toNumber(raw.added_km),
     estimated_added_cost_eur: toNumber(raw.estimated_added_cost_eur),
+    net_eur: raw.net_eur != null ? toNumber(raw.net_eur) : undefined,
+    profit_per_ldm: raw.profit_per_ldm != null ? toNumber(raw.profit_per_ldm) : undefined,
   };
 }
 

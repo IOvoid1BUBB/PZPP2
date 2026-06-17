@@ -165,8 +165,17 @@ export function OfferRow({
           <dd>{offer.added_km.toFixed(0)} km</dd>
         </div>
         <div>
-          <dt>Koszt</dt>
-          <dd>{offer.estimated_added_cost_eur.toFixed(0)} EUR</dd>
+          <dt>Zysk netto</dt>
+          <dd
+            style={{
+              color:
+                (offer.net_eur ?? 0) > 0
+                  ? "var(--color-success, #1D9E75)"
+                  : "var(--color-error, #E8564A)",
+            }}
+          >
+            {offer.net_eur != null ? `${offer.net_eur.toFixed(0)} EUR` : "—"}
+          </dd>
         </div>
         <div>
           <dt>Cena</dt>

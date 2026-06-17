@@ -21,7 +21,11 @@ class FleetService:
         self._db = db
 
     async def list_fleet(self) -> list[FleetVehicleRead]:
-        stmt = select(FleetVehicle).order_by(FleetVehicle.created_at)
+        stmt = (
+            select(FleetVehicle)
+            .where(FleetVehicle.status != "retired")
+            .order_by(FleetVehicle.created_at)
+        )
         result = await self._db.execute(stmt)
         vehicles = list(result.scalars().all())
         return [await self._to_read(v) for v in vehicles]

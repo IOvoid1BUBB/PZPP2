@@ -6,6 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -18,7 +19,6 @@ from app.core.exceptions import NotFoundError, ValidationAppError
 from app.lib.geo import haversine_km, lat_lon_from_geometry
 from app.lib.routing import RoutingProvider, get_routing_provider
 from app.lib.redis_client import get_redis
-from app.lib.regional_p90 import get_regional_p90
 from app.models import ConsolidationSession, MarketOffer, RouteStop, Vehicle
 from app.schemas.offer import OfferScore, RankedOffersResponse
 from app.services.offer_detour import (
@@ -27,16 +27,27 @@ from app.services.offer_detour import (
     calculate_added_detour,
     haversine_added_detour_km,
 )
+from app.services.stop_cost_calculator import StopCostRates, calculate_stop_cost
+from app.services.market_simulator import ESTIMATED_STOP_COST_EUR
 
 if TYPE_CHECKING:
     pass
 
 _logger = logging.getLogger("offer.scorer")
 
-WEIGHT_REVENUE = 0.40
-WEIGHT_DETOUR = 0.30
-WEIGHT_FILL = 0.20
-WEIGHT_TIME_WINDOW = 0.10
+# ---------------------------------------------------------------------------
+# Wagi — suma = 1.0
+# ---------------------------------------------------------------------------
+WEIGHT_PROFIT = 0.55       # zastępuje WEIGHT_REVENUE = 0.40
+WEIGHT_DETOUR = 0.20       # zmniejszone z 0.30
+WEIGHT_FILL = 0.15         # zmniejszone z 0.20
+WEIGHT_TIME_WINDOW = 0.10  # bez zmian
+
+# Zachowaj alias dla kodu zewnętrznego, który importował starą stałą.
+WEIGHT_REVENUE = WEIGHT_PROFIT  # Deprecated alias
+
+TARGET_PROFIT_PER_LDM_EUR = 15.0
+MIN_ACCEPTABLE_NET_EUR = 1.0
 
 REORDER_SLACK_AFTER_CLOSE_MINUTES = 60
 MAX_WAIT_BEFORE_WINDOW_MINUTES = 180
@@ -65,11 +76,30 @@ def compute_revenue_density_score(
     ldm: float,
     p90_price_per_ldm: float,
 ) -> float:
-    """Revenue density relative to regional P90 €/LDM."""
+    """Revenue density relative to regional P90 €/LDM.
+
+    Deprecated: use compute_profit_per_ldm_score instead.
+    """
     if ldm <= 0 or p90_price_per_ldm <= 0:
         return 0.0
     ratio = (price_eur / ldm) / p90_price_per_ldm
     return round(min(1.0, ratio), 4)
+
+
+def compute_profit_per_ldm_score(
+    net_eur: float,
+    ldm: float,
+    target: float = TARGET_PROFIT_PER_LDM_EUR,
+) -> float:
+    """Score based on net profit per LDM relative to target.
+
+    Returns a value in [0, 1] — 1.0 when net_eur/ldm >= target.
+    Returns 0.0 for non-positive net_eur or ldm.
+    """
+    if ldm <= 0 or net_eur <= 0:
+        return 0.0
+    ratio = (net_eur / ldm) / target
+    return round(min(1.0, max(0.0, ratio)), 4)
 
 
 def compute_detour_penalty_score(added_km: float) -> float:
@@ -79,14 +109,14 @@ def compute_detour_penalty_score(added_km: float) -> float:
 
 
 def compute_total_score(
-    revenue_density_score: float,
+    profit_per_ldm_score: float,
     detour_penalty_score: float,
     fill_contribution_score: float,
     time_window_score: float,
 ) -> float:
     """Weighted total score rounded to 4 decimals."""
     total = (
-        WEIGHT_REVENUE * revenue_density_score
+        WEIGHT_PROFIT * profit_per_ldm_score
         + WEIGHT_DETOUR * detour_penalty_score
         + WEIGHT_FILL * fill_contribution_score
         + WEIGHT_TIME_WINDOW * time_window_score
@@ -187,25 +217,14 @@ async def score_offer(
     db: AsyncSession | None = None,
     p90_memory_cache: dict[str, float] | None = None,
     detour_km_override: float | None = None,
+    cost_rates: StopCostRates | None = None,
+    fuel_price_eur_per_liter: float = 1.75,
 ) -> OfferScore:
     """Score a single market offer against a consolidation session."""
     try:
         pickup = lat_lon_from_geometry(offer.pickup_point)
         delivery = lat_lon_from_geometry(offer.delivery_point)
         pickup_lat, pickup_lon = pickup[0], pickup[1]
-
-        p90 = await get_regional_p90(
-            pickup_lat,
-            pickup_lon,
-            redis=redis,
-            db=db,
-            memory_cache=p90_memory_cache,
-        )
-        revenue_score = compute_revenue_density_score(
-            float(offer.price_eur),
-            float(offer.ldm),
-            p90,
-        )
 
         if detour_km_override is not None:
             added_km = round(detour_km_override, 2)
@@ -218,6 +237,21 @@ async def score_offer(
                 delivery,
             )
 
+        # Koszt stopów: 2 × (załadunek + rozładunek)
+        handling = offer.handling_time_minutes if offer.handling_time_minutes is not None else 30
+        if cost_rates is not None:
+            stop_breakdown = calculate_stop_cost(
+                handling,
+                "unknown",
+                rates=cost_rates,
+                fuel_price_eur_per_liter=fuel_price_eur_per_liter,
+            )
+            stop_cost_total = 2 * stop_breakdown.total_eur
+        else:
+            stop_cost_total = 2 * ESTIMATED_STOP_COST_EUR  # fallback: 2 × 15 = 30 EUR
+
+        net_eur = float(offer.price_eur) - stop_cost_total - (added_km * COST_PER_KM_EUR)
+        profit_score = compute_profit_per_ldm_score(net_eur, float(offer.ldm))
         detour_score = compute_detour_penalty_score(added_km)
         free_ldm = float(vehicle.max_ldm) - context.used_ldm
         fill_score = compute_fill_contribution_score(float(offer.ldm), free_ldm)
@@ -227,7 +261,6 @@ async def score_offer(
             context.waypoints,
             pickup,
         )
-        handling = offer.handling_time_minutes if offer.handling_time_minutes is not None else 30
         tw_score = calculate_time_window_score(
             offer.time_window_open,
             offer.time_window_close,
@@ -235,7 +268,7 @@ async def score_offer(
             handling_minutes=handling,
         )
 
-        total = compute_total_score(revenue_score, detour_score, fill_score, tw_score)
+        total = compute_total_score(profit_score, detour_score, fill_score, tw_score)
 
         pickup_label = offer.pickup_label or ""
         delivery_label = offer.delivery_label or ""
@@ -244,21 +277,24 @@ async def score_offer(
             pickup_label = pickup_label or f"Pickup {pickup_lat:.2f},{pickup_lon:.2f}"
             delivery_label = delivery_label or f"Delivery {del_lat:.2f},{del_lon:.2f}"
 
+        ldm_float = float(offer.ldm)
         return OfferScore(
             offer_id=offer.id,
             total_score=total,
-            revenue_density_score=revenue_score,
+            revenue_density_score=profit_score,  # field kept for API compat; now carries profit score
             detour_penalty_score=detour_score,
             fill_contribution_score=fill_score,
             time_window_score=tw_score,
             added_km=added_km,
             estimated_added_cost_eur=round(added_km * COST_PER_KM_EUR, 4),
-            ldm=offer.ldm,
+            ldm=Decimal(str(offer.ldm)),
             weight_kg=int(offer.weight_kg),
-            price_eur=offer.price_eur,
+            price_eur=Decimal(str(offer.price_eur)),
             stackable=bool(offer.stackable),
             pickup_label=pickup_label,
             delivery_label=delivery_label,
+            net_eur=round(net_eur, 2),
+            profit_per_ldm=round(net_eur / ldm_float, 2) if ldm_float > 0 else 0.0,
         )
     except Exception as exc:
         _logger.exception(
@@ -274,9 +310,9 @@ async def score_offer(
             time_window_score=0.0,
             added_km=0.0,
             estimated_added_cost_eur=0.0,
-            ldm=offer.ldm,
+            ldm=Decimal(str(offer.ldm)),
             weight_kg=int(offer.weight_kg),
-            price_eur=offer.price_eur,
+            price_eur=Decimal(str(offer.price_eur)),
             stackable=bool(offer.stackable),
         )
 
@@ -329,12 +365,24 @@ class OfferScorerService:
                     db=self._db,
                     p90_memory_cache=p90_cache,
                     detour_km_override=detour_overrides.get(offer.id),
+                    cost_rates=None,  # fallback na ESTIMATED_STOP_COST_EUR
                 )
                 for offer in candidates
             ],
         )
 
-        ranked = sorted(scores, key=lambda s: (-s.total_score, str(s.offer_id)))[:limit]
+        # FIX-03-A: Filtruj oferty stratne przed sortowaniem.
+        profitable = [s for s in scores if s.net_eur > MIN_ACCEPTABLE_NET_EUR]
+        dropped = len(scores) - len(profitable)
+        if dropped > 0:
+            _logger.info(
+                "Filtered %d unprofitable offers out of %d scored (net_eur <= %.2f)",
+                dropped,
+                len(scores),
+                MIN_ACCEPTABLE_NET_EUR,
+            )
+
+        ranked = sorted(profitable, key=lambda s: (-s.total_score, str(s.offer_id)))[:limit]
         return RankedOffersResponse(
             session_id=session_id,
             limit=limit,
@@ -396,6 +444,16 @@ class OfferScorerService:
         elif session.created_at is not None:
             reference_eta = session.created_at
 
+        # FIX-06: override reference_eta gdy jest None lub starsza niż 24h
+        now = datetime.now(UTC)
+        if reference_eta is None or (now - reference_eta) > timedelta(hours=24):
+            _logger.debug(
+                "reference_eta overridden to now for session %s (age: %s)",
+                session.id,
+                now - (reference_eta or now),
+            )
+            reference_eta = now
+
         return SessionScoringContext(
             used_ldm=used_ldm,
             baseline_km=baseline_km,
@@ -405,7 +463,11 @@ class OfferScorerService:
         )
 
     async def _fetch_candidate_offers(self, session: ConsolidationSession) -> list[MarketOffer]:
-        stmt = select(MarketOffer)
+        # MIN_PRICE_EUR filtruje stare oferty wygenerowane przed podniesieniem RATE_MIN.
+        # Nowa minimalna cena przy RATE_MIN=0.45, dystans 50km, 0.4 LDM = ~51 EUR.
+        # Próg 50 EUR eliminuje wszystkie pre-2024 oferty bez odcinania nowych.
+        MIN_PRICE_EUR = 50.0
+        stmt = select(MarketOffer).where(MarketOffer.price_eur >= MIN_PRICE_EUR)
         bbox = session.target_region_bbox
         # TODO(agent1_backend_data_rates): offers now span all of Europe (25+
         # countries via european_offer_generator). target_region_bbox is opt-in

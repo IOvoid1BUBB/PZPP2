@@ -263,9 +263,16 @@ class SessionService:
 
         session.status = new_status
 
-        # On confirm: link fleet vehicle (explicit or auto)
-        if new_status == "confirmed" and session.fleet_vehicle_id is None:
-            await self._link_fleet_vehicle_on_confirm(session, fleet_vehicle_id)
+        # On confirm: link fleet vehicle (explicit or auto) and mark as in_route
+        if new_status == "confirmed":
+            if session.fleet_vehicle_id is None:
+                await self._link_fleet_vehicle_on_confirm(session, fleet_vehicle_id)
+            else:
+                # Vehicle was already linked at session creation — mark it in_route now
+                fv = await self._db.get(FleetVehicle, session.fleet_vehicle_id)
+                if fv is not None and fv.status == "idle":
+                    fv.status = "in_route"
+                    fv.simulation_started_at = datetime.now(UTC)
 
         # On dispatch: ensure linked fleet vehicle stays in_route
         if new_status == "dispatched" and session.fleet_vehicle_id is not None:
@@ -689,8 +696,12 @@ class SessionService:
         waypoints: list[tuple[float, float]] = [origin]
         for stop in stops:
             waypoints.append(lat_lon_from_geometry(stop.location))
-        route = await self._routing.get_route_multi(waypoints)
-        return route.total_distance_km
+        try:
+            route = await self._routing.get_route_multi(waypoints)
+            return route.total_distance_km
+        except Exception:
+            from app.services.route_builder import _haversine_route_km
+            return _haversine_route_km(waypoints)
 
     def _compute_metrics(
         self,

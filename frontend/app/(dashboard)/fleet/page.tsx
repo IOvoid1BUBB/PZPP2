@@ -507,7 +507,7 @@ function VehiclesView({
           </Card>
 
           <Card className="col-span-1 min-h-0 overflow-hidden border-0 p-0 shadow-none lg:col-span-2">
-            <EuropeMap center={[17, 52.2]} scale={2600}>
+            <EuropeMap center={[markerCoord[0], markerCoord[1]]} scale={1600}>
               <SquareMarker
                 coordinates={markerCoord}
                 label={vehicle.registration.slice(-3).toUpperCase()}
@@ -754,7 +754,7 @@ function DriversView({
         </div>
 
         <Card className="min-h-0 overflow-hidden border-0 p-0 shadow-none">
-          <EuropeMap center={[17, 52.2]} scale={2600}>
+          <EuropeMap center={[17, 52.2]} scale={750}>
             <Marker coordinates={WARSAW}>
               <g transform="translate(-15, -13)">
                 <rect width={30} height={26} rx={7} fill="#1a38f5" stroke="#fff" strokeWidth={1.5} />

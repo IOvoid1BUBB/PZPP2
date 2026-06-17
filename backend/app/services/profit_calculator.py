@@ -100,6 +100,7 @@ class SessionProfitCalculator:
 
         origin = (float(session.origin_lat), float(session.origin_lon))
         waypoints = [origin] + [lat_lon_from_geometry(s.location) for s in stops]
+
         route = await self._routing.get_route_multi(waypoints)
 
         driver_profile = session.driver_profile

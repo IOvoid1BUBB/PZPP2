@@ -387,7 +387,7 @@ export default function DashboardPage() {
         </div>
 
         <Card className="h-[520px] overflow-hidden p-0">
-          <EuropeMap center={mapCenter} scale={2600}>
+          <EuropeMap center={mapCenter} scale={750}>
             {markers.map((marker) => (
               <SquareMarker
                 key={marker.id}
