@@ -62,6 +62,7 @@ import {
   getUsedWeight,
   palletFitsSlot,
 } from "@/lib/load/capacity";
+import { validateDispatch } from "@/lib/load/dispatchValidation";
 
 import type { ContextMenuItem, PalletData } from "@/lib/types/load";
 import type { RankedOfferRow } from "@/lib/types/offers";
@@ -534,15 +535,15 @@ export function SlotEditor({
       showToast({ type: "error", message: "Brak aktywnej sesji." });
       return;
     }
-    if (loadedCount === 0) {
-      showToast({ type: "error", message: "Naczepa jest pusta — dodaj co najmniej jedną ofertę." });
-      return;
-    }
-    if (conflicts.length > 0) {
-      showToast({
-        type: "error",
-        message: `Usuń konflikty slotów przed wysłaniem (${conflicts.length}).`,
-      });
+
+    // Walidacja biznesowa przed PATCH: pusta naczepa lub konflikty ułożenia
+    // przerywają akcję z domenowym komunikatem (Toast).
+    const validation = validateDispatch({
+      conflicts,
+      usedLdm: getUsedLdm(slots),
+    });
+    if (!validation.ok) {
+      showToast({ type: "error", message: validation.message ?? "Nie można wysłać planu." });
       return;
     }
 
@@ -570,7 +571,7 @@ export function SlotEditor({
     } finally {
       setSaving(false);
     }
-  }, [conflicts.length, loadedCount, onRouteConfirmed, persistSlots, sessionId, sessionStatus, showToast, slots]);
+  }, [conflicts, onRouteConfirmed, persistSlots, sessionId, sessionStatus, showToast, slots]);
 
   // ── Two-step flow: Utwórz trasę → Utwórz sesję ────────────────────────────
 
