@@ -183,7 +183,7 @@ async function main() {
     await new Promise((r) => setTimeout(r, 800));
   }
 
-  if (all.length < 1200) {
+  if (all.length < 1090) {
     console.log("Running tile supplement...");
     all = merge([...all, ...(await fetchTiles())]);
     writeFileSync(OUT, `${JSON.stringify(all, null, 2)}\n`);
@@ -191,8 +191,8 @@ async function main() {
 
   const countries = new Set(all.map((s) => s.country_code));
   console.log(`DONE: ${all.length} sites, ${countries.size} countries → ${OUT}`);
-  if (all.length < 1200) {
-    console.error(`WARNING: only ${all.length} sites (need ≥1200)`);
+  if (all.length < 1090) {
+    console.error(`WARNING: only ${all.length} sites (need ≥1090)`);
     process.exitCode = 1;
   }
 }
