@@ -82,6 +82,7 @@ async def seed_european_loads(
         count,
         base_time=datetime.now(UTC),
         seed=seed,
+        ldm_bucket_shares=(0.40, 0.40, 0.20),
     )
     offers = [item.offer for item in generated]
 
