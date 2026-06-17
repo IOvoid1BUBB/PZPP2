@@ -95,8 +95,14 @@ def test_unknown_country_uses_default_rate_and_json_warning(
     with caplog.at_level(logging.WARNING, logger="app.services.toll_calculator"):
         leg_toll = calculate_leg_tolls(leg_xy, "solo", leg_index=0)
 
-    assert leg_toll.per_country.get("XY", 0.0) == 0.0
-    assert leg_toll.leg_total_eur == 0.0
+    # Unknown countries now fall back to DEFAULT_TOLL_RATE_EUR_PER_KM (single
+    # source of truth: TOLL_RATES) instead of vanishing at 0.0.
+    assert leg_toll.per_country.get("XY", 0.0) == pytest.approx(
+        100 * DEFAULT_TOLL_RATE_EUR_PER_KM, rel=0.05
+    )
+    assert leg_toll.leg_total_eur == pytest.approx(
+        100 * DEFAULT_TOLL_RATE_EUR_PER_KM, rel=0.05
+    )
 
     warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
     assert len(warning_records) >= 1
