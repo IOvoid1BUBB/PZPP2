@@ -301,7 +301,7 @@ export default function RouteMapClient({
     if (routeData) {
       return [routeData.origin.lat, routeData.origin.lon];
     }
-    return [52.22, 21.01]; // Warszawa jako domyślny środek
+    return [52.22, 21.01]; // Warszawa — fallback przed załadowaniem danych
   }, [routeData]);
 
   const mapBounds = useMemo(
@@ -437,7 +437,7 @@ export default function RouteMapClient({
           )}
           <MapContainer
             center={mapCenter}
-            zoom={8}
+            zoom={5}
             className="route-map-leaflet"
             scrollWheelZoom
           >
