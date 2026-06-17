@@ -43,7 +43,7 @@ services:
       [
         "bash",
         "-c",
-        "alembic upgrade head && python scripts/seed_vehicles.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
+        "alembic upgrade head && python scripts/seed_vehicles.py && if [ \"${SEED_EUROPEAN_LOADS:-1}\" = \"1\" ]; then python scripts/seed_european_loads.py --count \"${SEED_OFFER_COUNT:-1200}\"; else python scripts/seed_market_offers.py --count \"${SEED_OFFER_COUNT:-200}\"; fi && python scripts/seed_fleet_vehicles.py && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
       ]
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://loadmax:loadmax@db:5432/loadmax}
@@ -60,6 +60,8 @@ services:
       # Fast/deterministic solver + routing for E2E + CI.
       USE_SOLVER_MOCK: ${USE_SOLVER_MOCK:-false}
       USE_ROUTING_MOCK: ${USE_ROUTING_MOCK:-false}
+      SEED_EUROPEAN_LOADS: ${SEED_EUROPEAN_LOADS:-1}
+      SEED_OFFER_COUNT: ${SEED_OFFER_COUNT:-1200}
     depends_on:
       db:
         condition: service_healthy
