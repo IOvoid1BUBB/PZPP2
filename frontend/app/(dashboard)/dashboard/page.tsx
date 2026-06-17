@@ -290,8 +290,8 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
-        <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="flex min-w-0 flex-col gap-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {Array.from({ length: 4 }).map((_, i) => (
               <Card key={i} className="h-24 animate-pulse bg-ui-raised" />
             ))}
@@ -314,9 +314,9 @@ export default function DashboardPage() {
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
       {/* Lewa: KPI + karta pojazdu + mapa */}
-      <div className="flex flex-col gap-6">
+      <div className="flex min-w-0 flex-col gap-6">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.1fr]">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
             {kpis.map((kpi) => (
               <Card key={kpi.label} className="p-5">
                 <p className="text-2xl font-bold text-ui-accent">{kpi.value}</p>
@@ -428,7 +428,7 @@ export default function DashboardPage() {
               action={
                 <Link
                   href="/planner"
-                  className="inline-block rounded-full bg-ui-black px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+                  className="inline-flex min-h-11 items-center rounded-full bg-ui-black px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
                 >
                   Zaplanuj trasę
                 </Link>
