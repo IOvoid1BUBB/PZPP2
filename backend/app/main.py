@@ -48,7 +48,11 @@ async def _offer_refresh_loop() -> None:
     session_factory = get_sessionmaker()
     while True:
         try:
-            generated = generate_batch(_OFFER_REFRESH_BATCH, base_time=datetime.now(UTC))
+            generated = generate_european_batch(
+                get_catalog(),
+                _OFFER_REFRESH_BATCH,
+                base_time=datetime.now(UTC),
+            )
             async with session_factory() as session:
                 inserted, skipped = await bulk_insert_offers(session, [g.offer for g in generated])
                 await session.commit()
