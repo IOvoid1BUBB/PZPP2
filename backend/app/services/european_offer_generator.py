@@ -205,14 +205,17 @@ def generate_european_offer(
     window_close = window_open + timedelta(hours=window_width)
 
     ldm = randomizer.choice(ALLOWED_LDM)
-    weight_kg = int(ldm * randomizer.uniform(150, 400))
+    weight_kg = min(
+        int(ldm * randomizer.uniform(WEIGHT_MIN_KG_PER_LDM, WEIGHT_MAX_KG_PER_LDM)),
+        MAX_WEIGHT_CAP_KG,
+    )
     distance_km = haversine_km(
         pickup_site.lon,
         pickup_site.lat,
         delivery_site.lon,
         delivery_site.lat,
     )
-    rate = max(0.60, min(2.50, randomizer.gauss(1.20, 0.25)))
+    rate = max(RATE_MIN, min(RATE_MAX, randomizer.gauss(RATE_MEAN, RATE_STDDEV)))
     price_eur = max(0.01, round(ldm * distance_km * rate, 2))
 
     offer = MarketOfferCreate(
