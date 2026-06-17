@@ -689,8 +689,12 @@ class SessionService:
         waypoints: list[tuple[float, float]] = [origin]
         for stop in stops:
             waypoints.append(lat_lon_from_geometry(stop.location))
-        route = await self._routing.get_route_multi(waypoints)
-        return route.total_distance_km
+        try:
+            route = await self._routing.get_route_multi(waypoints)
+            return route.total_distance_km
+        except Exception:
+            from app.services.route_builder import _haversine_route_km
+            return _haversine_route_km(waypoints)
 
     def _compute_metrics(
         self,
