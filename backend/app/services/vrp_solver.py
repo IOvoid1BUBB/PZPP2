@@ -217,9 +217,10 @@ class VRPSolver:
 
         if not candidate_offer_ids:
             if use_full_market:
-                # Load up to 500 offers from the full market pool
+                # Load up to 500 offers from the full market pool (price >= 50 EUR — filters stale offers)
                 full_market_stmt = (
                     select(MarketOffer)
+                    .where(MarketOffer.price_eur >= 50.0)
                     .order_by(MarketOffer.price_eur.desc())
                     .limit(500)
                 )
@@ -245,7 +246,13 @@ class VRPSolver:
         origin = (float(session.origin_lat), float(session.origin_lon))
         existing_waypoints: list[tuple[float, float]] = [origin]
 
+        # Minimalna akceptowalna marża netto (EUR) — oferty poniżej tej granicy
+        # są odfiltrowywane przed CP-SAT, żeby solver nie wybierał tras stratnych.
+        MIN_OFFER_NET_EUR = 1.0
+
         net_cents: list[int] = []
+        profitable_candidates: list[MarketOffer] = []
+        dropped_unprofitable = 0
         for offer in candidates:
             stop_cost = calculate_stop_cost(
                 offer.handling_time_minutes or 30,
@@ -260,7 +267,28 @@ class VRPSolver:
             )
             detour_cost = detour_km * COST_PER_KM_EUR
             net = float(offer.price_eur) - 2 * stop_cost.total_eur - detour_cost
+            if net <= MIN_OFFER_NET_EUR:
+                dropped_unprofitable += 1
+                continue
+            profitable_candidates.append(offer)
             net_cents.append(int(net * 100))
+
+        if dropped_unprofitable > 0:
+            _logger.info(
+                "Solver: filtered %d unprofitable offers (net <= %.2f EUR) out of %d candidates",
+                dropped_unprofitable,
+                MIN_OFFER_NET_EUR,
+                len(candidates),
+                extra={"event": "solver:unprofitable_filtered", "session_id": str(session_id)},
+            )
+        candidates = profitable_candidates
+
+        if not candidates:
+            _logger.info(
+                "Solver: no profitable candidates remain after filtering — returning INFEASIBLE",
+                extra={"event": "solver:no_candidates", "session_id": str(session_id)},
+            )
+            return await self._persist_empty_result(session_id, "INFEASIBLE", 0)
 
         if self._settings.USE_SOLVER_MOCK:
             selected_idx, obj_cents, status_str, is_optimal, elapsed_ms = _solve_mock(
@@ -321,7 +349,7 @@ class VRPSolver:
             solver_run_id=orm_result.id,
             selected_offer_ids=selected_ids,
             objective_value=objective_eur,
-            solver_status=status_str,  # type: ignore[arg-type]
+            solver_status=status_str,
             is_optimal=is_optimal,
             solve_time_ms=elapsed_ms,
             stop_sequence=stop_sequence,
