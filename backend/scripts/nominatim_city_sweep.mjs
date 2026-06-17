@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "data", "european_logistics_sites.json");
-const TARGET = 1200;
+const TARGET = 1090;
 const VERIFIED_AT = "2026-06-15";
 
 function slugify(v) {
