@@ -14,7 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { icon: Home, label: "Dashboard", route: "/" },
+  { icon: Home, label: "Dashboard", route: "/dashboard" },
   { icon: LayoutGrid, label: "Planning lab", route: "/planner" },
   { icon: Truck, label: "Fleet manager", route: "/fleet" },
   { icon: BarChart3, label: "Market hub", route: "/market" },
@@ -34,13 +34,12 @@ export function AppHeader() {
           className="flex min-w-0 items-center justify-center overflow-x-auto rounded-full p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {NAV.map(({ icon: Icon, label, route }) => {
-            const active =
-              route === "/" ? pathname === "/" : pathname.startsWith(route);
+            const active = pathname === route || pathname.startsWith(`${route}/`);
             return (
               <Link
                 key={route}
                 href={route}
-                data-testid={`nav-${route === "/" ? "dashboard" : route.slice(1)}`}
+                data-testid={`nav-${route.slice(1)}`}
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex items-center rounded-full py-2 text-sm font-medium transition-all duration-300",
