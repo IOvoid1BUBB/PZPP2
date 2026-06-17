@@ -13,7 +13,8 @@ import time
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from geoalchemy2.types import Geography
+from sqlalchemy import Select, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -62,12 +63,44 @@ def _time_windows_overlap(
 
 def _solve_mock(
     candidate_offers: list[MarketOffer],
+    free_ldm: float,
+    free_weight_kg: int,
+    max_offer_slots: int,
+    net_contributions_cents: list[int],
+    time_limit_seconds: float,
 ) -> tuple[list[int], int, SolverRunStatus, bool, int]:
-    """Greedy mock solver for CI (no OR-Tools import)."""
-    count = min(3, len(candidate_offers))
-    selected = list(range(count))
-    obj_cents = sum(int(float(candidate_offers[i].price_eur) * 100) for i in selected)
-    return selected, obj_cents, "OPTIMAL", True, 42
+    """Greedy mock solver for CI (no OR-Tools import).
+
+    Mirrors the business logic of :func:`_solve_cp_sat`: respects LDM, weight,
+    and stop-count capacity, and only ever picks offers with a positive net
+    contribution. ``elapsed_ms`` is fixed at 1 as a marker that this is the mock.
+    """
+    ldm_cap = int(free_ldm * 10)
+    order = sorted(
+        (i for i in range(len(candidate_offers)) if net_contributions_cents[i] > 0),
+        key=lambda i: net_contributions_cents[i],
+        reverse=True,
+    )
+
+    selected: list[int] = []
+    used_ldm = 0
+    used_weight = 0
+    for i in order:
+        if len(selected) >= max_offer_slots:
+            break
+        offer = candidate_offers[i]
+        offer_ldm = int(float(offer.ldm) * 10)
+        offer_weight = int(offer.weight_kg)
+        if used_ldm + offer_ldm > ldm_cap:
+            continue
+        if used_weight + offer_weight > free_weight_kg:
+            continue
+        selected.append(i)
+        used_ldm += offer_ldm
+        used_weight += offer_weight
+
+    obj_cents = sum(net_contributions_cents[i] for i in selected)
+    return selected, obj_cents, "OPTIMAL", True, 1
 
 
 def _solve_cp_sat(
@@ -217,14 +250,48 @@ class VRPSolver:
 
         if not candidate_offer_ids:
             if use_full_market:
-                # Load up to 500 offers from the full market pool
-                full_market_stmt = (
-                    select(MarketOffer)
-                    .order_by(MarketOffer.price_eur.desc())
-                    .limit(500)
+                # Candidates filtered to MAX_CANDIDATE_RADIUS_KM from session origin
+                # and sorted by price/LDM density — prioritizes high-yield nearby
+                # offers over distant expensive ones.
+                radius_m = self._settings.MAX_CANDIDATE_RADIUS_KM * 1000
+                limit = self._settings.FULL_MARKET_CANDIDATE_LIMIT
+                origin_point = func.ST_SetSRID(
+                    func.ST_MakePoint(
+                        float(session.origin_lon),
+                        float(session.origin_lat),
+                    ),
+                    4326,
                 )
-                full_market_result = await self._db.execute(full_market_stmt)
-                candidate_offer_ids = [o.id for o in full_market_result.scalars().all()]
+
+                def _full_market_stmt(within_m: int) -> Select[tuple[MarketOffer]]:
+                    return (
+                        select(MarketOffer)
+                        .where(
+                            func.ST_DWithin(
+                                cast(MarketOffer.pickup_point, Geography),
+                                cast(origin_point, Geography),
+                                within_m,
+                            ),
+                            MarketOffer.ldm > 0,
+                        )
+                        .order_by((MarketOffer.price_eur / MarketOffer.ldm).desc())
+                        .limit(limit)
+                    )
+
+                result = await self._db.execute(_full_market_stmt(radius_m))
+                rows = list(result.scalars().all())
+                if len(rows) == 0:
+                    _logger.info(
+                        "No offers within %d km of origin, expanding to %d km",
+                        self._settings.MAX_CANDIDATE_RADIUS_KM,
+                        self._settings.MAX_CANDIDATE_RADIUS_KM * 2,
+                    )
+                    expanded = await self._db.execute(_full_market_stmt(radius_m * 2))
+                    rows = list(expanded.scalars().all())
+
+                candidate_offer_ids = [o.id for o in rows]
+                if not candidate_offer_ids:
+                    return await self._persist_empty_result(session_id, "INFEASIBLE", 0)
             else:
                 ranked = await OfferScorerService(self._db, routing=self._routing).rank_offers(
                     session_id,
@@ -255,16 +322,46 @@ class VRPSolver:
             )
             pickup_ll = lat_lon_from_geometry(offer.pickup_point)
             delivery_ll = lat_lon_from_geometry(offer.delivery_point)
+            # Detour is computed relative to origin for all candidates because the
+            # solver does not know the final sequence yet. This is a deliberate
+            # approximation — FIX-02 in Agent A branch corrects the detour formula
+            # to true added_km (via_pickup - direct), which reduces systematic
+            # overestimation. Post-solve validation below logs actual vs estimated net.
             detour_km = haversine_added_detour_km(
                 existing_waypoints, pickup_ll, delivery_ll
             )
             detour_cost = detour_km * COST_PER_KM_EUR
             net = float(offer.price_eur) - 2 * stop_cost.total_eur - detour_cost
-            net_cents.append(int(net * 100))
+            # FIX-03-B: hard-exclude unprofitable offers via a sentinel objective
+            # so CP-SAT can never select a loss-making offer (even when it would
+            # raise the summed objective). The mock solver drops them outright.
+            if net < self._settings.MIN_OFFER_NET_EUR:
+                net_cents.append(-10_000_000)
+            else:
+                net_cents.append(int(net * 100))
+
+        min_net_cents = int(self._settings.MIN_OFFER_NET_EUR * 100)
+        excluded = [
+            (i, candidates[i].id, net_cents[i])
+            for i in range(len(candidates))
+            if net_cents[i] < min_net_cents
+        ]
+        if excluded:
+            _logger.info(
+                "Excluding %d offers with net < %.2f EUR from solver: %s",
+                len(excluded),
+                self._settings.MIN_OFFER_NET_EUR,
+                [(str(oid), c / 100) for _, oid, c in excluded],
+            )
 
         if self._settings.USE_SOLVER_MOCK:
             selected_idx, obj_cents, status_str, is_optimal, elapsed_ms = _solve_mock(
                 candidates,
+                free_ldm,
+                free_weight_kg,
+                max_offer_slots,
+                net_cents,
+                float(time_limit_seconds),
             )
         else:
             selected_idx, obj_cents, status_str, is_optimal, elapsed_ms = (
@@ -297,6 +394,24 @@ class VRPSolver:
 
         current_offer_ids = await self._session_service._session_offer_ids(session_id)
         stop_sequence = await self._build_stop_sequence(session, selected_offers, origin)
+
+        # FIX-04: post-solve validation — log actual selected net vs objective and
+        # assert no sentinel-priced (loss-making) offer slipped into the selection.
+        selected_net_eur = sum(net_cents[i] / 100 for i in selected_idx)
+        _logger.info(
+            "Solver result: %d offers selected, objective=%.2f EUR, estimated_total_net=%.2f EUR",
+            len(selected_offers),
+            objective_eur,
+            selected_net_eur,
+        )
+        for j, idx in enumerate(selected_idx):
+            if net_cents[idx] == -10_000_000:
+                _logger.error(
+                    "INVARIANT VIOLATION: selected offer %s has sentinel net — "
+                    "should not happen after FIX-03-B",
+                    selected_offers[j].id,
+                )
+
         stop_sequence_json: list[dict[str, object]] | None = (
             [entry.model_dump(mode="json") for entry in stop_sequence] if stop_sequence else None
         )

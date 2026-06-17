@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     USE_SOLVER_MOCK: bool = False
     USE_ROUTING_MOCK: bool = False
 
+    # MAX_CANDIDATE_RADIUS_KM — maksymalny promień od bazy sesji do pickup kandydatów
+    MAX_CANDIDATE_RADIUS_KM: int = 800
+    # FULL_MARKET_CANDIDATE_LIMIT — limit kandydatów przy use_full_market=True
+    FULL_MARKET_CANDIDATE_LIMIT: int = 200
+    # MIN_OFFER_NET_EUR — minimalna marża netto oferty żeby być brana pod uwagę przez solver
+    MIN_OFFER_NET_EUR: float = 1.0
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
