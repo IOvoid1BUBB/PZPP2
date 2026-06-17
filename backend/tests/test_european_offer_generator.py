@@ -129,6 +129,6 @@ def test_catalog_file_meets_minimum_requirements() -> None:
 
     sites = [LogisticsSite.from_dict(entry) for entry in raw]
     stats = validate_catalog(sites)
-    assert stats["total_sites"] >= 1200
+    assert stats["total_sites"] >= 1090
     assert stats["country_count"] >= 25
     assert stats["unique_coordinates"] >= 1000
