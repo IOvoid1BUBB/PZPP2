@@ -20,22 +20,36 @@ def haversine_added_detour_km(
     pickup: tuple[float, float],
     delivery: tuple[float, float],
 ) -> float:
-    """Estimate added distance (km) using great-circle legs (deterministic)."""
+    """Returns extra km driven vs going directly last→delivery.
+
+    Returns full pickup→delivery distance when route has no prior waypoints.
+    Zero when pickup lies on the direct path.
+
+    When *waypoints* is empty the vehicle has no prior route reference, so the
+    full pickup→delivery leg is returned as the cost of the first load.
+    When *waypoints* is non-empty the true added detour is:
+        (last→pickup + pickup→delivery) − (last→delivery)
+    clamped to zero from below (handles the case where pickup is on the
+    direct path).
+    """
+    pick_lat, pick_lon = pickup[0], pickup[1]
+    del_lat, del_lon = delivery[0], delivery[1]
+
     if not waypoints:
+        # No prior route — full pickup→delivery leg is the initial cost.
         return (
-            haversine_km(pickup[1], pickup[0], delivery[1], delivery[0])
+            haversine_km(pick_lon, pick_lat, del_lon, del_lat)
             if pickup != delivery
             else 0.0
         )
 
     last = waypoints[-1]
     last_lat, last_lon = last[0], last[1]
-    pick_lat, pick_lon = pickup[0], pickup[1]
-    del_lat, del_lon = delivery[0], delivery[1]
-    return (
-        haversine_km(last_lon, last_lat, pick_lon, pick_lat)
-        + haversine_km(pick_lon, pick_lat, del_lon, del_lat)
+    via_pickup_km = haversine_km(last_lon, last_lat, pick_lon, pick_lat) + haversine_km(
+        pick_lon, pick_lat, del_lon, del_lat
     )
+    direct_km = haversine_km(last_lon, last_lat, del_lon, del_lat)
+    return max(0.0, round(via_pickup_km - direct_km, 2))
 
 
 async def calculate_added_detour(
@@ -57,7 +71,11 @@ async def calculate_added_detour(
         if len(extended) < 2:
             return 0.0
         route = await routing.get_route_multi(list(extended))
-        added = max(0.0, route.total_distance_km - baseline_km)
+        if baseline_km == 0:
+            # Empty route — full new route distance is the added cost.
+            added = route.total_distance_km
+        else:
+            added = max(0.0, route.total_distance_km - baseline_km)
         return round(added, 2)
     except RoutingUnavailableError as exc:
         _logger.warning(
