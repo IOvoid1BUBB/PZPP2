@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.lib.routing import DistanceMatrix
 from app.models.stop import RouteStop
+from app.services.driver_compliance import compute_break_overhead_minutes
 
 StopType = Literal["pickup", "delivery"]
 
@@ -297,14 +298,22 @@ def compute_eta_minutes(
     *,
     matrix: DistanceMatrix,
     node_indices: dict[str, int],
+    break_overhead: list[int] | None = None,
 ) -> list[int]:
-    """Cumulative ETA at each stop (travel legs + prior handling times)."""
+    """Cumulative ETA at each stop (travel legs + prior handling times).
+
+    When ``break_overhead`` is given, ``break_overhead[leg_index]`` minutes of
+    mandatory rest (EU 561/2006) are added after each leg's driving time so the
+    arriving stop's ETA reflects breaks taken en route.
+    """
     etas: list[int] = []
     cumulative = 0
     current_index = _ORIGIN_INDEX
-    for stop in sequence:
+    for leg_index, stop in enumerate(sequence):
         next_index = node_indices[stop.id]
         cumulative += matrix.durations_minutes[current_index][next_index]
+        if break_overhead is not None and leg_index < len(break_overhead):
+            cumulative += break_overhead[leg_index]
         etas.append(cumulative)
         cumulative += stop.handling_time_minutes
         current_index = next_index
@@ -375,7 +384,21 @@ class SequenceOptimizerService:
             for row_id in stale_ids:
                 existing.pop(row_id)
 
-        etas = compute_eta_minutes(sequence, matrix=matrix, node_indices=node_indices)
+        leg_minutes: list[float] = []
+        current_index = _ORIGIN_INDEX
+        for stop in sequence:
+            next_index = node_indices[stop.id]
+            leg_minutes.append(float(matrix.durations_minutes[current_index][next_index]))
+            current_index = next_index
+        stop_minutes = [float(stop.handling_time_minutes) for stop in sequence]
+        break_overhead = compute_break_overhead_minutes(leg_minutes, stop_minutes)
+
+        etas = compute_eta_minutes(
+            sequence,
+            matrix=matrix,
+            node_indices=node_indices,
+            break_overhead=break_overhead,
+        )
         rows: list[RouteStopUpsertRow] = []
 
         for order, (stop, eta) in enumerate(zip(sequence, etas, strict=True)):

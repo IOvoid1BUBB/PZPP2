@@ -24,7 +24,10 @@ from app.schemas.route_map import (
     RouteMapResponse,
     RouteMapStop,
 )
-from app.services.driver_compliance import compute_rest_points
+from app.services.driver_compliance import (
+    compute_break_overhead_minutes,
+    compute_rest_points,
+)
 from app.services.route_builder import build_session_route
 from app.services.stop_labels import ensure_stop_label
 
@@ -166,14 +169,19 @@ class RouteMapService:
             )
             for stop in build.stops
         ]
+        leg_minutes = [float(leg.duration_minutes) for leg in legs]
         rest_points = [
             DriverRestPoint.model_validate(point)
             for point in compute_rest_points(
-                leg_minutes=[float(leg.duration_minutes) for leg in legs],
+                leg_minutes=leg_minutes,
                 stop_minutes=stop_minutes,
                 leg_geometries=[leg.geometry_coords for leg in legs],
             )
         ]
+        # Mandatory breaks/rests add wall-clock time on top of the ORS leg sum.
+        total_break_minutes = sum(
+            compute_break_overhead_minutes(leg_minutes, stop_minutes)
+        )
 
         result = RouteMapResponse(
             session_id=session.id,
@@ -183,7 +191,7 @@ class RouteMapService:
             rest_points=rest_points,
             vehicle_max_weight_kg=int(vehicle.max_weight_kg),
             total_distance_km=round(build.route.total_distance_km, 3),
-            total_duration_minutes=build.route.total_duration_minutes,
+            total_duration_minutes=build.route.total_duration_minutes + total_break_minutes,
         )
 
         await redis.setex(
