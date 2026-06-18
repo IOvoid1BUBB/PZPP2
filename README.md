@@ -1,87 +1,130 @@
 # LoadMax — planowanie tras i optymalizacja transportu
 
-System wspiera **logistykę i TMS** w skali Europy: planowanie tras, **Vehicle Routing Problem (VRP)** oraz **kalkulację kosztów** (paliwo, czas pracy, przystanki, parametry biznesowe). Architektura jest **lekka, wysokowydajna i skalowalna**: obliczenia i reguły biznesowe koncentrują się w backendzie, routing odbywa się przez **hostowane API OpenRouteService (ORS)**, a frontend odpowiada wyłącznie za **UI i interakcje**.
+System wspiera **logistykę i TMS** w skali Europy: konsolidację ładunków, planowanie tras, **Vehicle Routing Problem (VRP)**, kalkulację **zysku netto** (paliwo, myto, czas pracy, przystanki) oraz kontrolę **zgodności kierowcy z rozporządzeniem UE 561/2006**. Architektura jest **lekka i skalowalna**: obliczenia i reguły biznesowe koncentrują się w backendzie, routing odbywa się przez **hostowane API OpenRouteService (ORS)**, a frontend odpowiada wyłącznie za **UI i interakcje**.
 
 ---
 
-## Domena biznesowa i matematyka transportowa
+## Moduły aplikacji
 
-- **VRP i pokrewne modele** — redukcja kosztów przez sensowną kolejność przystanków i pojazdów przy ograniczeniach (czas, pojemność, liczba przystanków).
-- **Koszty operacyjne** — m.in. paliwo (w tym wpływ masy ładunku na zużycie), utrzymanie pojazdu, dzienne diety kierowcy, koszt postojów.
-- **Reguły UE** — czas pracy kierowcy oraz **tachograf** jako warstwa ograniczeń nakładana na plan tras (nie na sam silnik routingu).
-- **Cel produktowy** — narzędzie pod realne **planowanie floty** i integracje TMS, z naciskiem na **Europę** (sieć dróg OSM, spójne założenia kosztowe w EUR).
+| Moduł | Ścieżka | Opis |
+|-------|---------|------|
+| **Dashboard** | `/dashboard` | KPI operacyjne, mapa Europy z pozycjami floty, alerty, podgląd aktywnej sesji i symulacja pozycji kierowcy. |
+| **Planning lab** | `/planner` | Wybór pojazdu, biblioteka ofert, edytor slotów palet (drag-and-drop), solver VRP, mapa trasy z heat-mapą obciążenia. |
+| **Fleet manager** | `/fleet` | CRUD pojazdów floty, profile kierowców, przypisanie sesji, statusy (`draft` → `confirmed` → `in_transit`). |
+| **Market hub** | `/market` | Przegląd ofert rynkowych, heat-mapa destynacji, wykres EUR/LDM, dodawanie ofert do sesji. |
+| **Analytics** | `/analytics` | Waterfall kosztów i zysku, trendy tygodniowe (przychód, fill-rate) dla wybranej sesji. |
+| **Sesja (szczegóły)** | `/sessions/[id]` | Widok sesji konsolidacyjnej z metrykami i akcjami. |
+| **Mapa sesji** | `/sessions/[id]/map` | Pełnoekranowa mapa trasy dla sesji. |
 
-Te elementy pozostają w **logice biznesowej backendu**; dostawca routingu dostarcza wyłącznie **metryki sieci** (odległości, czasy, geometria), bez „rozumienia” kosztów firmy ani przepisów socjalnych.
+---
+
+## Domena biznesowa
+
+- **VRP i wybór ofert** — solver **OR-Tools CP-SAT** maksymalizuje szacowany zysk netto przy ograniczeniach LDM, masy, liczby przystanków i okien czasowych. Alternatywnie: greedy mock (`USE_SOLVER_MOCK=true`) do CI i szybkich testów.
+- **Koszty operacyjne** — paliwo (w tym wpływ masy ładunku), utrzymanie pojazdu (EUR/km), dzienna dieta kierowcy, koszt postojów, **myto** (geometrie krajów z danych OSM).
+- **Reguły UE** — `DriverComplianceService` sprawdza plan trasy względem **rozporządzenia 561/2006** (czas jazdy, przerwy).
+- **Rynek europejski** — generator ofert na bazie katalogu `european_logistics_sites.json`; tło odświeża pulę ofert co 5 minut.
+- **Cel produktowy** — narzędzie pod realne **planowanie floty** w Europie (sieć dróg OSM, koszty w EUR).
+
+Te elementy pozostają w **logice biznesowej backendu**. ORS dostarcza wyłącznie **metryki sieci** (odległości, czasy, geometria).
 
 ---
 
 ## Architektura systemu
 
 | Warstwa | Technologie | Rola |
-|--------|----------------|------|
-| **Frontend** | React lub Next.js, **Leaflet** / **React Leaflet** | Renderowanie mapy, markery, wyświetlanie tras, interakcje użytkownika, wizualizacja statystyk z API. **Bez** optymalizacji tras, liczenia kosztów transportu i ciężkich obliczeń. |
-| **Backend** | **Python**, **FastAPI** | Logika biznesowa, kalkulacja kosztów, czas pracy kierowcy, zasady tachografu UE, optymalizacja tras, integracja z ORS API, cache, agregacja danych. |
-| **Routing engine** | **OpenRouteService** (hosted API) | Geometria trasy, macierz odległości/czasów, ETA, profil HGV (`driving-hgv`). **Bez** logiki biznesowej, kosztów transportu i zarządzania czasem pracy. |
-| **Dane i wydajność** | **PostgreSQL** (PostGIS), **Redis** | Trwałe dane operacyjne; cache odpowiedzi ORS (macierze, trasy) dla powtarzalnych zapytań i niższego obciążenia API. |
+|--------|-------------|------|
+| **Frontend** | **Next.js 16**, React 19, **Tailwind CSS 4**, **Leaflet** / React Leaflet, Zustand, SWR, Recharts, dnd-kit | Renderowanie map, wykresów, edytor slotów, interakcje. Proxy `/api/*` → backend. **Bez** optymalizacji tras i liczenia kosztów po stronie przeglądarki. |
+| **Backend** | **Python 3.14**, **FastAPI**, SQLAlchemy async, Alembic | Logika biznesowa, kalkulatory, solver CP-SAT, integracja ORS, cache Redis, REST API `/api/v1`. |
+| **Routing** | **OpenRouteService** (hosted API) | Geometria trasy, macierz odległości/czasów, profil HGV (`driving-hgv`). Mock haversine: `USE_ROUTING_MOCK=true`. |
+| **Dane** | **PostgreSQL 16** + **PostGIS**, **Redis 7** | Trwałe dane operacyjne; cache ORS i wyników API sesji. |
 
-Środowisko developerskie i docelowe uruchomienie opisuje **Docker Compose** z serwisami: **frontend**, **api** (backend), **db** (postgres), **redis**. Routing wymaga klucza **ORS_API_KEY** (darmowy plan Standard na [openrouteservice.org](https://openrouteservice.org/)).
+Środowisko developerskie: **Docker Compose** (`db`, `redis`, `api`, `frontend`). Routing wymaga klucza **ORS_API_KEY** ([openrouteservice.org](https://openrouteservice.org/)).
 
 ---
 
 ## Przepływ działania (end-to-end)
 
-1. **Frontend** wysyła do API zestaw **waypointów** (np. kolejność zaproponowana przez użytkownika lub wstępna trasa).
-2. **Backend** żąda od **ORS** **macierzy** odległości/czasów (oraz ewentualnie pojedynczych odcinków) dla potrzebnej pary/k zbioru punktów.
-3. **Backend** wykonuje **optymalizację** (kolejność przystanków / przydział do pojazdów) na podstawie macierzy i ograniczeń biznesowych.
-4. **Backend** liczy **koszty** oraz **ograniczenia kierowcy** (np. czas jazdy, przerwy, zgodność z regułami pracy).
-5. **Backend** po zamknięciu optymalizacji pobiera z ORS **finalną geometrię** tras dla wybranej kolejności punktów.
-6. **Frontend** **renderuje** gotową geometrię i metadane (np. legenda, statystyki) — bez ponownego „liczenia” biznesu po stronie przeglądarki.
+1. Użytkownik tworzy **sesję konsolidacyjną** i wybiera pojazd (katalog 4 typów: Master L2/L3/L4, MAN Solówka).
+2. Oferty rynkowe są **rankingowane** (`GET …/ranked-offers`) lub dodawane ręcznie z Market hub.
+3. **Solver** (`POST …/optimize` → 202) wybiera optymalny podzbiór ofert; frontend polluje `GET …/optimize/status`.
+4. Backend żąda od **ORS** macierzy i — po ustaleniu kolejności — **geometrii** tras.
+5. Backend liczy **profit breakdown** (5 kategorii kosztów + przychód), **zgodność kierowcy** i buduje **route-map** z obciążeniem per odcinek.
+6. Frontend renderuje geometrię na mapie Leaflet i wizualizuje KPI — bez ponownego liczenia biznesu w przeglądarce.
+
+---
+
+## API (skrót)
+
+Główny prefiks: `/api/v1`. Dokumentacja interaktywna: `http://localhost:8000/docs`.
+
+| Grupa | Prefix | Kluczowe operacje |
+|-------|--------|-------------------|
+| Dashboard | `/dashboard` | KPI i ostatnie sesje |
+| Sesje | `/sessions` | CRUD, oferty, profit, route, route-map, simulate, driver-compliance |
+| Solver | `/sessions/{id}/optimize` | Start (202), status, cancel |
+| Planner | `/planner` | Layout slotów palet (GET/PUT/move/swap) |
+| Oferty | `/offers` | Lista ofert rynkowych |
+| Flota | `/fleet` | CRUD pojazdów floty, route-stops (symulacja) |
+| Pojazdy | `/vehicles` | Katalog typów pojazdów |
+| Kierowcy | `/driver-profiles` | Profile kierowców |
+| Health | `/health`, `/health/ready` | Liveness i readiness (db, redis, routing) |
 
 ---
 
 ## OpenRouteService (routing)
 
-- **Rejestracja** — załóż konto na [openrouteservice.org](https://openrouteservice.org/) i wygeneruj klucz API.
-- **Konfiguracja** — ustaw `ORS_API_KEY` w pliku `.env` (patrz `.env.example`).
-- **Profil** — domyślnie `driving-hgv` (ciężarówki / HGV).
+- **Rejestracja** — konto na [openrouteservice.org](https://openrouteservice.org/) → klucz API.
+- **Konfiguracja** — `ORS_API_KEY` w `.env` (patrz `.env.example`).
+- **Profil** — domyślnie `driving-hgv`.
 - **Limity** — plan Standard: ok. 2000 directions/dzień, 500 matrix/dzień; cache Redis (`ors:route:`, `ors:matrix:`) ogranicza zużycie.
+- **Dev bez klucza** — `USE_ROUTING_MOCK=true` (haversine zamiast ORS).
 
 Szczegóły setupu: **[CONTRIBUTING.md](./CONTRIBUTING.md)**.
 
 ---
 
-## Zasady wydajności (Performance Principles)
+## Zasady wydajności
 
-- **Frontend renderuje dane** — backend wykonuje wszystkie obliczenia biznesowe i optymalizacyjne.
-- **ORS odpowiada wyłącznie za routing** w sieci drogowej (metryki i geometria).
-- **Optymalizacja** przebiega po stronie **backendu**, na macierzach i regułach domenowych.
-- **Redis** przechowuje cache **macierzy** oraz **odpowiedzi tras** (kluczowane po zestawie współrzędnych w kolejności), aby ograniczyć powtarzalne wywołania ORS.
-- **Geometria trasy** jest pobierana **dopiero po** ustabilizowaniu kolejności punktów z optymalizacji — mniej zapytań o pełne polyline niż przy „na żywo” na każdą permutację.
-- Projekt dąży do **niskiego zużycia zasobów** przy zachowaniu sensownego SLA dla floty w Europie.
-
----
-
-## Cele skalowalności (Scalability Goals)
-
-Planowany rozwój obejmuje m.in.:
-
-- **VRP** / **TSP** oraz **optymalizację wielopojazdową**,
-- **fleet management** i **harmonogramowanie kierowców**,
-- **real-time ETA** (na bazie świeżych macierzy i odświeżanego cache),
-- symulację **paliwa** i **myta**,
-- pełniejsze modelowanie **regul tachografu UE**.
-
-Jako kierunek solverów dyskretnych przewidziana jest integracja z **Google OR-Tools** (np. VRP z macierzą kosztów z backendu), przy czym **ORS** nadal dostarcza wyłącznie dane sieciowe.
+- **Frontend renderuje dane** — backend wykonuje obliczenia biznesowe i optymalizacyjne.
+- **ORS** odpowiada wyłącznie za routing w sieci drogowej.
+- **Redis** cache'uje macierze i trasy ORS oraz zagregowane odpowiedzi API sesji.
+- **Geometria** pobierana dopiero po ustabilizowaniu kolejności punktów — mniej zapytań niż przy każdej permutacji.
+- Frontend odświeża mapę trasy z **debounce 800 ms** po zmianach layoutu.
 
 ---
 
 ## Repozytorium
 
-- `backend/` — FastAPI, logika biznesowa, integracja ORS, cache.
-- `frontend/` — UI (React lub Next.js), mapa Leaflet.
-- `docker-compose.yml` — orkiestracja stacku (db, redis, api, frontend).
-- **[CONTRIBUTING.md](./CONTRIBUTING.md)** — setup developera, ORS, Redis, Compose.
-- **[CONTEXT.md](./CONTEXT.md)** — zwięzły kontekst architektoniczny dla całego zespołu.
+```
+PZPP2/
+├── backend/          # FastAPI, serwisy, modele, migracje Alembic, testy pytest
+│   ├── app/
+│   │   ├── api/      # Routery REST
+│   │   ├── services/ # VRP, profit, fuel, toll, compliance, …
+│   │   ├── lib/      # ORS, routing, geo, redis
+│   │   └── models/   # SQLAlchemy + PostGIS
+│   ├── alembic/      # Migracje bazy
+│   ├── data/         # Katalog europejskich lokalizacji logistycznych
+│   └── scripts/      # Seed, geocoding, katalog
+├── frontend/         # Next.js 16, komponenty UI, testy Vitest + Playwright
+├── docker-compose.yml
+├── .env.example
+├── CONTRIBUTING.md   # Setup developera, testy, troubleshooting
+└── context.md        # Zwięzły kontekst architektoniczny
+```
+
+---
+
+## Testy
+
+| Warstwa | Narzędzie | Uruchomienie |
+|---------|-----------|--------------|
+| Backend | pytest (~470 testów) | `cd backend && pytest -q` |
+| Frontend (unit) | Vitest | `cd frontend && npm test` |
+| E2E | Playwright | `cd frontend && npm run e2e` (wymaga Docker stack) |
+
+Szczegóły: **[CONTRIBUTING.md](./CONTRIBUTING.md)**.
 
 ---
 
